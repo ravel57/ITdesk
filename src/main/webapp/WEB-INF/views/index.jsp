@@ -5,9 +5,7 @@
     <link rel="stylesheet" href="../../CSS/index.css"/>
 </head>
 <body>
-<header>
-
-</header>
+<header></header>
 <div class="main-frame">
     <section id="left-side">
         <!--        <div class="left-side-menu-container">-->
@@ -28,21 +26,38 @@
         <!--        </div>-->
     </section>
     <section id="right-side">
-        <section id="right-side-content">
-            <p>12321321312312312</p>
-            <div class="right-side-content-body">
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-                <div class="right-side-component"></div>
-            </div>
+        <p>12321321312312312</p>
+        <div class="right-side-content-body">
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+            <div class="right-side-component"></div>
+        </div>
 
-        </section>
+    </section>
 </div>
 </body>
 </html>

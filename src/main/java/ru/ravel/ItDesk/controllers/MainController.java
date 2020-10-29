@@ -19,21 +19,21 @@ public class MainController {
     //@RequestMapping(value = "/", method = RequestMethod.GET)
     @GetMapping(value = "/")
     public String getMailRequest() {
-        return "indexH";
+        return "index";
     }
 
-    @RequestMapping(path = "/download", method = RequestMethod.GET)
-    public ResponseEntity<Resource> download(String param) throws IOException {
-        File file = new File("D:\\Users\\petya\\DEV\\IdeaProjects\\ItDesk\\src\\main\\webapp\\123.txt");
-        InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment;filename=hui.txt");
-        return ResponseEntity.ok()
-                .headers(headers)
-                .contentLength(file.length())
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(resource);
-    }
+//    @RequestMapping(path = "/download", method = RequestMethod.GET)
+//    public ResponseEntity<Resource> download(String param) throws IOException {
+//        File file = new File("");
+//        InputStreamResource resource = new InputStreamResource(new FileInputStream(file));
+//
+//        HttpHeaders headers = new HttpHeaders();
+//        headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment;filename=hui.txt");
+//        return ResponseEntity.ok()
+//                .headers(headers)
+//                .contentLength(file.length())
+//                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+//                .body(resource);
+//    }
 
 }

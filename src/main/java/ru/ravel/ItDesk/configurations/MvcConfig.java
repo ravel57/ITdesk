@@ -10,6 +10,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class MvcConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/webapp/**").addResourceLocations("/webapp/");
+        registry.addResourceHandler("/webapp/**").addResourceLocations("/webapp/").setCachePeriod(null);
     }
 }

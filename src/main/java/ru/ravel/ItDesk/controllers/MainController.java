@@ -1,7 +1,6 @@
 package ru.ravel.ItDesk.controllers;
 
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,7 +13,12 @@ import java.util.List;
 @RequestMapping("/")
 public class MainController {
     @GetMapping()
-    public String getMailRequest(HttpSession httpSession /*, Model model*/) {
+    public String getRootRequest() {
+        return "redirect:/dialogs";
+    }
+
+    @GetMapping("/dialogs")
+    public String getMainRequest(HttpSession httpSession /*, Model model*/) {
         List<String> dialogs = new ArrayList<>();
         dialogs.add("1");
         dialogs.add("2");
@@ -22,11 +26,11 @@ public class MainController {
         dialogs.add("4");
         dialogs.add("5");
         httpSession.setAttribute("dialogs", dialogs);
-        return "index";
+        return "Main";
     }
 
-    @GetMapping("/dialog/{id}")
+    @GetMapping("/dialogs/{id}")
     public String getDialogRequest (@PathVariable("id") int id){
-        return "dialog";
+        return "Dialog";
     }
 }

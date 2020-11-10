@@ -9,10 +9,9 @@
 <%@page language="java" contentType="text/html" pageEncoding="UTF-8" %>
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
 <html>
-<head>
-    <title><c:out value="${id}"></c:out></title>
-</head>
+<jsp:include page="meta/Head.jsp"/>
 <body>
+<jsp:include page="header/Header.jsp"/>
 <c:out value="${id}"></c:out>
 </body>
 </html>

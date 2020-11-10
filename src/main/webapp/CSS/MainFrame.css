@@ -3,13 +3,6 @@ body {
     padding: 0;
 }
 
-header {
-    height: 50px;
-    width: 100%;
-    background-color: #dde8fa;
-    border-bottom: 1px solid #adb2b2;
-}
-
 .main-frame {
     width: 100%;
     height: calc(100% - 51px);

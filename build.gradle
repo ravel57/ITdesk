@@ -36,6 +36,12 @@ dependencies {
 	compile group: 'javax.xml.bind', name: 'jaxb-api', version: '2.4.0-b180725.0427'
 	compile group: 'javax.servlet', name: 'jstl'//, version: '1.2'
 //	compile group: 'commons-io', name: 'commons-io', version: '2.4'
+	compile "org.telegram:telegrambots:5.0.1"
+
+//	compileOnly 'org.projectlombok: lombok: 1.18.16'
+//	annotationProcessor 'org.projectlombok: lombok: 1.18.16'
+//	testCompileOnly 'org.projectlombok: lombok: 1.18.16'
+//	testAnnotationProcessor 'org.projectlombok: lombok: 1.18.16'
 }
 
 test {

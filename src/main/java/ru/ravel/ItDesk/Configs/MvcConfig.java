@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.configurations;
+package ru.ravel.ItDesk.Configs;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;

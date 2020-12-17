@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.controllers;
+package ru.ravel.ItDesk.Controllers;
 
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;

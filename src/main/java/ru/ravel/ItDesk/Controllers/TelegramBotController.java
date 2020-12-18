@@ -8,12 +8,15 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
+import java.io.*;
+import java.util.Scanner;
+
 public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
-    final String token = "1413407172:AAHhuXimnNAD6RpAIZhcpgeIqki-tVJbz34";
+    final String token = getTokenFromFile();
 
-    public TelegramBotController() {
+    public TelegramBotController() throws IOException {
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             botsApi.registerBot(this);
@@ -52,6 +55,12 @@ public class TelegramBotController extends TelegramLongPollingBot {
 //        }
 //    }
 
+    private String getTokenFromFile() throws IOException {
+        BufferedReader reader = new BufferedReader(new FileReader("token.txt"));
+        String line = reader.readLine();
+        reader.close();
+        return line;
+    }
 
     @Override
     public String getBotUsername() {

@@ -4,6 +4,6 @@
         <jsp:include page="leftSide/LeftSide.jsp"/>
     </div>
     <div id="right-side">
-        <jsp:include page="rightSide/RightSide.jsp"/>
+        <jsp:include page="../RightSide.jsp/RightSide.jsp"/>
     </div>
 </div>

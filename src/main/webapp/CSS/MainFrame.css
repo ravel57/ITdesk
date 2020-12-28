@@ -10,61 +10,6 @@ body {
     background-color: #f8ffff;
 }
 
-/*left--------------------------*/
-#left-side {
-    /*height: 100%;*/
-    width: 40vw;
-    max-width: 250px;
-    /*min-width: ;*/
-    padding: 0.5vh 0.5vw;
-    border-right: 1px solid #adb2b2;
-}
-
-#filters {
-    height: 40px;
-    width: 100%;
-    margin: 5px 5px;
-    border: 0 solid #adb2b2;
-    box-sizing: border-box;
-    border-radius: 3px;
-    /*border-top: 1px solid rgba(0, 0, 0, 0.3);*/
-    /*border-bottom: 1px solid rgba(0, 0, 0, 0.3);*/
-}
-
-#filters img {
-    width: 40px;
-}
-
-#filters td:hover {
-    box-shadow: 0 0 2px 1px #adb2b2;
-    background-color: #f2f8f8;
-}
-
-.filter_button {
-    height: 100%;
-    text-align: center;
-    border: 1px solid #adb2b2;
-    box-sizing: border-box;
-    border-radius: 3px;
-}
-
-.left-side-menu-component {
-    height: 30px;
-    /*width:100%;*/
-    margin: 5px 5px;
-    border: 1px solid #adb2b2;
-    box-sizing: border-box;
-    border-radius: 3px;
-    /*border-bottom: 1px solid rgba(0, 0, 0, 0.3);*/
-}
-
-.left-side-menu-component:hover {
-    box-shadow: 0 0 2px 1px #adb2b2;
-    background-color: #f2f8f8;
-}
-
-
-/*--------------------------ride*/
 #right-side {
     height: 100%;
     width: 100%;
@@ -72,7 +17,8 @@ body {
     /*margin-top: 10px;*/
     box-sizing: border-box;
     display: flex;
-    flex-direction: column;
+    overflow: auto;
+    /*flex-direction: column;*/
     /*border-bottom: 1px solid #adb2b2;*/
 }
 

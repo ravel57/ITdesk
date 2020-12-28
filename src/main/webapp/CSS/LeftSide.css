@@ -1,21 +1,30 @@
 #left-side {
     height: 100%;
-    width: 40vw;
-    max-width: 250px;
+    width: 250px;
+    /*width: 40vw;*/
+    /*max-width: 250px;*/
     /*min-width: ;*/
-    padding: 0.5vh 0.5vw;
+    padding: 1px 1px;
     border-right: 1px solid #adb2b2;
+
+    /*width: 500px;*/
+    /*height: 100%;*/
+    /*border: dashed 2px gray;*/
 }
 
 #filters {
     height: 40px;
-    width: 100%;
+    width: 250px;
     margin: 5px 5px;
     border: 0 solid #adb2b2;
     box-sizing: border-box;
     border-radius: 3px;
     /*border-top: 1px solid rgba(0, 0, 0, 0.3);*/
     /*border-bottom: 1px solid rgba(0, 0, 0, 0.3);*/
+}
+
+div.inline {
+    float: left;
 }
 
 #filters img {
@@ -35,6 +44,11 @@
     border-radius: 3px;
 }
 
+.filter_button:hover {
+    box-shadow: 0 0 2px 1px #adb2b2;
+    background-color: #f2f8f8;
+}
+
 .left-side-menu-component {
     height: 30px;
     /*width:100%;*/
@@ -48,4 +62,27 @@
 .left-side-menu-component:hover {
     box-shadow: 0 0 2px 1px #adb2b2;
     background-color: #f2f8f8;
+}
+
+
+button {
+    display: none;
+}
+
+
+/*@media (device-width: 700px) {*/
+/*    !* магия *!*/
+/*    button {*/
+/*        display: block;*/
+/*    }*/
+
+/*    #left-side {*/
+/*        display: none;*/
+/*    }*/
+/*}*/
+
+@media screen and (max-width: 992px) {
+    #left-side {
+        display: none;
+    }
 }

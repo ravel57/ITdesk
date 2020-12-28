@@ -4,7 +4,7 @@ body {
 }
 
 .main-frame {
-    width: 100%;
+    /*width: 100%;*/
     height: calc(100% - 51px);
     display: flex;
     background-color: #f8ffff;
@@ -12,7 +12,7 @@ body {
 
 #right-side {
     height: 100%;
-    width: 100%;
+    /*width: 100%;*/
     padding: 0.5vh calc(0.5vw + 10px) 0.5vh 0.5vw;
     /*margin-top: 10px;*/
     box-sizing: border-box;
@@ -36,6 +36,7 @@ body {
 
 .right-side-column {
     width: 100%;
+    min-width: 400px;
     margin: 0 5px;
 }
 

@@ -12,8 +12,7 @@
 <%--        </c:when>--%>
 <%--    </c:choose>--%>
 <%--</div>--%>
-
-<div class="right-side-body">
+<div id="right-side">
     <div class="right-side-column">
         <c:forEach var="dialogID" items="${dialogs}">
             <a href="/dialogs/${dialogID}" class="right-side-component"> <c:out value="${dialogID}"/> </a>

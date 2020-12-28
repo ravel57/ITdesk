@@ -5,7 +5,10 @@
 <jsp:include page="meta/Head.jsp"/>
 <body>
 <jsp:include page="header/Header.jsp"/>
-<jsp:include page="main/mainFrame/MainFrame.jsp"/>
+<div style="display: flex; height: calc(100vh - 61px)">
+    <jsp:include page="leftSide/LeftSide.jsp"/>
+    <jsp:include page="main/RightSide.jsp"/>
+</div>
 <jsp:include page="meta/Scripts.jsp"/>
 </body>
 </html>

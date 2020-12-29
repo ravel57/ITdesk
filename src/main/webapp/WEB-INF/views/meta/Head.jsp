@@ -2,6 +2,7 @@
 <head>
     <meta charset="utf-8"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/MainFrame.css"/>
+    <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/Dialog.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/LeftSide.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/Header.css"/>
     <title>Task desk</title>

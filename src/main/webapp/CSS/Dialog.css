@@ -1,0 +1,71 @@
+body {
+    margin: 0;
+    padding: 0;
+}
+
+.dialog {
+    display: block;
+    width: 100%;
+}
+
+.client-info {
+    width: 100%;
+    /*height: 70px;*/
+    height: auto;
+    border-bottom: 1px solid #adb2b2;
+    /*display: flex;*/
+}
+
+.client-info .client {
+    font-size: 1.2em;
+}
+
+.client-info .client-fields span {
+    border: 1px solid #adb2b2;
+    border-radius: 3px;
+    padding: 1px;
+}
+
+.messages {
+    width: 100%;
+    overflow: auto;
+    max-height: calc(100% - 51px);
+}
+
+.message {
+    min-height: 10px;
+    max-height: 400px;
+    position: relative;
+    min-width: 30px;
+    padding: 10px;
+    margin: 15px;
+}
+
+
+.client-message {
+    float: left;
+    background: #f5f5ff;
+    min-width: 100px;
+    max-width: 400px;
+    border: 1px solid #adb2b2;
+    border-radius: 3px;
+    padding: 10px;
+    word-wrap: break-word;
+}
+
+.client-response {
+    float: right;
+    background: #eaffee;
+    min-width: 100px;
+    max-width: 400px;
+    border: 1px solid #adb2b2;
+    border-radius: 3px;
+    padding: 10px;
+    word-wrap: break-word;
+}
+
+
+.message p {
+    margin: 0;
+    overflow: auto;
+}

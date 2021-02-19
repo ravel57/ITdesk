@@ -36,6 +36,7 @@ dependencies {
 	compile group: 'org.apache.tomcat.embed', name: 'tomcat-embed-jasper', version: '9.0.22'
 	compile group: 'javax.xml.bind', name: 'jaxb-api', version: '2.4.0-b180725.0427'
 	compile group: 'javax.servlet', name: 'jstl'//, version: '1.2'
+	compile "org.telegram:telegrambots:5.0.1"
 //	compile group: 'commons-io', name: 'commons-io', version: '2.4'
 //	compile "org.telegram:telegrambots:5.0.1"
 

@@ -31,6 +31,6 @@ public class MainController {
 
     @GetMapping("/dialogs/{id}")
     public String getDialogRequest (@PathVariable("id") int id){
-        return "Dialog";
+        return "centralSide/Dialog";
     }
 }

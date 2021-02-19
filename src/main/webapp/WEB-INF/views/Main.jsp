@@ -7,7 +7,7 @@
 <jsp:include page="header/Header.jsp"/>
 <div style="display: flex; height: calc(100vh - 61px)">
     <jsp:include page="leftSide/LeftSide.jsp"/>
-    <jsp:include page="main/RightSide.jsp"/>
+    <jsp:include page="centralSide/Tasks.jsp"/>
 </div>
 <jsp:include page="meta/Scripts.jsp"/>
 </body>

@@ -20,16 +20,21 @@ public class ClientDAOImpl implements ClientDAOInterface {
     }
 
     public List<Client> getAllUser() {
-        return jdbcTemplate.query("select * from client", new ClientMapper());
+        return jdbcTemplate.query("select * from clients", new ClientMapper());
     }
 
     public Client getUser(long id) {
         Client user;
         try {
-            user = jdbcTemplate.queryForObject("select * from client", new ClientMapper());
+            user = jdbcTemplate.queryForObject("select * from clients", new ClientMapper());
             return user;
         } catch (EmptyResultDataAccessException e) {
             return null;
         }
+    }
+
+    @Override
+    public List<Client> getActiveClients() {
+        return jdbcTemplate.query("select * from clients", new ClientMapper());
     }
 }

@@ -6,5 +6,8 @@ import java.util.List;
 
 public interface ClientDAOInterface {
     List<Client> getAllUser();
+
     Client getUser(long id);
+
+    List<Client> getActiveClients();
 }

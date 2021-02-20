@@ -23,6 +23,11 @@ public class ClientServiceImpl implements ClientServiceInterface {
     }
 
     @Override
+    public List<Client> getActiveClients() {
+        return clientDAOInterface.getActiveClients();
+    }
+
+    @Override
     public Client getUser(long id) {
         return clientDAOInterface.getUser(id);
     }

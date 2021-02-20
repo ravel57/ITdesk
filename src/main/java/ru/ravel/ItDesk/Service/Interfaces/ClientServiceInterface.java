@@ -8,4 +8,5 @@ import java.util.List;
 public interface ClientServiceInterface {
     Client getUser(long id);
     List<Client> getAllClients();
+    List<Client> getActiveClients();
 }

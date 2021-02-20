@@ -14,12 +14,7 @@
 <%--</div>--%>
 <div id="right-side">
     <div class="right-side-column">
-        <c:forEach var="dialogID" items="${dialogs}">
-            <a href="/dialogs/${dialogID}" class="right-side-component"> <c:out value="${dialogID}"/> </a>
-        </c:forEach>
-    </div>
-    <div class="right-side-column">
-        <c:forEach var="dialogID" items="${dialogs}">
+        <c:forEach var="dialogID" items="${ids}">
             <a href="/dialogs/${dialogID}" class="right-side-component"> <c:out value="${dialogID}"/> </a>
         </c:forEach>
     </div>

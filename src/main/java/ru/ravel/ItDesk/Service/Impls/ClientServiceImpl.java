@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.Service.Impls;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.DAO.Interfaces.ClientDAOInterface;
 import ru.ravel.ItDesk.Models.Client;
@@ -12,7 +13,6 @@ import java.util.List;
 public class ClientServiceImpl implements ClientServiceInterface {
 
     private final ClientDAOInterface clientDAOInterface;
-
     public ClientServiceImpl(ClientDAOInterface clientDAOInterface) {
         this.clientDAOInterface = clientDAOInterface;
     }
@@ -25,6 +25,11 @@ public class ClientServiceImpl implements ClientServiceInterface {
     @Override
     public List<Client> getActiveClients() {
         return clientDAOInterface.getActiveClients();
+    }
+
+    @Override
+    public Client authorized(String telegramId) {
+        return clientDAOInterface.authorized(telegramId);
     }
 
     @Override

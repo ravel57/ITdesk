@@ -14,7 +14,6 @@ import java.util.List;
 public class ClientDAOImpl implements ClientDAOInterface {
 
     private final JdbcTemplate jdbcTemplate;
-
     public ClientDAOImpl(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -36,5 +35,17 @@ public class ClientDAOImpl implements ClientDAOInterface {
     @Override
     public List<Client> getActiveClients() {
         return jdbcTemplate.query("select * from clients", new ClientMapper());
+    }
+
+    @Override
+    public Client authorized(String telegramId) {
+        Client client;
+        try {
+            return jdbcTemplate.queryForObject("select * from clients where telegram_id like ?",
+                    new Object[]{telegramId}, new ClientMapper()
+            );
+        } catch (EmptyResultDataAccessException e) {
+            return null;
+        }
     }
 }

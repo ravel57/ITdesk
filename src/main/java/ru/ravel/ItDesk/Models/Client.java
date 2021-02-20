@@ -6,7 +6,7 @@ public class Client {
     private String firstName;
     private String lastName;
     private long organizationId;
-    private long telegramId;
+    private String telegramId;
     private long whatsappId;
     private String cabinetNumber;
     private String phoneNumber;
@@ -44,10 +44,10 @@ public class Client {
         this.organizationId = organizationId;
     }
 
-    public long getTelegramId() {
+    public String getTelegramId() {
         return telegramId;
     }
-    public void setTelegramId(long telegramId) {
+    public void setTelegramId(String telegramId) {
         this.telegramId = telegramId;
     }
 

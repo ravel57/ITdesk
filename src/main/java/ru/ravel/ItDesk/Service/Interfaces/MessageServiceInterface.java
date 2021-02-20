@@ -1,4 +1,5 @@
 package ru.ravel.ItDesk.Service.Interfaces;
 
-public class MessageServiceInterface {
+public interface MessageServiceInterface {
+    void saveMessage(String clientID, String message);
 }

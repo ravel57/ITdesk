@@ -1,32 +1,46 @@
 package ru.ravel.ItDesk.Controllers;
 
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
+import ru.ravel.ItDesk.Service.Impls.ClientServiceImpl;
+import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
+import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 
+@Controller
 public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
     final String token = getTokenFromFile();
+    @Autowired
+    ClientServiceInterface clientService;
+
+    @Autowired
+    MessageServiceInterface messageServiceInterface;
 
     public TelegramBotController() throws IOException {
         try {
+//            this.clientService = clientService;
+//            this.messageServiceInterface = messageServiceInterface;
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+            this.getOptions().setMaxThreads(10);
             botsApi.registerBot(this);
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
-
-        this.getOptions().setMaxThreads(10);
     }
+
 
 //    @Bean
 //    public void botConnect() {
@@ -57,10 +71,14 @@ public class TelegramBotController extends TelegramLongPollingBot {
 //    }
 
     private String getTokenFromFile() throws IOException {
-        BufferedReader reader = new BufferedReader(new FileReader("token.txt"));
-        String line = reader.readLine();
-        reader.close();
-        return line;
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader("token.txt"));
+            String line = reader.readLine();
+            reader.close();
+            return line;
+        } catch (IOException e) {
+            throw e;
+        }
     }
 
     @Override
@@ -77,21 +95,26 @@ public class TelegramBotController extends TelegramLongPollingBot {
     public void onUpdateReceived(Update update) {
         SendMessage message = new SendMessage();
         message.setChatId(update.getMessage().getChatId().toString());
-        switch (update.getMessage().getText()) {
-            case "/start": {
-                message.setText("Hello");
-                break;
+        String clientID = update.getMessage().getFrom().getId().toString();
+        String text = update.getMessage().getText();
+        if (clientService.authorized(clientID) != null) {
+            messageServiceInterface.saveMessage(clientID, text);
+            switch (update.getMessage().getText()) {
+                case "/start": {
+                    message.setText("Hello");
+                    break;
+                }
+                default: {
+                    message.setText(update.getMessage().getText());
+                    break;
+                }
             }
-            default: {
-                message.setText(update.getMessage().getText());
-                break;
-            }
-        }
-        try {
-            execute(message);
-        } catch (Exception e) {
+            try {
+                execute(message);
+            } catch (Exception e) {
 //        } catch (TelegramApiException e) {
-            e.printStackTrace();
+                e.printStackTrace();
+            }
         }
     }
 }

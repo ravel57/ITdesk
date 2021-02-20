@@ -16,7 +16,7 @@ public class ItDeskApplication {
 		ApplicationContext applicationContext = SpringApplication.run(ItDeskApplication.class, args);
 
 
-		TelegramBotController telegramBotController = new TelegramBotController();
+		//TelegramBotController telegramBotController = new TelegramBotController();
 
 
 //		for (String name : applicationContext.getBeanDefinitionNames()) {

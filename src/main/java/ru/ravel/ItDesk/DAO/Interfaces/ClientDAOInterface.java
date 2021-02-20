@@ -10,4 +10,8 @@ public interface ClientDAOInterface {
     Client getUser(long id);
 
     List<Client> getActiveClients();
+
+    Client authorized(String telegramId) ;
+
+    //void saveMessege(String clientID, String messege);
 }

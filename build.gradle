@@ -1,6 +1,6 @@
 plugins {
-	id 'org.springframework.boot' version '2.3.3.RELEASE'
-	id 'io.spring.dependency-management' version '1.0.10.RELEASE'
+	id 'org.springframework.boot' version '2.3.0.RELEASE'
+	id 'io.spring.dependency-management' version '1.0.9.RELEASE'
 	id 'java'
 	id 'war'
 }
@@ -11,8 +11,8 @@ sourceCompatibility = '1.8'
 
 repositories {
 	mavenCentral()
-	maven { url 'https://repo.spring.io/milestone' }
-	maven { url 'https://repo.spring.io/snapshot' }
+//	maven { url 'https://repo.spring.io/milestone' }
+//	maven { url 'https://repo.spring.io/snapshot' }
 }
 
 war {
@@ -38,12 +38,11 @@ dependencies {
 	compile group: 'javax.servlet', name: 'jstl'//, version: '1.2'
 	compile "org.telegram:telegrambots:5.0.1"
 //	compile group: 'commons-io', name: 'commons-io', version: '2.4'
-//	compile "org.telegram:telegrambots:5.0.1"
 
-//	compileOnly 'org.projectlombok: lombok: 1.18.16'
-//	annotationProcessor 'org.projectlombok: lombok: 1.18.16'
-//	testCompileOnly 'org.projectlombok: lombok: 1.18.16'
-//	testAnnotationProcessor 'org.projectlombok: lombok: 1.18.16'
+	compileOnly 'org.projectlombok:lombok:1.18.16'
+	annotationProcessor 'org.projectlombok:lombok:1.18.16'
+	testCompileOnly 'org.projectlombok:lombok:1.18.16'
+	testAnnotationProcessor 'org.projectlombok:lombok:1.18.16'
 }
 
 test {

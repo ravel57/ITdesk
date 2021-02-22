@@ -14,7 +14,7 @@ public class ClientMapper implements RowMapper<Client> {
         client.setId(rs.getLong("id"));
         client.setFirstName(rs.getString("firstname"));
         client.setLastName(rs.getString("lastname"));
-        client.setOrganizationId(rs.getLong("Organization_id"));
+        client.setOrganization(rs.getString("Organization"));
         client.setTelegramId(rs.getString("telegram_id"));
         client.setWhatsappId(rs.getLong("whatsapp_id"));
         client.setCabinetNumber(rs.getString("cabinet_number"));

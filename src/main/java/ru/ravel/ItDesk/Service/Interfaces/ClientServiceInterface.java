@@ -9,5 +9,8 @@ public interface ClientServiceInterface {
     Client getUser(long id);
     List<Client> getAllClients();
     List<Client> getActiveClients();
-    Client authorized(String telegramId);
+    Client getClientById(String telegramId);
+    boolean registered(String telegramId);
+
+    void addUser(Client clientID);
 }

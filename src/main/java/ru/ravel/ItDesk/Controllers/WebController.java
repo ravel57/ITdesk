@@ -3,20 +3,25 @@ package ru.ravel.ItDesk.Controllers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import ru.ravel.ItDesk.Models.Client;
+import ru.ravel.ItDesk.Models.Message;
 import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
+import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
 import javax.servlet.http.HttpSession;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/")
 public class WebController {
 
     @Autowired
-    ClientServiceInterface clientServiceInterface;
+    ClientServiceInterface clients;
+    @Autowired
+    MessageServiceInterface messages;
 
     @GetMapping()
     public String getRootRequest() {
@@ -25,23 +30,19 @@ public class WebController {
 
     @GetMapping("/dialogs")
     public String getMainRequest(HttpSession httpSession /*, Model model*/) {
-        List<String> names = new ArrayList<>();
-        List<Long> ids = new ArrayList<>();
-        for (Client client : clientServiceInterface.getActiveClients()) {
-            names.add(client.getFirstName() + " " + client.getLastName());
-            ids.add(client.getId());
-        }
-        httpSession.setAttribute("dialogs", names);
+        httpSession.setAttribute("clients", clients.getActiveClients());
         httpSession.setAttribute("currentBlock", "Tasks");
         return "Main";
     }
 
     @GetMapping("/dialogs/{id}")
-    public String getDialogRequest(HttpSession httpSession/*, @PathVariable("id") int id*/) {
-        List<String> messages = new ArrayList<>();
-        messages.add("123");
-        messages.add("234");
-        messages.add("345");
+    public String getDialogRequest(HttpSession httpSession, @PathVariable("id") String id) {
+        Client client = clients.getClientById(id);
+        List<String> messages = this.messages.getUsersMessages(client.getTelegramId()).stream()
+                .map(Message::getText)
+                .collect(Collectors.toList());
+        httpSession.setAttribute("client", client);
+        messages=messages.stream().map(message->message.replaceAll("\n", "<br/>")).collect(Collectors.toList());
         httpSession.setAttribute("messages", messages);
         httpSession.setAttribute("currentBlock", "Dialog");
         return "Main";

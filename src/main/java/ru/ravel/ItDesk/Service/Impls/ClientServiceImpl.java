@@ -1,6 +1,5 @@
 package ru.ravel.ItDesk.Service.Impls;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.DAO.Interfaces.ClientDAOInterface;
 import ru.ravel.ItDesk.Models.Client;
@@ -28,8 +27,18 @@ public class ClientServiceImpl implements ClientServiceInterface {
     }
 
     @Override
-    public Client authorized(String telegramId) {
-        return clientDAOInterface.authorized(telegramId);
+    public Client getClientById(String telegramId) {
+        return clientDAOInterface.getClientById(telegramId);
+    }
+
+    @Override
+    public boolean registered(String telegramId) {
+        return clientDAOInterface.registered(telegramId);
+    }
+
+    @Override
+    public void addUser(Client client) {
+        clientDAOInterface.addUser(client);
     }
 
     @Override

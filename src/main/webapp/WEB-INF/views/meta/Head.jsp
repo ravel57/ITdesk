@@ -1,7 +1,7 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
 <head>
     <meta charset="utf-8"/>
-    <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/MainFrame.css"/>
+    <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/Tasks.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/Dialog.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/LeftSide.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/CSS/Header.css"/>

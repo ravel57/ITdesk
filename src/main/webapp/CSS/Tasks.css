@@ -45,18 +45,36 @@ body {
 .right-side-component {
     display: block;
     width: auto;
-    height: 50px;
-    margin: 5px 0;
+    min-height: 50px;
+    margin: 10px 0;
     border: 1px solid #adb2b2;
     box-sizing: border-box;
     border-radius: 3px;
     color: #4a4c4c;
     text-decoration: none
-    /*border-bottom: 1px solid rgba(0, 0, 0, 0.3);*/
+    /*border-bottom: 1px solid rgba(0, 0, 0, 0.3);*/;
+    padding: 5px 0;
+}
+
+.right-side-component .client-info {
+    width: 100%;
+    display: flex;
+    font-size: 0.85em;
+    border: 0px;
+}
+
+.organization {
+    margin-left: 10px;
+    margin-right: auto;
+}
+
+.name {
+    margin-right: 10px;
+    margin-left: auto;
 }
 
 .right-side-component:hover {
     box-shadow: 0 0 2px 1px #adb2b2;
     background-color: #f2f8f8;
-    font-weight: bold;
+    /*font-weight: bold;*/
 }

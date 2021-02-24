@@ -6,7 +6,7 @@ body {
 
 .dialog {
     /* display: grid; */
-     width: 100%;
+    width: 100%;
     position: relative;
     /* height: 100%; */
     display: flex;
@@ -137,4 +137,10 @@ body {
     text-rendering: optimizeLegibility;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'liga';
+}
+
+.check-boxes {
+    width: 400px;
+    /*background: darkcyan;*/
+    border-left: 1px solid #adb2b2;
 }

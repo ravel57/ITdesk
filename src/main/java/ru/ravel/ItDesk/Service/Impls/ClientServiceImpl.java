@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.Service.Impls;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.DAO.Interfaces.ClientDAOInterface;
 import ru.ravel.ItDesk.Models.Client;
+import ru.ravel.ItDesk.Models.ClientTask;
 import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
 
 import java.util.List;
@@ -22,7 +23,7 @@ public class ClientServiceImpl implements ClientServiceInterface {
     }
 
     @Override
-    public List<Client> getActiveClients() {
+    public List<ClientTask> getActiveClients() {
         return clientDAOInterface.getActiveClients();
     }
 
@@ -32,8 +33,9 @@ public class ClientServiceImpl implements ClientServiceInterface {
     }
 
     @Override
-    public boolean registered(String telegramId) {
-        return clientDAOInterface.registered(telegramId);
+    public boolean registered(String telegram) {
+        return (clientDAOInterface.getClientById(telegram) != null);
+//        return clientDAOInterface.registered(telegram);
     }
 
     @Override

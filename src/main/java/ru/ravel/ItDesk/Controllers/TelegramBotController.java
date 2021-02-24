@@ -101,6 +101,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
                 clientService.addUser(Client.builder()
                         .firstName(update.getMessage().getFrom().getFirstName())
                         .lastName(update.getMessage().getFrom().getLastName())
+                        .userName(update.getMessage().getFrom().getUserName())
                         .telegramId(clientID)
                         .build());
             idsLockalChash.add(clientID);

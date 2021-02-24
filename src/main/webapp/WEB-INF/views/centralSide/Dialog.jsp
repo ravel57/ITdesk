@@ -20,19 +20,32 @@
     <div class="messages">
         <c:forEach var="message" items="${messages}">
             <div class="message client">
-<%--                <c:out value="${message}"/>--%>
+                    <%--                <c:out value="${message}"/>--%>
                 <p><c:out value="${fn:replace(message, '\\\n', '<br/>')}"/></p>
             </div>
         </c:forEach>
     </div>
     <div class="reply">
-        <div contenteditable="true" aria-multiline="true" class = "input" style="width: 100%">
+        <div contenteditable="true" aria-multiline="true" class="input" style="width: 100%">
 
         </div>
         <div class="reply send-button">
             <span class="icon">send</span>
-<%--            ▶--%>
+            <%--            ▶--%>
         </div>
     </div>
+</div>
+<div class="check-boxes">
+    <form method="post" action="input5.php">
+        <p><b>Задачи</b></p>
+        <p>
+            <label><input type="checkbox" name="checkbox" value="value" style="margin: 10px">Задача 1</label><br>
+            <label><input type="checkbox" name="checkbox" value="value" style="margin: 10px">Задача 2</label><br>
+            <label><input type="checkbox" name="checkbox" value="value" style="margin: 10px">Задача 3</label><br>
+            <label><input type="checkbox" name="checkbox" value="value" style="margin: 10px">Задача 4</label><br>
+            <label><input type="checkbox" name="checkbox" value="value" style="margin: 10px">Задача 5</label><br>
+        </p>
+        <%--        <p><input type="submit" value="Отправить"></p>--%>
+    </form>
 </div>
 <%--    <c:out value="${id}"></c:out>--%>

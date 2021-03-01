@@ -19,7 +19,7 @@ public class ClientServiceImpl implements ClientServiceInterface {
 
 
     public List<Client> getAllClients() {
-        return clientDAOInterface.getAllUser();
+        return clientDAOInterface.getAllClients();
     }
 
     @Override
@@ -28,13 +28,13 @@ public class ClientServiceImpl implements ClientServiceInterface {
     }
 
     @Override
-    public Client getClientById(String telegramId) {
-        return clientDAOInterface.getClientById(telegramId);
+    public Client getClientByTelegramId(long telegramId) {
+        return clientDAOInterface.getClientByTelegramId(telegramId);
     }
 
     @Override
-    public boolean registered(String telegram) {
-        return (clientDAOInterface.getClientById(telegram) != null);
+    public boolean checkRegisteredByTelegramId(long telegramId) {
+        return (clientDAOInterface.getClientByTelegramId(telegramId).getId() != 0);
 //        return clientDAOInterface.registered(telegram);
     }
 
@@ -44,8 +44,15 @@ public class ClientServiceImpl implements ClientServiceInterface {
     }
 
     @Override
-    public Client getUser(long id) {
-        return clientDAOInterface.getUser(id);
+    public String getTelegramIdByClientId(long clientId) {
+        return clientDAOInterface.getTelegramIdByClientId(clientId);
     }
+
+    @Override
+    public Client getClient(long id) {
+        return clientDAOInterface.getClientById(id);
+    }
+
+
 
 }

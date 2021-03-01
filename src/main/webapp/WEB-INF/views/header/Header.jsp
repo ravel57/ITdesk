@@ -1,6 +1,6 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
 <header>
-    <span onclick="menu()">&#9776;Меню</span>
+    <span onclick="menu()" style="cursor: pointer; user-select: none;">&#9776;Меню</span>
 
     <script>
         function menu() {

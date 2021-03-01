@@ -7,11 +7,13 @@ import ru.ravel.ItDesk.Models.ClientTask;
 import java.util.List;
 
 public interface ClientServiceInterface {
-    Client getUser(long id);
+    Client getClient(long id);
     List<Client> getAllClients();
     List<ClientTask> getActiveClients();
-    Client getClientById(String telegramId);
-    boolean registered(String telegramId);
+    Client getClientByTelegramId(long telegramId);
+    boolean checkRegisteredByTelegramId(long telegramId);
 
     void addUser(Client client);
+    String getTelegramIdByClientId(long clientId);
+
 }

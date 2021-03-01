@@ -6,13 +6,15 @@ import ru.ravel.ItDesk.Models.ClientTask;
 import java.util.List;
 
 public interface ClientDAOInterface {
-    List<Client> getAllUser();
+    List<Client> getAllClients();
 
-    Client getUser(long id);
+    Client getClientById(long id);
 
     List<ClientTask> getActiveClients();
 
-    Client getClientById(String telegramId);
+    Client getClientByTelegramId(long telegramId);
+
+    String getTelegramIdByClientId(long clientId);
 
 //    boolean registered(String telegramId) ;
 

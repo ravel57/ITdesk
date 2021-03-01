@@ -3,7 +3,6 @@ package ru.ravel.ItDesk.Mappers;
 import org.springframework.jdbc.core.RowMapper;
 import ru.ravel.ItDesk.Models.Client;
 
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
@@ -15,7 +14,7 @@ public class ClientMapper implements RowMapper<Client> {
                 .firstName(rs.getString("firstname"))
                 .lastName(rs.getString("lastname"))
                 .organization(rs.getString("Organization"))
-                .telegramId(rs.getString("telegram_id"))
+                .telegramId(rs.getLong("telegram_id"))
                 .whatsappId(rs.getLong("whatsapp_id"))
                 .cabinetNumber(rs.getString("cabinet_number"))
                 .phoneNumber(rs.getString("phone_number"))

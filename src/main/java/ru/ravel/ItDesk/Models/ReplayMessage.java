@@ -9,9 +9,10 @@ import java.util.Date;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class Message {
+public class ReplayMessage {
     long id;
     long clientId;
+    long supportId;
     String text;
     Date date;
 }

@@ -10,7 +10,6 @@ import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.ClientTask;
 
 import java.util.List;
-import java.util.Optional;
 
 
 @Repository
@@ -22,21 +21,23 @@ public class ClientDAOImpl implements ClientDAOInterface {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<Client> getAllUser() {
+    public List<Client> getAllClients() {
         return jdbcTemplate.query("select * from messages\n" +
                 "group by client_id\n" +
                 "order by date_time; ", new ClientMapper());
     }
 
-    public Client getUser(long id) {
+    public Client getClientById(long id) {
         Client user;
         try {
-            user = jdbcTemplate.queryForObject("select clients.id, FirstName, LastName," +
-                            "organizations.name as organization,\n" +
-                            "telegram_id,whatsapp_id,cabinet_number,phone_number,email\n" +
-                            "from clients\n" +
-                            "left join organizations on organizations.id = clients.organization_id",
-                    new ClientMapper());
+            user = jdbcTemplate.queryForObject(
+                    "select clients.id, FirstName, LastName, " +
+                            "organizations.name as organization, " +
+                            "telegram_id,whatsapp_id,cabinet_number,phone_number,email " +
+                            "from clients " +
+                            "left join organizations on organizations.id = clients.organization_id " +
+                            "where clients.id = ?;",
+                    new Object[]{id}, new ClientMapper());
             return user;
         } catch (EmptyResultDataAccessException e) {
             return null;
@@ -45,32 +46,44 @@ public class ClientDAOImpl implements ClientDAOInterface {
 
     @Override
     public List<ClientTask> getActiveClients() {
-        List<ClientTask> tmp = jdbcTemplate.query(
-                "select clients.id, FirstName, LastName, organizations.name as organization, " +
-                        "telegram_id,whatsapp_id,cabinet_number,phone_number,email, max(messages.date_time) as last_message\n" +
+        return jdbcTemplate.query(
+                        "select clients.id, FirstName, LastName, organizations.name as organization, " +
+                        "telegram_id,whatsapp_id,cabinet_number,phone_number,email, max(messages.date_time) as last_message \n" +
                         "from  messages\n" +
-                        "left join clients on messages.client_id = clients.telegram_id\n" +
-                        "left join organizations on organizations.id = clients.organization_id\n" +
-                        "group by client_id\n" +
+                        "left join clients on messages.client_id = clients.id \n" +
+                        "left join organizations on organizations.id = clients.organization_id \n" +
+                        "where clients.id is not null \n" +
+                        "group by client_id \n" +
                         "order by last_message desc;",
                 new ClientTaskMapper());
-        return tmp;
     }
 
     @Override
-    public Client getClientById(String telegramId) {
+    public Client getClientByTelegramId(long telegramId) {
         try {
             return jdbcTemplate.queryForObject(
                     "select clients.id, FirstName, LastName, organizations.name as organization,\n" +
                             "telegram_id,whatsapp_id,cabinet_number,phone_number,email\n" +
                             "from clients\n" +
                             "left join organizations on organizations.id = clients.organization_id\n" +
-                            "where clients.id like ?;",
+                            "where clients.telegram_id = ?;",
                     new Object[]{telegramId}, new ClientMapper()
             );
         } catch (EmptyResultDataAccessException e) {
 //            throw e;
             return new Client();
+        }
+    }
+
+    @Override
+    public String getTelegramIdByClientId(long clientId) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "select telegram_id from clients where id = ?;",
+                    new Object[]{clientId}, String.class
+            );
+        } catch (EmptyResultDataAccessException e) {
+            throw e;
         }
     }
 

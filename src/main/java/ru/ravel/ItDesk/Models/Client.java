@@ -2,6 +2,8 @@ package ru.ravel.ItDesk.Models;
 
 import lombok.*;
 
+import java.util.Date;
+
 @Getter
 @Setter
 @Builder
@@ -13,7 +15,7 @@ public class Client {
     private String lastName;
     private String userName;
     private String organization;
-    private String telegramId;
+    private long telegramId;
     private long whatsappId;
     private String cabinetNumber;
     private String phoneNumber;

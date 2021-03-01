@@ -10,6 +10,8 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import ru.ravel.ItDesk.Models.Client;
+import ru.ravel.ItDesk.Models.Message;
+import ru.ravel.ItDesk.Models.ReplayMessage;
 import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
 import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
@@ -24,13 +26,12 @@ public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
     final String token = getTokenFromFile();
-    static List<String> idsLockalChash = new ArrayList<>();
+    static List<Long> idsLockalChash = new ArrayList<>();
 
     @Autowired
-    ClientServiceInterface clientService;
-
+    ClientServiceInterface clients;
     @Autowired
-    MessageServiceInterface messageServiceInterface;
+    MessageServiceInterface messages;
 
     public TelegramBotController() throws IOException {
         try {
@@ -94,25 +95,32 @@ public class TelegramBotController extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        String clientID = update.getMessage().getFrom().getId().toString();
-        String text = update.getMessage().getText();
-        if (!idsLockalChash.contains(clientID)) {
-            if (!clientService.registered(clientID))
-                clientService.addUser(Client.builder()
+        long telegramId = update.getMessage().getFrom().getId();
+        if (!idsLockalChash.contains(telegramId)) {
+            if (!clients.checkRegisteredByTelegramId(telegramId))
+                clients.addUser(Client.builder()
                         .firstName(update.getMessage().getFrom().getFirstName())
                         .lastName(update.getMessage().getFrom().getLastName())
                         .userName(update.getMessage().getFrom().getUserName())
-                        .telegramId(clientID)
+                        .telegramId(telegramId)
                         .build());
-            idsLockalChash.add(clientID);
+            idsLockalChash.add(clients.getClientByTelegramId(telegramId).getTelegramId());
         }
-        messageServiceInterface.saveMessage(clientID, text);
+        Message message = Message.builder()
+                .text(update.getMessage().getText())
+                .clientId(clients.getClientByTelegramId(telegramId).getId())
+                .date(new java.util.Date((long) update.getMessage().getDate() * 1000))
+                .build();
+        messages.saveMessage(message);
+        // get messageId from DB
+        messages.sendMessagesToFront(message);
     }
 
 
-    public void sendMessage(String telegramID) {
-        SendMessage message = new SendMessage();
-        message.setChatId(telegramID);
+    public void sendMessage(ReplayMessage message) {
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(clients.getTelegramIdByClientId(message.getClientId()));
+        sendMessage.setText(message.getText());
 //        switch (update.getMessage().getText()) {
 //            case "/start": {
 //                message.setText("Hello");
@@ -124,7 +132,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
 //            }
 //        }
         try {
-            execute(message);
+            execute(sendMessage);
         } catch (Exception e) {
             e.printStackTrace();
         }

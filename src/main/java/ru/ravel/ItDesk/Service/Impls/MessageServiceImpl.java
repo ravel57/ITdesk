@@ -1,8 +1,12 @@
 package ru.ravel.ItDesk.Service.Impls;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.Controllers.TelegramBotController;
 import ru.ravel.ItDesk.DAO.Interfaces.MessageDAOInterface;
 import ru.ravel.ItDesk.Models.Message;
+import ru.ravel.ItDesk.Models.ReplayMessage;
 import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
 import java.util.List;
@@ -10,6 +14,10 @@ import java.util.List;
 @Service
 public class MessageServiceImpl implements MessageServiceInterface {
 
+    @Autowired
+    private SimpMessagingTemplate template;
+    @Autowired
+    TelegramBotController bot;
 
     final private MessageDAOInterface messageDAOInterface;
 
@@ -18,12 +26,29 @@ public class MessageServiceImpl implements MessageServiceInterface {
     }
 
     @Override
-    public void saveMessage(String clientID, String message) {
-        messageDAOInterface.saveMessage(clientID, message);
+    public void saveMessage(Message message) {
+        messageDAOInterface.saveMessage(message);
     }
 
     @Override
-    public List<Message> getUsersMessages(String telegramId) {
+    public void saveReplyMessage(ReplayMessage replyMessagesage) {
+        messageDAOInterface.saveReplyMessage(replyMessagesage);
+    }
+
+    @Override
+    public List<Message> getUsersMessages(long telegramId) {
         return messageDAOInterface.getUsersMessages(telegramId);
+    }
+
+    @Override
+    public void sendMessagesToBot(ReplayMessage replyeMessage) {
+        if (replyeMessage.getText() != "") {
+            messageDAOInterface.saveReplyMessage(replyeMessage);
+            bot.sendMessage(replyeMessage);
+        }
+    }
+
+    public void sendMessagesToFront(Message message) {
+        this.template.convertAndSend("/topic/messages", message);
     }
 }

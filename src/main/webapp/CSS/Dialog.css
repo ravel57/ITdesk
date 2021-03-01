@@ -4,6 +4,10 @@ body {
     margin: 0;
 }
 
+p {
+    margin: 0;
+}
+
 .dialog {
     /* display: grid; */
     width: 100%;
@@ -20,17 +24,18 @@ body {
     /*height: auto;*/
     border-bottom: 1px solid #adb2b2;
     /*display: flex;*/
-    margin-bottom: 10px;
+    padding-bottom: 10px;
 }
 
 .client-info .client {
     font-size: 1.2em;
 }
 
-.client-info .client-fields span {
+.client-info .client-field {
     border: 1px solid #adb2b2;
     border-radius: 3px;
     padding: 1px;
+    margin: 0 3px;
 }
 
 .messages {
@@ -116,6 +121,8 @@ body {
     font-size: 4em;
     color: white;
     height: auto;
+    cursor: pointer;
+    user-select: none;
 }
 
 .icon {
@@ -129,7 +136,7 @@ body {
     letter-spacing: normal;
     justify-content: center;
     display: flex;
-    color: #fff;
+    /*color: #fff;*/
     word-wrap: normal;
     white-space: nowrap;
     direction: ltr;
@@ -143,4 +150,25 @@ body {
     width: 400px;
     /*background: darkcyan;*/
     border-left: 1px solid #adb2b2;
+}
+
+.check-box {
+    border: 1px solid #adb2b2;
+    border-radius: 5px;
+    margin: 10px;
+    padding: 3px;
+    display: flex;
+}
+
+.check-box:hover {
+    background: #d6e7f9;
+}
+
+.hide {
+    display: none;
+}
+
+.check-box:hover + .hide {
+    display: block;
+    color: red;
 }

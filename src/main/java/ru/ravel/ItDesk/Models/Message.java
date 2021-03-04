@@ -14,4 +14,6 @@ public class Message {
     long clientId;
     String text;
     Date date;
+    String messageType;
+    long supportId;
 }

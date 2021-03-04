@@ -6,7 +6,6 @@ import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.Controllers.TelegramBotController;
 import ru.ravel.ItDesk.DAO.Interfaces.MessageDAOInterface;
 import ru.ravel.ItDesk.Models.Message;
-import ru.ravel.ItDesk.Models.ReplayMessage;
 import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
 import java.util.List;
@@ -27,12 +26,12 @@ public class MessageServiceImpl implements MessageServiceInterface {
 
     @Override
     public void saveMessage(Message message) {
-        messageDAOInterface.saveMessage(message);
+        messageDAOInterface.saveClientMessage(message);
     }
 
     @Override
-    public void saveReplyMessage(ReplayMessage replyMessagesage) {
-        messageDAOInterface.saveReplyMessage(replyMessagesage);
+    public void saveReplyMessage(Message message) {
+        messageDAOInterface.saveReplyMessage(message);
     }
 
     @Override
@@ -41,11 +40,8 @@ public class MessageServiceImpl implements MessageServiceInterface {
     }
 
     @Override
-    public void sendMessagesToBot(ReplayMessage replyeMessage) {
-        if (replyeMessage.getText() != "") {
-            messageDAOInterface.saveReplyMessage(replyeMessage);
-            bot.sendMessage(replyeMessage);
-        }
+    public void sendMessagesToBot(Message Message) {
+        bot.sendMessage(Message);
     }
 
     public void sendMessagesToFront(Message message) {

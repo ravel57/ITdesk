@@ -11,7 +11,6 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Message;
-import ru.ravel.ItDesk.Models.ReplayMessage;
 import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
 import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
@@ -25,7 +24,7 @@ import java.util.List;
 public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
-    final String token = getTokenFromFile();
+    final String token = System.getenv("itDeskTelebotTocken");
     static List<Long> idsLockalChash = new ArrayList<>();
 
     @Autowired
@@ -117,7 +116,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
     }
 
 
-    public void sendMessage(ReplayMessage message) {
+    public void sendMessage(Message message) {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(clients.getTelegramIdByClientId(message.getClientId()));
         sendMessage.setText(message.getText());

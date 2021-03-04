@@ -3,14 +3,12 @@ package ru.ravel.ItDesk.Controllers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Message;
-import ru.ravel.ItDesk.Models.ReplayMessage;
 import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
 import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
@@ -60,8 +58,11 @@ public class WebController {
 
     @MessageMapping("/messagesa")
     @SendTo("topik/messages")
-    public void sendMessagesToBot(ReplayMessage replyeMessage) {
-        messages.sendMessagesToBot(replyeMessage);
+    public void getMessageFromFrontend(Message message) {
+        if (message.getText() != "") {
+            messages.saveReplyMessage(message);
+            messages.sendMessagesToBot(message);
+        }
     }
 
 }

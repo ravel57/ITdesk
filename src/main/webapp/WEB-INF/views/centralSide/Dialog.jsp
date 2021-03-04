@@ -38,7 +38,7 @@
     </div>
     <div class="messages">
         <c:forEach var="message" items="${messages}">
-            <div class="message client" id="${message.id}">
+            <div class="${message.messageType}" id="${message.id}">
                     <%--                <c:out value="${message}"/>--%>
 <%--                <p><c:out value="${fn:replace(message, '\\\n', '<br/>')}"/></p>--%>
                 <p>

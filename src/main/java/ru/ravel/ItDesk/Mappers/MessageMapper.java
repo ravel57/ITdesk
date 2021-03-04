@@ -14,6 +14,8 @@ public class MessageMapper implements RowMapper<Message>  {
                 .clientId(rs.getLong("client_id"))
                 .text(rs.getString("text"))
                 .date(rs.getDate("date_time"))
+                .messageType(rs.getString("message_type"))
+                .supportId(rs.getLong("support_id"))
                 .build();
     }
 }

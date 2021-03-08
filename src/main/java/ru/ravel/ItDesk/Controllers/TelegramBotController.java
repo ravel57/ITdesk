@@ -24,7 +24,7 @@ import java.util.List;
 public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
-    final String token = System.getenv("itDeskTelebotTocken");
+    final String token = System.getenv("itDeskBotToken");
     static List<Long> idsLockalChash = new ArrayList<>();
 
     @Autowired

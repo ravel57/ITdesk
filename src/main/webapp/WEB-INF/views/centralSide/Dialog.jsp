@@ -3,7 +3,7 @@
 <%@ taglib prefix="fn" uri="http://java.sun.com/jsp/jstl/functions" %>
 <% pageContext.setAttribute("newLineChar", "\\n"); %>
 
-<div class="dialog">
+<div id="dialog">
     <div class="client-info">
         <div style="display: flex">
             <div>
@@ -40,7 +40,7 @@
         <c:forEach var="message" items="${messages}">
             <div class="${message.messageType}" id="${message.id}">
                     <%--                <c:out value="${message}"/>--%>
-<%--                <p><c:out value="${fn:replace(message, '\\\n', '<br/>')}"/></p>--%>
+                    <%--                <p><c:out value="${fn:replace(message, '\\\n', '<br/>')}"/></p>--%>
                 <p>
                     <c:out value="${fn:replace(message.text, newLineChar, '<br />')}"/>
                 </p>
@@ -53,7 +53,7 @@
         </div>
         <div class="reply send-button">
             <span class="icon" style="color: #fff">send</span>
-<%--            <input type='button' value='Submit'>--%>
+            <%--            <input type='button' value='Submit'>--%>
             <%--            ▶--%>
         </div>
     </div>

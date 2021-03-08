@@ -8,7 +8,7 @@ p {
     margin: 0;
 }
 
-.dialog {
+#dialog {
     /* display: grid; */
     width: 100%;
     position: relative;
@@ -146,7 +146,7 @@ p {
     font-feature-settings: 'liga';
 }
 
-.check-boxes {
+#check-boxes {
     width: 400px;
     /*background: darkcyan;*/
     border-left: 1px solid #adb2b2;
@@ -171,4 +171,38 @@ p {
 .check-box:hover + .hide {
     display: block;
     color: red;
+}
+
+
+.close-icon {
+    border:1px solid transparent;
+    background-color: transparent;
+    display: contents;
+    vertical-align: middle;
+    outline: 0;
+    /* cursor: pointer; */
+}
+.close-icon:after {
+    content: "X";
+    display: block;
+    width: 15px;
+    height: 15px;
+    /*position: absolute;*/
+    /*float:right;*/
+    background-color: #FA9595;
+    z-index:1;
+    right: 35px;
+    top: 0;
+    bottom: 0;
+    margin: auto;
+    padding: 2px;
+    border-radius: 50%;
+    text-align: center;
+    color: white;
+    font-weight: normal;
+    font-size: 12px;
+    box-shadow: 0 0 2px #E50F0F;
+    cursor: pointer;
+    margin-left: auto;
+    margin-right: 5px;
 }

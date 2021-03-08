@@ -8,8 +8,8 @@
 <div style="display: flex; height: calc(100% - 41px);">
     <jsp:include page="menu/LeftSide.jsp"/>
     <c:choose>
-        <c:when test="${currentBlock eq 'Tasks'}">
-            <jsp:include page="centralSide/Tasks.jsp"/>
+        <c:when test="${currentBlock eq 'Clients'}">
+            <jsp:include page="centralSide/Clients.jsp"/>
         </c:when>
         <c:when test="${currentBlock eq 'Dialog'}">
             <jsp:include page="centralSide/Dialog.jsp"/>

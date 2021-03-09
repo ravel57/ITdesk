@@ -51,29 +51,39 @@ public class WebController {
         List<Task> tasks = this.tasks.getClientTasks(client);
         for (int i = 0; i < messages.size(); i++)
             messages.get(i).setId(i);
-//        List<String> messages = this.messages.getUsersMessages(client.getId()).stream()
-//                .map(Message::getText)
-//                .collect(Collectors.toList());
 //        messages=messages.stream().map(message->message.replaceAll("\n", "<br/>")).collect(Collectors.toList());
         Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
-        System.out.println(gson.toJson(messages));
         httpSession.setAttribute("client", client);
-        httpSession.setAttribute("messages", messages);
-//        httpSession.setAttribute("messages", gson.toJson(messages));
+        httpSession.setAttribute("messages", gson.toJson(messages).replace('\"', '\''));
+        httpSession.setAttribute("tasks", gson.toJson(tasks).replace('\"', '\''));
         httpSession.setAttribute("id", id);
-        httpSession.setAttribute("tasks", tasks);
         httpSession.setAttribute("currentBlock", "Dialog");
         return "Main";
     }
 
 
-    @MessageMapping("/messagesa")
-    @SendTo("topik/messages")
+    @MessageMapping("/messages")
+    @SendTo("topik/clients")
     public void getMessageFromFrontend(Message message) {
-        if (message.getText() != "") {
+        if (!message.getText().isEmpty()) {
             messages.saveReplyMessage(message);
             messages.sendMessagesToBot(message);
         }
+    }
+
+    @MessageMapping("/newTask")
+    @SendTo("topik/clients")
+    public void getNewTaskFromFrontend(Task task) {
+        if (!task.getText().isEmpty()) {
+            tasks.saveTask(task);
+        }
+    }
+
+    @MessageMapping("/tasksStat")
+    @SendTo("topik/clients")
+    public void changeTaskStatusFromFrontend(Task task) {
+//        if (!task.id().isEmpty()) {
+        tasks.changeTask(task);
     }
 
 }

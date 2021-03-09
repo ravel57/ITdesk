@@ -38,7 +38,7 @@ p {
     margin: 0 3px;
 }
 
-.messages {
+#messages {
     width: 100%;
     overflow: auto;
     /* max-height: calc(100% - 191px); */
@@ -102,15 +102,24 @@ p {
     margin-bottom: 0;
 }
 
-.reply .input {
+/*.reply .input {*/
+/*    height: 100%;*/
+/*    width: calc(100% - 50px);*/
+/*    !*width: 100%;*!*/
+/*    !*max-width: 100%;*!*/
+/*    border: 1px solid #adb2b2;*/
+/*    padding: 10px;*/
+/*    overflow: auto;*/
+/*    box-sizing: border-box;*/
+/*}*/
+
+.reply .input-textarea {
+    margin: 0px;
+    padding: 5px;
+    width: 100%;
     height: 100%;
-    width: calc(100% - 50px);
-    /*width: 100%;*/
-    /*max-width: 100%;*/
-    border: 1px solid #adb2b2;
-    padding: 10px;
-    overflow: auto;
-    box-sizing: border-box;
+    resize: none;
+    font-size: 16px;
 }
 
 .reply .send-button {
@@ -148,8 +157,9 @@ p {
 
 #check-boxes {
     width: 400px;
-    /*background: darkcyan;*/
     border-left: 1px solid #adb2b2;
+    overflow: auto;
+    overflow-wrap: break-word;
 }
 
 .check-box {
@@ -158,51 +168,49 @@ p {
     margin: 10px;
     padding: 3px;
     display: flex;
+    background: #7fffd4;
+    overflow-wrap: anywhere;
 }
 
 .check-box:hover {
-    background: #d6e7f9;
+    background: #65dbb5;
 }
 
-.hide {
+.check-box:hover .task-button {
+    display: flex;
+}
+
+.task-button {
     display: none;
-}
-
-.check-box:hover + .hide {
-    display: block;
-    color: red;
-}
-
-
-.close-icon {
-    border:1px solid transparent;
-    background-color: transparent;
-    display: contents;
-    vertical-align: middle;
-    outline: 0;
-    /* cursor: pointer; */
-}
-.close-icon:after {
-    content: "X";
-    display: block;
-    width: 15px;
-    height: 15px;
-    /*position: absolute;*/
-    /*float:right;*/
-    background-color: #FA9595;
-    z-index:1;
-    right: 35px;
-    top: 0;
-    bottom: 0;
-    margin: auto;
-    padding: 2px;
-    border-radius: 50%;
-    text-align: center;
-    color: white;
-    font-weight: normal;
-    font-size: 12px;
-    box-shadow: 0 0 2px #E50F0F;
-    cursor: pointer;
     margin-left: auto;
     margin-right: 5px;
+    cursor: pointer;
+    border: 1px solid #adb2b2;
+    box-sizing: border-box;
+    border-radius: 50%;
+    text-align: center;
+    font-weight: normal;
+    font-size: 12px;
+    box-shadow: 0 0 2px #000000;
+    padding: 0 5px;
+    max-height: 16px;
+}
+
+.closed {
+    text-decoration: line-through;
+    background: #d64040;
+    color: #f7ede2;
+}
+
+.closed:hover {
+    background: darkred;
+}
+
+.task-input{
+    height: 100px;
+    /* max-height: 100px; */
+    margin: 0px;
+    padding: 5px;
+    width: 100%;
+    resize: vertical;
 }

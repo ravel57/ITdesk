@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.Models;
 
+import com.google.gson.annotations.Expose;
 import lombok.*;
 
 @Getter
@@ -8,9 +9,14 @@ import lombok.*;
 @AllArgsConstructor
 @NoArgsConstructor
 public class Task {
+    @Expose
     long id;
+    @Expose
     long clientId;
-    String name;
+    @Expose
+    String text;
+    @Expose
+    boolean actual;
 //    String status;
 //    String priority;
 }

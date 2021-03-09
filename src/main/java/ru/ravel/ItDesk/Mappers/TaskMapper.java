@@ -11,7 +11,8 @@ public class TaskMapper implements RowMapper<Task> {
         return Task.builder()
                 .id(rs.getLong("id"))
                 .clientId(rs.getLong("client_id"))
-                .name(rs.getString("text"))
+                .text(rs.getString("text"))
+                .actual(rs.getBoolean("actual"))
                 .build();
     }
 }

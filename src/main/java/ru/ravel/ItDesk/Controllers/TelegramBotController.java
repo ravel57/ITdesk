@@ -32,7 +32,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
     @Autowired
     MessageServiceInterface messages;
 
-    public TelegramBotController() throws IOException {
+    public TelegramBotController() {
         try {
             TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
             this.getOptions().setMaxThreads(10);

@@ -18,4 +18,12 @@ public class TaskServiceImpl {
         return taskDAO.getClientTasks(client);
     }
 
+    public void saveTask(Task task) {
+        taskDAO.saveTask(task);
+    }
+
+    public void changeTask(Task task) {
+        taskDAO.changeTask(task);
+    }
+
 }

@@ -19,12 +19,35 @@ public class TaskDAOImpl {
     public List<Task> getClientTasks(Client client) {
         try {
             return jdbcTemplate.query(
-                    "select id, client_id, text from tasks where client_id like ?;",
+                    "select id, client_id, text, actual from tasks where client_id like ?;",
                     new Object[]{client.getId()}, new TaskMapper()
             );
         } catch (Exception e) {
             e.printStackTrace();
             throw e;
+        }
+    }
+
+    public void saveTask(Task task){
+        try {
+            jdbcTemplate.update(
+                    "insert into tasks (client_id, text, actual) \n" +
+                            "values (?, ?, 1);",
+                    task.getClientId(), task.getText()
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void changeTask(Task task) {
+        try {
+            jdbcTemplate.update(
+                    "UPDATE tasks SET actual = ? WHERE (id = ?);",
+                    task.isActual(), task.getId()
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

@@ -19,5 +19,4 @@
     <script src="https://unpkg.com/vue@next"></script>
     <script src="${pageContext.request.contextPath}/JS/Main.js"></script>
     <script src="${pageContext.request.contextPath}/JS/webSocket.js"></script>
-    <script src="${pageContext.request.contextPath}/JS/Tasks.js"></script>
     </head>

@@ -7,16 +7,14 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.User;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Message;
-import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
-import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
+import ru.ravel.ItDesk.Service.Impls.ClientServiceImpl;
+import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,9 +26,9 @@ public class TelegramBotController extends TelegramLongPollingBot {
     static List<Long> idsLockalChash = new ArrayList<>();
 
     @Autowired
-    ClientServiceInterface clients;
+    ClientServiceImpl clients;
     @Autowired
-    MessageServiceInterface messages;
+    MessageServiceImpl messages;
 
     public TelegramBotController() {
         try {
@@ -71,17 +69,6 @@ public class TelegramBotController extends TelegramLongPollingBot {
 //        }
 //    }
 
-    private String getTokenFromFile() throws IOException {
-        try {
-            BufferedReader reader = new BufferedReader(new FileReader("token.txt"));
-            String line = reader.readLine();
-            reader.close();
-            return line;
-        } catch (IOException e) {
-            throw e;
-        }
-    }
-
     @Override
     public String getBotUsername() {
         return botName;
@@ -94,23 +81,28 @@ public class TelegramBotController extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
-        long telegramId = update.getMessage().getFrom().getId();
+        User user = update.getMessage().getFrom();
+        long telegramId = user.getId();
         if (!idsLockalChash.contains(telegramId)) {
-            if (!clients.checkRegisteredByTelegramId(telegramId))
-                clients.addUser(Client.builder()
-                        .firstName(update.getMessage().getFrom().getFirstName())
-                        .lastName(update.getMessage().getFrom().getLastName())
-                        .userName(update.getMessage().getFrom().getUserName())
+            if (!clients.checkRegisteredByTelegramId(telegramId)) {
+                Client newClient = Client.builder()
+                        .firstName(user.getFirstName())
+                        .lastName(user.getLastName())
+                        .userName(user.getUserName())
                         .telegramId(telegramId)
-                        .build());
-            idsLockalChash.add(clients.getClientByTelegramId(telegramId).getTelegramId());
+                        .build();
+                clients.addUser(newClient);
+            }
+            idsLockalChash.add(telegramId);
+            // todo delete asynchronously when idle time is exceeded
         }
         Message message = Message.builder()
                 .text(update.getMessage().getText())
                 .clientId(clients.getClientByTelegramId(telegramId).getId())
                 .date(new java.util.Date((long) update.getMessage().getDate() * 1000))
+                .messageType("message client")
                 .build();
-        messages.saveMessage(message);
+        messages.saveClientMessage(message);
         // get messageId from DB
         messages.sendMessagesToFront(message);
     }

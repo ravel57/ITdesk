@@ -1,7 +1,6 @@
 package ru.ravel.ItDesk.Controllers;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.google.gson.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
@@ -12,9 +11,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Message;
 import ru.ravel.ItDesk.Models.Task;
+import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 import ru.ravel.ItDesk.Service.Impls.TaskServiceImpl;
 import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
-import ru.ravel.ItDesk.Service.Interfaces.MessageServiceInterface;
 
 import javax.servlet.http.HttpSession;
 import java.util.List;
@@ -26,7 +25,7 @@ public class WebController {
     @Autowired
     ClientServiceInterface clients;
     @Autowired
-    MessageServiceInterface messages;
+    MessageServiceImpl messages;
     @Autowired
     TelegramBotController bot;
     @Autowired
@@ -45,45 +44,42 @@ public class WebController {
     }
 
     @GetMapping("/dialogs/{id}")
-    public String getDialogRequest(HttpSession httpSession, @PathVariable("id") long id) {
-        Client client = clients.getClient(id);
-        List<Message> messages = this.messages.getUsersMessages(client.getId());
+    public String getDialogRequest(HttpSession httpSession, @PathVariable("id") long clientId) {
+        Client client = clients.getClient(clientId);
+        List<Message> messages = this.messages.getClientsMessages(client);
         List<Task> tasks = this.tasks.getClientTasks(client);
         for (int i = 0; i < messages.size(); i++)
             messages.get(i).setId(i);
+        for (int i = 0; i < tasks.size(); i++)
+            tasks.get(i).setId(i);
 //        messages=messages.stream().map(message->message.replaceAll("\n", "<br/>")).collect(Collectors.toList());
         Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
-        httpSession.setAttribute("client", client);
+        httpSession.setAttribute("client", gson.toJson(client).replace('\"', '\''));
         httpSession.setAttribute("messages", gson.toJson(messages).replace('\"', '\''));
         httpSession.setAttribute("tasks", gson.toJson(tasks).replace('\"', '\''));
-        httpSession.setAttribute("id", id);
+        httpSession.setAttribute("clientId", clientId);
         httpSession.setAttribute("currentBlock", "Dialog");
         return "Main";
     }
 
 
-    @MessageMapping("/messages")
-    @SendTo("topik/clients")
-    public void getMessageFromFrontend(Message message) {
+    @MessageMapping("/changeMessage")
+    @SendTo("topic/activity")
+    public void getSupportMessageFromFrontend(Message message) {
         if (!message.getText().isEmpty()) {
-            messages.saveReplyMessage(message);
+            messages.saveSupportMessage(message);
             messages.sendMessagesToBot(message);
+            messages.sendMessagesToFront(message);
         }
     }
 
-    @MessageMapping("/newTask")
-    @SendTo("topik/clients")
+    @MessageMapping("/changeTask")
+    @SendTo("topic/activity")
     public void getNewTaskFromFrontend(Task task) {
         if (!task.getText().isEmpty()) {
             tasks.saveTask(task);
+            tasks.sendTaskToFront(task);
         }
-    }
-
-    @MessageMapping("/tasksStat")
-    @SendTo("topik/clients")
-    public void changeTaskStatusFromFrontend(Task task) {
-//        if (!task.id().isEmpty()) {
-        tasks.changeTask(task);
     }
 
 }

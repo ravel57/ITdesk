@@ -2,14 +2,14 @@ package ru.ravel.ItDesk.DAO.Impls;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
-import ru.ravel.ItDesk.DAO.Interfaces.MessageDAOInterface;
 import ru.ravel.ItDesk.Mappers.MessageMapper;
+import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Message;
 
 import java.util.List;
 
 @Repository
-public class MessageDAOImpl implements MessageDAOInterface {
+public class MessageDAOImpl /*implements MessageDAOInterface*/ {
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -18,16 +18,17 @@ public class MessageDAOImpl implements MessageDAOInterface {
     }
 
 
-    @Override
+    //    @Override
     public void saveClientMessage(Message message) {
         jdbcTemplate.update(
-                "INSERT INTO messages (client_id, text, date_time, message_type, support_id) VALUES (?, ?, ?, 1, null);",
+                "INSERT INTO messages (client_id, text, date_time, message_type, support_id) " +
+                        "VALUES (?, ?, ?, 1, null);",
                 message.getClientId(), message.getText(), new java.util.Date()
         );
     }
 
-    @Override
-    public void saveReplyMessage(Message message) {
+    //    @Override
+    public void saveSupportMessage(Message message) {
         jdbcTemplate.update(
                 "INSERT INTO messages (client_id, support_id, text, date_time, message_type) VALUES (?, ?, ?, ?, 2);",
                 message.getClientId(), message.getSupportId(), message.getText(), new java.util.Date()
@@ -48,7 +49,7 @@ public class MessageDAOImpl implements MessageDAOInterface {
 //        }
 //    }
 
-    public List<Message> getUsersMessages(long telegramId) {
+    public List<Message> getClientsMessages(Client client) {
         try {
             return jdbcTemplate.query(
                     "select messages.id, messages.client_id, messages.text, messages.date_time,\n" +
@@ -58,7 +59,7 @@ public class MessageDAOImpl implements MessageDAOInterface {
                             "left join message_type on message_type.id = messages.message_type\n" +
                             "where clients.id = ?\n" +
                             "order by date_time;",
-                    new Object[]{telegramId}, new MessageMapper()
+                    new Object[]{client.getId()}, new MessageMapper()
             );
         } catch (Exception e) {
             e.printStackTrace();

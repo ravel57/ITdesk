@@ -9,7 +9,7 @@ import java.util.Date;
 @Setter
 @Builder
 @AllArgsConstructor
-@NoArgsConstructor
+//@NoArgsConstructor
 public class Message {
     @Expose
     long id;
@@ -22,4 +22,7 @@ public class Message {
     String messageType;
     @Expose
     long supportId;
+
+    public Message() {
+    }
 }

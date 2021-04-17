@@ -16,9 +16,9 @@
                 </div>
                 <div class="tasks-list">
                     <p>Задача 1</p>
-<%--                    <p>Задача 2</p>--%>
-<%--                    <p>Задача 3</p>--%>
-<%--                    <p>Задача 4</p>--%>
+                        <%--                    <p>Задача 2</p>--%>
+                        <%--                    <p>Задача 3</p>--%>
+                        <%--                    <p>Задача 4</p>--%>
                 </div>
                 <div class=" client-card-info" style="border-top: 1px solid #adb2b2">
                     <span class=" name">

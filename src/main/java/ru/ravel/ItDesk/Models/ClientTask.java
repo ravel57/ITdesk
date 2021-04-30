@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.Models;
 import lombok.*;
 
 import java.util.Date;
+import java.util.List;
 
 @Getter
 @Setter
@@ -16,4 +17,5 @@ public class ClientTask {
     private String organization;
     private String telegramId;
     private Date lastMessage;
+    private List<Task> tasks;
 }

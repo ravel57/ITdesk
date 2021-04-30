@@ -4,11 +4,16 @@ import com.google.gson.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.security.access.annotation.Secured;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import ru.ravel.ItDesk.Models.Client;
+import ru.ravel.ItDesk.Models.ClientTask;
 import ru.ravel.ItDesk.Models.Message;
 import ru.ravel.ItDesk.Models.Task;
 import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
@@ -32,13 +37,23 @@ public class WebController {
     TaskServiceImpl tasks;
 
     @GetMapping()
+//    @Secured("USER")
     public String getRootRequest() {
-        return "redirect:/dialogs";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!(auth instanceof AnonymousAuthenticationToken)) {
+            return "redirect:/dialogs";
+        } else
+            return "redirect:/login";
     }
+
 
     @GetMapping("/dialogs")
     public String getMainRequest(HttpSession httpSession /*, Model model*/) {
-        httpSession.setAttribute("clients", this.clients.getActiveClients());
+        List<ClientTask> clientTasks = this.clients.getActiveClients();
+        for (ClientTask client : clientTasks) {
+            client.setTasks(tasks.getClientActualTasks(client.getId()));
+        }
+        httpSession.setAttribute("clients", clientTasks);
         httpSession.setAttribute("currentBlock", "Clients");
         return "Main";
     }
@@ -52,7 +67,6 @@ public class WebController {
             messages.get(i).setId(i);
         for (int i = 0; i < tasks.size(); i++)
             tasks.get(i).setId(i);
-//        messages=messages.stream().map(message->message.replaceAll("\n", "<br/>")).collect(Collectors.toList());
         Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
         httpSession.setAttribute("client", gson.toJson(client).replace('\"', '\''));
         httpSession.setAttribute("messages", gson.toJson(messages).replace('\"', '\''));

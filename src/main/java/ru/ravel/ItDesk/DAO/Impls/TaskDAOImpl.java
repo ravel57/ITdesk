@@ -17,19 +17,19 @@ public class TaskDAOImpl {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    public List<Task> getClientTasks(Client client) {
-        try {
-            return jdbcTemplate.query(
-                    "select id, client_id, text, actual " +
-                            "from tasks " +
-                            "where client_id like ?;",
-                    new Object[]{client.getId()}, new TaskMapper()
-            );
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw e;
-        }
-    }
+//    public List<Task> getClientTasks(Client client) {
+//        try {
+//            return jdbcTemplate.query(
+//                    "select id, client_id, text, actual " +
+//                            "from tasks " +
+//                            "where client_id like ?;",
+//                    new Object[]{client.getId()}, new TaskMapper()
+//            );
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            throw e;
+//        }
+//    }
 
     public List<Task> getClientTasks(long clientId) {
         try {
@@ -37,6 +37,20 @@ public class TaskDAOImpl {
                     "select id, client_id, text, actual " +
                             "from tasks " +
                             "where client_id like ?;",
+                    new Object[]{clientId}, new TaskMapper()
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+    }
+
+    public List<Task> getClientActualTasks(long clientId) {
+        try {
+            return jdbcTemplate.query(
+                    "select id, client_id, text, actual " +
+                            "from tasks " +
+                            "where client_id like ? and actual;",
                     new Object[]{clientId}, new TaskMapper()
             );
         } catch (Exception e) {

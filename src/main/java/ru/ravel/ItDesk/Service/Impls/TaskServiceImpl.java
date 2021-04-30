@@ -19,7 +19,15 @@ public class TaskServiceImpl {
     private SimpMessagingTemplate template;
 
     public List<Task> getClientTasks(Client client) {
-        return taskDAO.getClientTasks(client);
+        return taskDAO.getClientTasks(client.getId());
+    }
+
+    public List<Task> getClientTasks(long clientId) {
+        return taskDAO.getClientTasks(clientId);
+    }
+
+    public List<Task> getClientActualTasks(long clientId) {
+        return taskDAO.getClientActualTasks(clientId);
     }
 
     public void saveTask(Task task) {

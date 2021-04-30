@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="${pageContext.request.contextPath}/css/LeftSide.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/css/Header.css"/>
     <link rel="stylesheet" href="${pageContext.request.contextPath}/dist/css/app.css"/>
-
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <%--    <link href="/webjars/bootstrap/css/bootstrap.min.css" rel="stylesheet">--%>
 <%--    <link href="/main.css" rel="stylesheet">--%>

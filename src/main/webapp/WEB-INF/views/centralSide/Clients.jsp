@@ -15,13 +15,12 @@
                     <br>
                 </div>
                 <div class="tasks-list">
-                    <p>Задача 1</p>
-                        <%--                    <p>Задача 2</p>--%>
-                        <%--                    <p>Задача 3</p>--%>
-                        <%--                    <p>Задача 4</p>--%>
+                    <c:forEach var="task" items="${client.tasks}">
+                        <p>${task.text}</p>
+                    </c:forEach>
                 </div>
-                <div class=" client-card-info" style="border-top: 1px solid #adb2b2">
-                    <span class=" name">
+                <div class=" client-card-info date" style="border-top: 1px solid #adb2b2">
+                    <span class=" date">
                         <fmt:formatDate value="${client.lastMessage}" pattern="dd-MMM  HH:mm"/>
                     </span>
                 </div>

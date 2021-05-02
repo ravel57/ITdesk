@@ -82,27 +82,33 @@ public class TelegramBotController extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         User user = update.getMessage().getFrom();
+        Client client;
         long telegramId = user.getId();
-        if (!idsLockalChash.contains(telegramId)) {
-            if (!clients.checkRegisteredByTelegramId(telegramId)) {
-                Client newClient = Client.builder()
+        if (idsLockalChash.contains(telegramId)) {
+            client = clients.getClientByTelegramId(telegramId);
+        } else {
+            if (clients.checkRegisteredByTelegramId(telegramId)) {
+                client = clients.getClientByTelegramId(telegramId);
+            } else {
+                client = Client.builder()
                         .firstName(user.getFirstName())
                         .lastName(user.getLastName())
                         .userName(user.getUserName())
                         .telegramId(telegramId)
                         .build();
-                clients.addUser(newClient);
+                clients.addUser(client);
             }
             idsLockalChash.add(telegramId);
             // todo delete asynchronously when idle time is exceeded
         }
         Message message = Message.builder()
                 .text(update.getMessage().getText())
-                .clientId(clients.getClientByTelegramId(telegramId).getId())
+                .clientId(client.getId())
                 .date(new java.util.Date((long) update.getMessage().getDate() * 1000))
                 .messageType("message client")
                 .build();
         messages.saveClientMessage(message);
+        message.setId(messages.getClientsMessagesCount(client) - 1);
         // get messageId from DB
         messages.sendMessagesToFront(message);
     }

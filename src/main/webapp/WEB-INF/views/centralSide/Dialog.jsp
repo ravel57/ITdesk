@@ -117,7 +117,6 @@
     <%--        </p>--%>
     <%--        <p><input type="submit" value="Отправить"></p>--%>
 </div>
-<%--<script src="${pageContext.request.contextPath}/JS/ws.js"></script>--%>
 <%--<script src="${pageContext.request.contextPath}/JS/webSocket.js"></script>--%>
 <%--<script src="${pageContext.request.contextPath}/JS/Dialog.js"></script>--%>
 <%--<script src="${pageContext.request.contextPath}/JS/Tasks.js"></script>--%>

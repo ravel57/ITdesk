@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.Service.Impls;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -11,14 +12,12 @@ import ru.ravel.ItDesk.Models.Message;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class MessageServiceImpl /*implements MessageServiceInterface*/ {
 
-    @Autowired
-    TelegramBotController bot;
-    @Autowired
-    MessageDAOImpl messageDAO;
-    @Autowired
-    private SimpMessagingTemplate template;
+    private final TelegramBotController bot;
+    private final MessageDAOImpl messageDAO;
+    private final SimpMessagingTemplate template;
 
 
     //    @Override
@@ -34,7 +33,18 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
 
     //    @Override
     public List<Message> getClientsMessages(Client client) {
-        return messageDAO.getClientsMessages(client);
+        return messageDAO.getClientsMessages(client.getId());
+    }
+    //    @Override
+    public List<Message> getClientsMessages(long clientId) {
+        List<Message> messages = messageDAO.getClientsMessages(clientId);
+        for (int i = 0; i < messages.size(); i++)
+            messages.get(i).setId(i);
+        return messages;
+    }
+    //    @Override
+    public long getClientsMessagesCount(Client client) {
+        return messageDAO.getClientsMessagesCount(client);
     }
 
     //    @Override

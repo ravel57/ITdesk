@@ -49,7 +49,7 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
 //        }
 //    }
 
-    public List<Message> getClientsMessages(Client client) {
+    public List<Message> getClientsMessages(long clientId) {
         try {
             return jdbcTemplate.query(
                     "select messages.id, messages.client_id, messages.text, messages.date_time,\n" +
@@ -59,7 +59,22 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
                             "left join message_type on message_type.id = messages.message_type\n" +
                             "where clients.id = ?\n" +
                             "order by date_time;",
-                    new Object[]{client.getId()}, new MessageMapper()
+                    new Object[]{clientId}, new MessageMapper()
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw e;
+        }
+    }
+
+    public long getClientsMessagesCount(Client client) {
+        try {
+            return jdbcTemplate.queryForObject(
+                    "select count(messages.id)\n" +
+                            "from messages\n" +
+                            "left join clients on messages.client_id = clients.id\n" +
+                            "where clients.id = ?;",
+                    new Object[]{client.getId()}, long.class
             );
         } catch (Exception e) {
             e.printStackTrace();

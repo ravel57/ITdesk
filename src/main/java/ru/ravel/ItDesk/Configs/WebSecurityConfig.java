@@ -16,7 +16,7 @@ import org.springframework.web.filter.CharacterEncodingFilter;
 @Configuration
 @EnableWebSecurity
 //@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class SecurityConfig extends WebSecurityConfigurerAdapter {
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 
 
 //    private final UserDetailsService userDetailsService;
@@ -32,12 +32,16 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
         filter.setEncoding("UTF-8");
         filter.setForceEncoding(true);
         http.addFilterBefore(filter, CsrfFilter.class);
-        http.authorizeRequests()
-                .antMatchers("/login").permitAll()
-                .antMatchers("/dialogs/**").authenticated()
-                .antMatchers("/dialogs").authenticated()
-                .antMatchers("/", "/js/", "/css/**").permitAll();
-        http.csrf().disable();
+        http
+                .antMatcher("/**")
+                .authorizeRequests()
+                .antMatchers("/", "/login**", "/js/**", "/css/**", "/error**").permitAll()
+                .anyRequest().authenticated()
+                .and().logout().logoutSuccessUrl("/").permitAll()
+                .and()
+                .csrf().disable();
+//                .antMatchers("/dialogs/**").authenticated()
+//                .antMatchers("/dialogs").authenticated();
     }
 
 

@@ -1,10 +1,11 @@
 package ru.ravel.ItDesk.Controllers;
 
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
-import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,28 +17,23 @@ import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.ClientTask;
 import ru.ravel.ItDesk.Models.Message;
 import ru.ravel.ItDesk.Models.Task;
+import ru.ravel.ItDesk.Service.Impls.ClientServiceImpl;
 import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 import ru.ravel.ItDesk.Service.Impls.TaskServiceImpl;
-import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
 
 import javax.servlet.http.HttpSession;
 import java.util.List;
 
 @Controller
 @RequestMapping("/")
+@RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class WebController {
 
-    @Autowired
-    ClientServiceInterface clients;
-    @Autowired
-    MessageServiceImpl messages;
-    @Autowired
-    TelegramBotController bot;
-    @Autowired
-    TaskServiceImpl tasks;
+    private final ClientServiceImpl clients;
+    private final MessageServiceImpl messages;
+    private final TaskServiceImpl tasks;
 
-    @GetMapping()
-//    @Secured("USER")
+    @GetMapping("/*")
     public String getRootRequest() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (!(auth instanceof AnonymousAuthenticationToken)) {
@@ -50,10 +46,8 @@ public class WebController {
     @GetMapping("/dialogs")
     public String getMainRequest(HttpSession httpSession /*, Model model*/) {
         List<ClientTask> clientTasks = this.clients.getActiveClients();
-        for (ClientTask client : clientTasks) {
-            client.setTasks(tasks.getClientActualTasks(client.getId()));
-        }
-        httpSession.setAttribute("clients", clientTasks);
+        Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+        httpSession.setAttribute("clients", gson.toJson(clientTasks).replace('\"', '\''));
         httpSession.setAttribute("currentBlock", "Clients");
         return "Main";
     }
@@ -63,10 +57,6 @@ public class WebController {
         Client client = clients.getClient(clientId);
         List<Message> messages = this.messages.getClientsMessages(client);
         List<Task> tasks = this.tasks.getClientTasks(client);
-        for (int i = 0; i < messages.size(); i++)
-            messages.get(i).setId(i);
-        for (int i = 0; i < tasks.size(); i++)
-            tasks.get(i).setId(i);
         Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
         httpSession.setAttribute("client", gson.toJson(client).replace('\"', '\''));
         httpSession.setAttribute("messages", gson.toJson(messages).replace('\"', '\''));

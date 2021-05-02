@@ -1,5 +1,7 @@
 package ru.ravel.ItDesk.Service.Impls;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.DAO.Interfaces.ClientDAOInterface;
 import ru.ravel.ItDesk.Models.Client;
@@ -10,13 +12,11 @@ import java.util.List;
 
 
 @Service
+@RequiredArgsConstructor(onConstructor = @__(@Autowired))
 public class ClientServiceImpl implements ClientServiceInterface {
 
     private final ClientDAOInterface clientDAOInterface;
-    public ClientServiceImpl(ClientDAOInterface clientDAOInterface) {
-        this.clientDAOInterface = clientDAOInterface;
-    }
-
+        private final TaskServiceImpl tasks;
 
     public List<Client> getAllClients() {
         return clientDAOInterface.getAllClients();
@@ -24,7 +24,11 @@ public class ClientServiceImpl implements ClientServiceInterface {
 
     @Override
     public List<ClientTask> getActiveClients() {
-        return clientDAOInterface.getActiveClients();
+        List<ClientTask> clientTasks = clientDAOInterface.getActiveClients();
+        for (ClientTask client : clientTasks) {
+            client.setTasks(tasks.getClientActualTasks(client.getId()));
+        }
+        return clientTasks;
     }
 
     @Override

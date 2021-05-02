@@ -33,7 +33,10 @@ public class TaskServiceImpl {
     }
 
     public List<Task> getClientActualTasks(long clientId) {
-        return taskDAO.getClientActualTasks(clientId);
+        List<Task> tasks = taskDAO.getClientActualTasks(clientId);
+        for (int i = 0; i < tasks.size(); i++)
+            tasks.get(i).setId(i);
+        return tasks;
     }
 
     public void saveTask(Task task) {

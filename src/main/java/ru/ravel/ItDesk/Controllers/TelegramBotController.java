@@ -96,7 +96,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
                         .userName(user.getUserName())
                         .telegramId(telegramId)
                         .build();
-                clients.addUser(client);
+                clients.addClient(client);
             }
             idsLockalChash.add(telegramId);
             // todo delete asynchronously when idle time is exceeded

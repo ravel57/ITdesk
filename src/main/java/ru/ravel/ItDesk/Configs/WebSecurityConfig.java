@@ -33,13 +33,13 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
         filter.setForceEncoding(true);
         http.addFilterBefore(filter, CsrfFilter.class);
         http
-                .antMatcher("/**")
-                .authorizeRequests()
+                .antMatcher("/**").authorizeRequests()
                 .antMatchers("/", "/login**", "/js/**", "/css/**", "/error**").permitAll()
                 .anyRequest().authenticated()
                 .and().logout().logoutSuccessUrl("/").permitAll()
-                .and()
-                .csrf().disable();
+                .and().formLogin().loginPage("/")
+                .and().csrf().disable()
+        ;
 //                .antMatchers("/dialogs/**").authenticated()
 //                .antMatchers("/dialogs").authenticated();
     }

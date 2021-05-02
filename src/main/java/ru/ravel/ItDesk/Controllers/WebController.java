@@ -86,4 +86,13 @@ public class WebController {
         }
     }
 
+    @MessageMapping("/changeClient")
+    @SendTo("topic/activity")
+    public void getNewTaskFromFrontend(Client client) {
+        if (!(client.getLastName() + client.getFirstName()).isEmpty()) {
+            clients.changeClient(client);
+            clients.sendClientToFront(client);
+        }
+    }
+
 }

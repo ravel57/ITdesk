@@ -104,10 +104,22 @@ public class ClientDAOImpl implements ClientDAOInterface {
 //    }
 
     @Override
-    public void addUser(Client client) {
+    public void addClient(Client client) {
         jdbcTemplate.update(
                 "INSERT INTO clients (FirstName, Lastname, telegram_id, username) VALUES (?, ?, ?, ?)",
                 client.getFirstName(), client.getLastName(), client.getTelegramId(), client.getUserName()
+        );
+    }
+
+
+    public void changeClient(Client client) {
+        jdbcTemplate.update(
+                "UPDATE it_desk.clients t " +
+                        "SET t.FirstName = ?, " +
+                        "    t.LastName  = ? " +
+//                        "t.organization_id = ? " +
+                        "WHERE t.id = ?;",
+                client.getFirstName(), client.getLastName(), client.getId()
         );
     }
 }

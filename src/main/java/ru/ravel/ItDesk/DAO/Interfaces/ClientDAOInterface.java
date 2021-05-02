@@ -18,7 +18,7 @@ public interface ClientDAOInterface {
 
 //    boolean registered(String telegramId) ;
 
-    void addUser(Client client);
+    void addClient(Client client);
 
     //void saveMessege(String clientID, String messege);
 }

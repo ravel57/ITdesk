@@ -13,7 +13,7 @@ public interface ClientServiceInterface {
     Client getClientByTelegramId(long telegramId);
     boolean checkRegisteredByTelegramId(long telegramId);
 
-    void addUser(Client client);
+    void addClient(Client client);
     String getTelegramIdByClientId(long clientId);
 
 }

@@ -17,7 +17,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        registry.addResourceHandler("/webapp/**").addResourceLocations("/webapp/").setCachePeriod(null);
+        registry.addResourceHandler("/webapp/**")
+                .addResourceLocations("/webapp/").setCachePeriod(null);
     }
 
     @Bean
@@ -26,6 +27,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
             container.addErrorPages(new ErrorPage( HttpStatus.NOT_FOUND, "/"));
         };
     }
+
 
 //    public void addViewControllers(ViewControllerRegistry registry) {
 //        registry.addViewController("/").setViewName("Main");

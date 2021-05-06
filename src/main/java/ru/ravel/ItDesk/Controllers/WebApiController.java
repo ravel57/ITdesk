@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,8 +27,16 @@ public class WebApiController {
     private final MessageServiceImpl messages;
     private final TaskServiceImpl tasks;
 
+
+    @GetMapping("/clients")
+    public ResponseEntity<Object> getActualClientRequest() {
+        return ResponseEntity.status(HttpStatus.OK).body(this.clients.getActiveClients());
+    }
+
     @GetMapping("/messages/{id}")
     public ResponseEntity<Object> getMessagesRequest(@PathVariable("id") long clientId) {
+        messages.markChatReaded(SecurityContextHolder.getContext().getAuthentication().getPrincipal(), clientId);
+        SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         List<Message> messages = this.messages.getClientsMessages(clientId);
         return ResponseEntity.status(HttpStatus.OK).body(messages);
     }
@@ -42,10 +51,5 @@ public class WebApiController {
     public ResponseEntity<Object> getClientRequest(@PathVariable("id") long clientId) {
         Client client = this.clients.getClient(clientId);
         return ResponseEntity.status(HttpStatus.OK).body(client);
-    }
-
-    @GetMapping("/clients")
-    public ResponseEntity<Object> getActualClientRequest() {
-        return ResponseEntity.status(HttpStatus.OK).body(this.clients.getActiveClients());
     }
 }

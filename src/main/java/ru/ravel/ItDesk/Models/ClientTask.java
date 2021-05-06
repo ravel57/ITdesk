@@ -12,6 +12,7 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ClientTask {
+
     @Expose
     private long id;
     @Expose
@@ -24,5 +25,11 @@ public class ClientTask {
     @Expose
     private Date lastMessageDateTime;
     @Expose
+    private String lastMessageType;
+    @Expose
+    private Long lastMessageDifTime;
+    @Expose
     private List<Task> tasks;
+    @Expose
+    private boolean readed;
 }

@@ -26,6 +26,10 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
         messageDAO.saveClientMessage(message);
     }
 
+    public void markChatUneaded(Message message) {
+        messageDAO.markChatUneaded(message.getClientId());
+    }
+
     //    @Override
     public void saveSupportMessage(Message message) {
         messageDAO.saveSupportMessage(message);
@@ -35,6 +39,7 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
     public List<Message> getClientsMessages(Client client) {
         return messageDAO.getClientsMessages(client.getId());
     }
+
     //    @Override
     public List<Message> getClientsMessages(long clientId) {
         List<Message> messages = messageDAO.getClientsMessages(clientId);
@@ -54,5 +59,9 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
 
     public void sendMessagesToFront(Message message) {
         this.template.convertAndSend("/topic/activity", message);
+    }
+
+    public void markChatReaded(Object supportId, long clientId){
+        messageDAO.markChatReaded(supportId, clientId);
     }
 }

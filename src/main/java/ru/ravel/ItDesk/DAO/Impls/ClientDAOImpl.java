@@ -13,7 +13,7 @@ import java.util.List;
 
 
 @Repository
-public class ClientDAOImpl implements ClientDAOInterface {
+public class ClientDAOImpl /*implements ClientDAOInterface */{
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -44,21 +44,29 @@ public class ClientDAOImpl implements ClientDAOInterface {
         }
     }
 
-    @Override
-    public List<ClientTask> getActiveClients() {
+//    @Override
+    public List<ClientTask> getActiveClients(Object supportId) {
         return jdbcTemplate.query(
-                        "select clients.id, FirstName, LastName, organizations.name as organization, " +
-                        "telegram_id,whatsapp_id,cabinet_number,phone_number,email, max(messages.date_time) as last_message \n" +
+                "select clients.id, FirstName, LastName, organizations.name as organization,\n" +
+                        "message_type.message_type as last_message_type, date_time as last_message, telegram_id, whatsapp_id,\n" +
+                        "cabinet_number, email, readed\n" +
                         "from  messages\n" +
-                        "left join clients on messages.client_id = clients.id \n" +
-                        "left join organizations on organizations.id = clients.organization_id \n" +
-                        "where clients.id is not null \n" +
-                        "group by client_id \n" +
+                        "left join clients on messages.client_id = clients.id\n" +
+                        "left join organizations on organizations.id = clients.organization_id\n" +
+                        "INNER JOIN (\n" +
+                        "    SELECT client_id, MAX(date_time) AS date_time\n" +
+                        "    FROM messages GROUP BY client_id\n" +
+                        ") AS max USING (client_id, date_time)\n" +
+                        "left join message_type on message_type.id = messages.message_type\n" +
+                        "join support_clients_read scr on clients.id = scr.clients_id \n" +
+                        "where clients.id is not null and scr.support_id = ? " +
+                        "group by client_id\n" +
                         "order by last_message desc;",
+                new Object[]{supportId},
                 new ClientTaskMapper());
     }
 
-    @Override
+//    @Override
     public Client getClientByTelegramId(long telegramId) {
         try {
             return jdbcTemplate.queryForObject(
@@ -75,7 +83,7 @@ public class ClientDAOImpl implements ClientDAOInterface {
         }
     }
 
-    @Override
+//    @Override
     public String getTelegramIdByClientId(long clientId) {
         try {
             return jdbcTemplate.queryForObject(
@@ -103,7 +111,7 @@ public class ClientDAOImpl implements ClientDAOInterface {
 //        }
 //    }
 
-    @Override
+//    @Override
     public void addClient(Client client) {
         jdbcTemplate.update(
                 "INSERT INTO clients (FirstName, Lastname, telegram_id, username) VALUES (?, ?, ?, ?)",

@@ -32,7 +32,7 @@ public class AuthService {
 
         Supporter supporter = supporterDAO.getUserByLoginAndPasswordOrReturnNull(login, password);
         if (supporter != null) {
-            Authentication auth = new UsernamePasswordAuthenticationToken(login, passwordEncoder.encode(password), roles);
+            Authentication auth = new UsernamePasswordAuthenticationToken(supporter.getId(), passwordEncoder.encode(password), roles);
             SecurityContextHolder.getContext().setAuthentication(auth);
 //            SecurityContext sc = SecurityContextHolder.getContext();
 //            System.out.println();

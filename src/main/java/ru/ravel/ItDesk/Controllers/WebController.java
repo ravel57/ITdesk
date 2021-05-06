@@ -22,6 +22,7 @@ import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 import ru.ravel.ItDesk.Service.Impls.TaskServiceImpl;
 
 import javax.servlet.http.HttpSession;
+import java.util.Date;
 import java.util.List;
 
 @Controller
@@ -54,6 +55,7 @@ public class WebController {
 
     @GetMapping("/dialogs/{id}")
     public String getDialogRequest(HttpSession httpSession, @PathVariable("id") long clientId) {
+        messages.markChatReaded(SecurityContextHolder.getContext().getAuthentication().getPrincipal(), clientId);
         Client client = clients.getClient(clientId);
         List<Message> messages = this.messages.getClientsMessages(client);
         List<Task> tasks = this.tasks.getClientTasks(client);

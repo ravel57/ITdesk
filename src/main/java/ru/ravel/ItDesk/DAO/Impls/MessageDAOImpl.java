@@ -82,4 +82,20 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
         }
     }
 
+    public void markChatReaded(Object supportId, long clientId) {
+        jdbcTemplate.update(
+                "update support_clients_read\n" +
+                        "SET readed = 1\n" +
+                        "WHERE  support_id = ? and clients_id = ?;",
+                supportId, clientId);
+    }
+
+    public void markChatUneaded(long clientId) {
+        jdbcTemplate.update(
+                "update support_clients_read\n" +
+                        "SET readed = 0\n" +
+                        "WHERE clients_id = ?;",
+                clientId);
+    }
+
 }

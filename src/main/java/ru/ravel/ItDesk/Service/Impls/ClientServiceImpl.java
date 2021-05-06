@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.Service.Impls;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.DAO.Impls.ClientDAOImpl;
 import ru.ravel.ItDesk.Models.Client;
@@ -41,9 +42,12 @@ public class ClientServiceImpl implements ClientServiceInterface {
 
     @Override
     public List<ClientTask> getActiveClients() {
-        List<ClientTask> clientTasks = clientsDAO.getActiveClients();
+        List<ClientTask> clientTasks = clientsDAO.getActiveClients(
+                SecurityContextHolder.getContext().getAuthentication().getPrincipal()
+        );
         for (ClientTask client : clientTasks) {
             client.setTasks(tasks.getClientActualTasks(client.getId()));
+            client.setLastMessageDifTime(0L);
         }
         return clientTasks;
     }
@@ -63,7 +67,7 @@ public class ClientServiceImpl implements ClientServiceInterface {
         return (clientsDAO.getClientByTelegramId(telegramId).getId() != 0);
     }
 
-    public void sendClientToFront(Client client){
+    public void sendClientToFront(Client client) {
         this.simpMessaging.convertAndSend("/topic/activity", client);
     }
 

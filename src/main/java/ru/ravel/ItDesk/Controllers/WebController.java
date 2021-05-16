@@ -22,7 +22,6 @@ import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 import ru.ravel.ItDesk.Service.Impls.TaskServiceImpl;
 
 import javax.servlet.http.HttpSession;
-import java.util.Date;
 import java.util.List;
 
 @Controller
@@ -55,10 +54,10 @@ public class WebController {
 
     @GetMapping("/dialogs/{id}")
     public String getDialogRequest(HttpSession httpSession, @PathVariable("id") long clientId) {
-        messages.markChatReaded(SecurityContextHolder.getContext().getAuthentication().getPrincipal(), clientId);
+        messages.markChatRead(SecurityContextHolder.getContext().getAuthentication().getPrincipal(), clientId);
         Client client = clients.getClient(clientId);
-        List<Message> messages = this.messages.getClientsMessages(client);
-        List<Task> tasks = this.tasks.getClientTasks(client);
+        List<Message> messages = this.messages.getClientsMessagesById(client.getId());
+        List<Task> tasks = this.tasks.getClientTasks(client.getId());
         Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
         httpSession.setAttribute("client", gson.toJson(client).replace('\"', '\''));
         httpSession.setAttribute("messages", gson.toJson(messages).replace('\"', '\''));
@@ -74,7 +73,8 @@ public class WebController {
     public void getSupportMessageFromFrontend(Message message) {
         if (!message.getText().isEmpty()) {
             messages.saveSupportMessage(message);
-            messages.sendMessagesToBot(message);
+            if (message.getMessageType().equals("support"))
+                messages.sendMessagesToBot(message);
             messages.sendMessagesToFront(message);
         }
     }

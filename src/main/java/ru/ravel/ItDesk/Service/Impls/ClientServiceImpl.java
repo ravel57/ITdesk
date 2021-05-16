@@ -5,24 +5,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.telegram.telegrambots.meta.api.objects.User;
 import ru.ravel.ItDesk.DAO.Impls.ClientDAOImpl;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.ClientTask;
-import ru.ravel.ItDesk.Service.Interfaces.ClientServiceInterface;
 
+import java.util.ArrayList;
 import java.util.List;
 
 
 @Service
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
-public class ClientServiceImpl implements ClientServiceInterface {
+public class ClientServiceImpl /*implements ClientServiceInterface*/ {
 
     private final ClientDAOImpl clientsDAO;
     private final TaskServiceImpl tasks;
     private final SimpMessagingTemplate simpMessaging;
+    private  List<Long> idsLocalCash = new ArrayList<>();
 
-
-    @Override
+//    @Override
     public void addClient(Client client) {
         clientsDAO.addClient(client);
     }
@@ -31,38 +32,64 @@ public class ClientServiceImpl implements ClientServiceInterface {
         clientsDAO.changeClient(client);
     }
 
-    @Override
+//    @Override
     public Client getClient(long id) {
         return clientsDAO.getClientById(id);
     }
 
-    public List<Client> getAllClients() {
-        return clientsDAO.getAllClients();
-    }
+//    public List<Client> getAllClients() {
+//        return clientsDAO.getAllClients();
+//    }
 
-    @Override
+//    @Override
     public List<ClientTask> getActiveClients() {
-        List<ClientTask> clientTasks = clientsDAO.getActiveClients(
-                SecurityContextHolder.getContext().getAuthentication().getPrincipal()
-        );
+        long supportId = (long) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+//        List<Long> allClientsIds = clientsDAO.getAllClients().stream().map(Client::getId).collect(Collectors.toList());
+        List<Long> allClientsIds = clientsDAO.getClientIds();
+        List<Long> clientsWithRead = clientsDAO.getClientReadForSupport(supportId);
+        for(long clientId : allClientsIds)
+            if(!clientsWithRead.contains(clientId))
+                clientsDAO.addReadStatus(supportId, clientId);
+
+        List<ClientTask> clientTasks = clientsDAO.getActiveClientsWithReadedStatusForCurrentSupport(supportId);
         for (ClientTask client : clientTasks) {
-            client.setTasks(tasks.getClientActualTasks(client.getId()));
+            client.setTasks(tasks.getClientActualTasksById(client.getId()));
             client.setLastMessageDifTime(0L);
         }
         return clientTasks;
     }
 
-    @Override
-    public Client getClientByTelegramId(long telegramId) {
-        return clientsDAO.getClientByTelegramId(telegramId);
+//    @Override
+    public Client getClientByTelegramUser(User user) {
+        Client client;
+        long telegramId = user.getId();
+        if (idsLocalCash.contains(telegramId)) {
+            client = clientsDAO.getClientByTelegramId(telegramId);
+        } else {
+            if (this.checkRegisteredByTelegramId(telegramId)) {
+                client = clientsDAO.getClientByTelegramId(telegramId);
+            } else {
+                client = Client.builder()
+                        .firstName(user.getFirstName())
+                        .lastName(user.getLastName())
+                        .userName(user.getUserName())
+                        .telegramId(telegramId)
+                        .build();
+                clientsDAO.addClient(client);
+                client.setId(clientsDAO.getClientByTelegramId(telegramId).getId());
+            }
+            idsLocalCash.add(telegramId);
+            // todo delete asynchronously when idle time is exceeded
+        }
+        return client;
     }
 
-    @Override
+//    @Override
     public String getTelegramIdByClientId(long clientId) {
         return clientsDAO.getTelegramIdByClientId(clientId);
     }
 
-    @Override
+//    @Override
     public boolean checkRegisteredByTelegramId(long telegramId) {
         return (clientsDAO.getClientByTelegramId(telegramId).getId() != 0);
     }

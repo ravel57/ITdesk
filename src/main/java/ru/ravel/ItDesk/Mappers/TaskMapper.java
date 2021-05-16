@@ -13,6 +13,7 @@ public class TaskMapper implements RowMapper<Task> {
                 .clientId(rs.getLong("client_id"))
                 .text(rs.getString("text"))
                 .actual(rs.getBoolean("actual"))
+                .messageId(rs.getObject("message_id"))
                 .build();
     }
 }

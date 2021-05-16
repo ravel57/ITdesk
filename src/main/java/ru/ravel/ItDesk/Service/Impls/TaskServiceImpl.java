@@ -18,12 +18,6 @@ public class TaskServiceImpl {
     @Autowired
     private SimpMessagingTemplate template;
 
-    public List<Task> getClientTasks(Client client) {
-        List<Task> tasks = taskDAO.getClientTasks(client.getId());
-        for (int i = 0; i < tasks.size(); i++)
-            tasks.get(i).setId(i);
-        return tasks;
-    }
 
     public List<Task> getClientTasks(long clientId) {
         List<Task> tasks = taskDAO.getClientTasks(clientId);
@@ -32,7 +26,7 @@ public class TaskServiceImpl {
         return tasks;
     }
 
-    public List<Task> getClientActualTasks(long clientId) {
+    public List<Task> getClientActualTasksById(long clientId) {
         List<Task> tasks = taskDAO.getClientActualTasks(clientId);
         for (int i = 0; i < tasks.size(); i++)
             tasks.get(i).setId(i);

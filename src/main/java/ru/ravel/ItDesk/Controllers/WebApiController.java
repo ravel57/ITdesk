@@ -35,9 +35,9 @@ public class WebApiController {
 
     @GetMapping("/messages/{id}")
     public ResponseEntity<Object> getMessagesRequest(@PathVariable("id") long clientId) {
-        messages.markChatReaded(SecurityContextHolder.getContext().getAuthentication().getPrincipal(), clientId);
+        messages.markChatRead(SecurityContextHolder.getContext().getAuthentication().getPrincipal(), clientId);
         SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        List<Message> messages = this.messages.getClientsMessages(clientId);
+        List<Message> messages = this.messages.getClientsMessagesById(clientId);
         return ResponseEntity.status(HttpStatus.OK).body(messages);
     }
 

@@ -30,8 +30,13 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
     //    @Override
     public void saveSupportMessage(Message message) {
         jdbcTemplate.update(
-                "INSERT INTO messages (client_id, support_id, text, date_time, message_type) VALUES (?, ?, ?, ?, 2);",
-                message.getClientId(), message.getSupportId(), message.getText(), new java.util.Date()
+                "INSERT INTO messages (client_id, support_id, text, date_time, message_type) VALUES (?, ?, ?, ?, ?);",
+                message.getClientId(), message.getSupportId(), message.getText(), new java.util.Date(),
+                jdbcTemplate.queryForObject(
+                        "select id from message_type where message_type like ?",
+                        new Object[]{message.getMessageType()},
+                        long.class
+                )
         );
     }
 
@@ -55,9 +60,8 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
                     "select messages.id, messages.client_id, messages.text, messages.date_time,\n" +
                             "       message_type.message_type as message_type, messages.support_id\n" +
                             "from messages\n" +
-                            "left join clients on messages.client_id = clients.id\n" +
                             "left join message_type on message_type.id = messages.message_type\n" +
-                            "where clients.id = ?\n" +
+                            "where messages.client_id = ?\n" +
                             "order by date_time;",
                     new Object[]{clientId}, new MessageMapper()
             );
@@ -82,7 +86,7 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
         }
     }
 
-    public void markChatReaded(Object supportId, long clientId) {
+    public void markChatRead(Object supportId, long clientId) {
         jdbcTemplate.update(
                 "update support_clients_read\n" +
                         "SET readed = 1\n" +
@@ -90,7 +94,7 @@ public class MessageDAOImpl /*implements MessageDAOInterface*/ {
                 supportId, clientId);
     }
 
-    public void markChatUneaded(long clientId) {
+    public void markChatUnread(long clientId) {
         jdbcTemplate.update(
                 "update support_clients_read\n" +
                         "SET readed = 0\n" +

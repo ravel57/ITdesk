@@ -15,15 +15,11 @@ import ru.ravel.ItDesk.Models.Message;
 import ru.ravel.ItDesk.Service.Impls.ClientServiceImpl;
 import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Controller
 public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
     final String token = System.getenv("itDeskBotToken");
-    static List<Long> idsLockalChash = new ArrayList<>();
 
     @Autowired
     ClientServiceImpl clients;
@@ -82,26 +78,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         User user = update.getMessage().getFrom();
-        Client client;
-        long telegramId = user.getId();
-//        if (idsLockalChash.contains(telegramId)) {
-//            client = clients.getClientByTelegramId(telegramId);
-//        } else {
-        if (clients.checkRegisteredByTelegramId(telegramId)) {
-            client = clients.getClientByTelegramId(telegramId);
-        } else {
-            client = Client.builder()
-                    .firstName(user.getFirstName())
-                    .lastName(user.getLastName())
-                    .userName(user.getUserName())
-                    .telegramId(telegramId)
-                    .build();
-            clients.addClient(client);
-            client.setId(clients.getClientByTelegramId(telegramId).getId());
-//            }
-//            idsLockalChash.add(telegramId);
-            // todo delete asynchronously when idle time is exceeded
-        }
+        Client client = clients.getClientByTelegramUser(user);
         if (update.getMessage().hasText()) {
             Message message = Message.builder()
                     .text(update.getMessage().getText())
@@ -110,10 +87,10 @@ public class TelegramBotController extends TelegramLongPollingBot {
                     .messageType("message client")
                     .build();
             messages.saveClientMessage(message);
+            // todo get messageId from DB
             message.setId(messages.getClientsMessagesCount(client) - 1);
-            // get messageId from DB
+            messages.markChatUnread(message);
             messages.sendMessagesToFront(message);
-            messages.markChatUneaded(message);
         }
     }
 
@@ -122,16 +99,6 @@ public class TelegramBotController extends TelegramLongPollingBot {
         SendMessage sendMessage = new SendMessage();
         sendMessage.setChatId(clients.getTelegramIdByClientId(message.getClientId()));
         sendMessage.setText(message.getText());
-//        switch (update.getMessage().getText()) {
-//            case "/start": {
-//                message.setText("Hello");
-//                break;
-//            }
-//            default: {
-//                message.setText(update.getMessage().getText());
-//                break;
-//            }
-//        }
         try {
             execute(sendMessage);
         } catch (Exception e) {

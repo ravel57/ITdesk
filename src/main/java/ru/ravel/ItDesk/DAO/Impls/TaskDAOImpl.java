@@ -3,10 +3,7 @@ package ru.ravel.ItDesk.DAO.Impls;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
-import ru.ravel.ItDesk.Mappers.ClientMapper;
-import ru.ravel.ItDesk.Mappers.ClientTaskMapper;
 import ru.ravel.ItDesk.Mappers.TaskMapper;
-import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Task;
 
 import java.util.List;
@@ -34,7 +31,7 @@ public class TaskDAOImpl {
     public List<Task> getClientTasks(long clientId) {
         try {
             return jdbcTemplate.query(
-                    "select id, client_id, text, actual " +
+                    "select id, client_id, text, actual, message_id " +
                             "from tasks " +
                             "where client_id like ?;",
                     new Object[]{clientId}, new TaskMapper()
@@ -48,7 +45,7 @@ public class TaskDAOImpl {
     public List<Task> getClientActualTasks(long clientId) {
         try {
             return jdbcTemplate.query(
-                    "select id, client_id, text, actual " +
+                    "select id, client_id, text, actual, message_id " +
                             "from tasks " +
                             "where client_id like ? and actual;",
                     new Object[]{clientId}, new TaskMapper()
@@ -73,14 +70,18 @@ public class TaskDAOImpl {
 
     public void changeTask(Task task) {
         try {
+            long localTaskId = jdbcTemplate.queryForObject(
+                    "select id from tasks where client_id = ? limit 1 OFFSET ?",
+                    new Object[]{task.getClientId(), task.getId()},
+                    long.class
+            );
             jdbcTemplate.update(
-                    "UPDATE tasks SET actual = ?, text = ? " +
+                    "UPDATE tasks SET actual = ?, text = ?, message_id = ? " +
                             "WHERE (id = ?);",
                     task.isActual(),
                     task.getText(),
-                    jdbcTemplate.queryForObject(
-                            "select id from tasks where client_id=? limit 1 OFFSET ?",
-                            new Object[]{task.getClientId(), task.getId()}, Long.class)
+                    task.getMessageId(),
+                    localTaskId
             );
         } catch (Exception e) {
             e.printStackTrace();

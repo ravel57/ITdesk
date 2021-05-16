@@ -2,18 +2,20 @@ package ru.ravel.ItDesk.DAO.Impls;
 
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
-import ru.ravel.ItDesk.DAO.Interfaces.ClientDAOInterface;
 import ru.ravel.ItDesk.Mappers.ClientMapper;
 import ru.ravel.ItDesk.Mappers.ClientTaskMapper;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.ClientTask;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 
 
 @Repository
-public class ClientDAOImpl /*implements ClientDAOInterface */{
+public class ClientDAOImpl /*implements ClientDAOInterface */ {
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -22,9 +24,12 @@ public class ClientDAOImpl /*implements ClientDAOInterface */{
     }
 
     public List<Client> getAllClients() {
-        return jdbcTemplate.query("select * from messages\n" +
-                "group by client_id\n" +
-                "order by date_time; ", new ClientMapper());
+        return jdbcTemplate.query(
+                "select clients.id, firstname, lastname, organizations.name as organization,\n" +
+                        "telegram_id, whatsapp_id, cabinet_number, phone_number, email\n" +
+                        "from clients\n" +
+                        "left join organizations on organizations.id = clients.organization_id;",
+                new ClientMapper());
     }
 
     public Client getClientById(long id) {
@@ -44,8 +49,8 @@ public class ClientDAOImpl /*implements ClientDAOInterface */{
         }
     }
 
-//    @Override
-    public List<ClientTask> getActiveClients(Object supportId) {
+    //    @Override
+    public List<ClientTask> getActiveClientsWithReadedStatusForCurrentSupport(long supportId) {
         return jdbcTemplate.query(
                 "select clients.id, FirstName, LastName, organizations.name as organization,\n" +
                         "message_type.message_type as last_message_type, date_time as last_message, telegram_id, whatsapp_id,\n" +
@@ -66,7 +71,7 @@ public class ClientDAOImpl /*implements ClientDAOInterface */{
                 new ClientTaskMapper());
     }
 
-//    @Override
+    //    @Override
     public Client getClientByTelegramId(long telegramId) {
         try {
             return jdbcTemplate.queryForObject(
@@ -83,7 +88,7 @@ public class ClientDAOImpl /*implements ClientDAOInterface */{
         }
     }
 
-//    @Override
+    //    @Override
     public String getTelegramIdByClientId(long clientId) {
         try {
             return jdbcTemplate.queryForObject(
@@ -111,7 +116,7 @@ public class ClientDAOImpl /*implements ClientDAOInterface */{
 //        }
 //    }
 
-//    @Override
+    //    @Override
     public void addClient(Client client) {
         jdbcTemplate.update(
                 "INSERT INTO clients (FirstName, Lastname, telegram_id, username) VALUES (?, ?, ?, ?)",
@@ -128,6 +133,31 @@ public class ClientDAOImpl /*implements ClientDAOInterface */{
 //                        "t.organization_id = ? " +
                         "WHERE t.id = ?;",
                 client.getFirstName(), client.getLastName(), client.getId()
+        );
+    }
+
+    public List<Long> getClientReadForSupport(long supportId) {
+        return jdbcTemplate.query("select clients_id from support_clients_read where support_id = ?;",
+                new RowMapper<Long>() {
+                    public Long mapRow(ResultSet rs, int rowNum) throws SQLException {
+                        return rs.getLong(1);
+                    }
+                }, supportId);
+    }
+
+    public List<Long> getClientIds() {
+        return jdbcTemplate.query("select id from clients;",
+                new RowMapper<Long>() {
+                    public Long mapRow(ResultSet rs, int rowNum) throws SQLException {
+                        return rs.getLong(1);
+                    }
+                });
+    }
+
+    public void addReadStatus(long supportID, long clientId) {
+        jdbcTemplate.update(
+                "insert into support_clients_read (support_id, clients_id, readed) values(?, ?, 0)",
+                supportID, clientId
         );
     }
 }

@@ -22,7 +22,11 @@ public class Message {
     String messageType;
     @Expose
     long supportId;
+    @Expose
+    boolean selected;
 
     public Message() {
     }
+
+
 }

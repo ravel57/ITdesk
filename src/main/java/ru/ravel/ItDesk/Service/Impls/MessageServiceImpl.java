@@ -3,8 +3,10 @@ package ru.ravel.ItDesk.Service.Impls;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.Controllers.TelegramBotController;
+import ru.ravel.ItDesk.DAO.Impls.ClientDAOImpl;
 import ru.ravel.ItDesk.DAO.Impls.MessageDAOImpl;
 import ru.ravel.ItDesk.Models.Client;
 import ru.ravel.ItDesk.Models.Message;
@@ -18,6 +20,7 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
     private final TelegramBotController bot;
     private final MessageDAOImpl messageDAO;
     private final SimpMessagingTemplate template;
+    private final ClientDAOImpl clientsDAO;
 
 
     //    @Override
@@ -26,8 +29,12 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
         messageDAO.saveClientMessage(message);
     }
 
-    public void markChatUneaded(Message message) {
-        messageDAO.markChatUneaded(message.getClientId());
+    public void markChatUnread(Message message) {
+        messageDAO.markChatUnread(message.getClientId());
+    }
+
+    public void markChatRead(Object supportId, long clientId) {
+        messageDAO.markChatRead(supportId, clientId);
     }
 
     //    @Override
@@ -36,17 +43,13 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
     }
 
     //    @Override
-    public List<Message> getClientsMessages(Client client) {
-        return messageDAO.getClientsMessages(client.getId());
-    }
-
-    //    @Override
-    public List<Message> getClientsMessages(long clientId) {
+    public List<Message> getClientsMessagesById(long clientId) {
         List<Message> messages = messageDAO.getClientsMessages(clientId);
         for (int i = 0; i < messages.size(); i++)
             messages.get(i).setId(i);
         return messages;
     }
+
     //    @Override
     public long getClientsMessagesCount(Client client) {
         return messageDAO.getClientsMessagesCount(client);
@@ -59,9 +62,5 @@ public class MessageServiceImpl /*implements MessageServiceInterface*/ {
 
     public void sendMessagesToFront(Message message) {
         this.template.convertAndSend("/topic/activity", message);
-    }
-
-    public void markChatReaded(Object supportId, long clientId){
-        messageDAO.markChatReaded(supportId, clientId);
     }
 }

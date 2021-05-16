@@ -17,6 +17,8 @@ public class Task {
     String text;
     @Expose
     boolean actual;
+    @Expose
+    Object messageId;
 //    String status;
 //    String priority;
 }

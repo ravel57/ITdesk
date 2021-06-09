@@ -17,7 +17,7 @@ public class ClientTaskMapper implements RowMapper<ClientTask> {
                 .telegramId(rs.getString("telegram_id"))
                 .lastMessageDateTime(rs.getTimestamp("last_message"))
                 .lastMessageType(rs.getString("last_message_type"))
-                .readed(rs.getBoolean("readed"))
+                .read(rs.getBoolean("readed"))
                 .build();
     }
 }

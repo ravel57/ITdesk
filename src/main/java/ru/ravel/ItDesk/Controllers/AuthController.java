@@ -1,12 +1,7 @@
 package ru.ravel.ItDesk.Controllers;
 
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +14,8 @@ import ru.ravel.ItDesk.Service.Impls.AuthService;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 
 @Controller
@@ -46,6 +43,9 @@ public class AuthController {
             return "redirect:/dialogs";
 //            return ResponseEntity.status(HttpStatus.OK).body(authorize.authorizeUser(login, password));
         } else {
+            SimpleDateFormat formatter= new SimpleDateFormat("yyyy-MM-dd 'at' HH:mm:ss z");
+            System.out.println( new StringBuilder().append(formatter.format(new Date(System.currentTimeMillis())))
+                    .append("  failed login attempt. l: ").append(login).append(" p: ").append(password));
             return "login";
 //            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(null);
         }

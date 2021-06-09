@@ -19,7 +19,9 @@ import ru.ravel.ItDesk.Service.Impls.MessageServiceImpl;
 public class TelegramBotController extends TelegramLongPollingBot {
 
     final String botName = "ITTaskboard_bot";
-    final String token = System.getenv("itDeskBotToken");
+    final String token ="1848624219:AAGnlJgNgT4YGRGZxk2KDRYh8PAvX7TMUAc";//System.getenv("itDeskBotToken");
+
+
 
     @Autowired
     ClientServiceImpl clients;
@@ -84,7 +86,7 @@ public class TelegramBotController extends TelegramLongPollingBot {
                     .text(update.getMessage().getText())
                     .clientId(client.getId())
                     .date(new java.util.Date((long) update.getMessage().getDate() * 1000))
-                    .messageType("message client")
+                    .messageType("client")
                     .build();
             messages.saveClientMessage(message);
             // todo get messageId from DB

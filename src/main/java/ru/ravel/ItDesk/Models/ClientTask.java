@@ -31,5 +31,5 @@ public class ClientTask {
     @Expose
     private List<Task> tasks;
     @Expose
-    private boolean readed;
+    private boolean read;
 }

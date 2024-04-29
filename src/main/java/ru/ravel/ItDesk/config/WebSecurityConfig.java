@@ -16,8 +16,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.web.cors.CorsConfiguration;
 import ru.ravel.ItDesk.reposetory.UserRepository;
 import ru.ravel.ItDesk.service.AuthService;
+
+import java.util.List;
 
 
 @Configuration
@@ -51,7 +54,14 @@ class WebSecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
 		requestCache.setMatchingRequestParameterName(null);
-		return http.csrf(AbstractHttpConfigurer::disable)
+		return http.cors(cors -> cors.configurationSource(request -> {
+					CorsConfiguration configuration = new CorsConfiguration();
+					configuration.setAllowedOrigins(List.of("http://localhost:8081"));
+					configuration.setAllowedMethods(List.of("*"));
+					configuration.setAllowedHeaders(List.of("*"));
+					return configuration;
+				}))
+				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**").permitAll()
 						.requestMatchers(HttpMethod.POST, "/api/**").permitAll()

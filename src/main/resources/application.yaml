@@ -1,0 +1,22 @@
+server:
+  port: 8080
+  servlet.session.timeout: 4320
+#  ssl.enabled: true
+#  ssl.key-store: src/main/resources/bootsecurity.p12
+#  ssl.key-store-password: pfrhsnj
+#  ssl.key-store-type: PKCS12
+#  ssl.key-alias: bootsecurity
+  
+spring:
+  datasource.url: jdbc:postgresql://localhost:5432/it_desk
+  datasource.username: postgres
+  datasource.password: postgres
+  jpa:
+    show-sql: true
+    hibernate.ddl-auto: update
+    generate-ddl: true
+    properties:
+      hibernate:
+        format_sql: true
+        hbm2ddl:
+          create_namespaces: true

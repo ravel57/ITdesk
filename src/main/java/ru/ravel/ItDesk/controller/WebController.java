@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 @RequiredArgsConstructor
 public class WebController {
 
-
 	@GetMapping("")
 	public String rootMapping() {
 		return "index";

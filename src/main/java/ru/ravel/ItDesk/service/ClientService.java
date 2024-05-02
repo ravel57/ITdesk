@@ -1,15 +1,16 @@
 package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-import ru.ravel.ItDesk.models.Client;
-import ru.ravel.ItDesk.models.Message;
-import ru.ravel.ItDesk.models.Task;
+import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.reposetory.ClientRepository;
 import ru.ravel.ItDesk.reposetory.MessageRepository;
+import ru.ravel.ItDesk.reposetory.TagRepository;
 import ru.ravel.ItDesk.reposetory.TaskRepository;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 
@@ -20,6 +21,8 @@ public class ClientService {
 	private final ClientRepository clientsRepository;
 	private final TaskRepository taskRepository;
 	private final MessageRepository messageRepository;
+	private final TagRepository tagRepository;
+	private final TelegramService telegramService;
 //	String login = SecurityContextHolder.getContext().getAuthentication().getName();
 
 	public Client getClient(long id) {
@@ -33,6 +36,7 @@ public class ClientService {
 
 
 	public Task newTask(Long clientId, Task task) {
+		tagRepository.saveAll(task.getTags());
 		taskRepository.save(task);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		client.getTasks().add(task);
@@ -47,52 +51,21 @@ public class ClientService {
 	}
 
 	public boolean newMessage(Long clientId, Message message) {
+		message.setDate(ZonedDateTime.now());
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
+		if (!message.isComment()) {
+			telegramService.sendMessage(client, message);
+		}
 		client.getMessages().add(message);
 		clientsRepository.save(client);
 		return true;
 	}
 
-
-//    public Client getClientByTelegramUser(User user) {
-//        Client client;
-//        long telegramId = user.getId();
-//        if (idsLocalCash.contains(telegramId)) {
-//            client = clientsDAO.getClientByTelegramId(telegramId);
-//        } else {
-//            if (this.checkRegisteredByTelegramId(telegramId)) {
-//                client = clientsDAO.getClientByTelegramId(telegramId);
-//            } else {
-//                client = Client.builder()
-//                        .firstName(user.getFirstName())
-//                        .lastName(user.getLastName())
-//                        .userName(user.getUserName())
-//                        .telegramId(telegramId)
-//                        .build();
-//                clientsDAO.addClient(client);
-//                client.setId(clientsDAO.getClientByTelegramId(telegramId).getId());
-//            }
-//            idsLocalCash.add(telegramId);
-//            // todo delete asynchronously when idle time is exceeded
-//        }
-//        return client;
-//    }
-
-
-//	//    @Override
-//	public String getTelegramIdByClientId(long clientId) {
-//		return clientsDAO.getTelegramIdByClientId(clientId);
-//	}
-//
-//	//    @Override
-//	public boolean checkRegisteredByTelegramId(long telegramId) {
-//		return (clientsDAO.getClientByTelegramId(telegramId).getId() != 0);
-//	}
-
-
-//    public void sendClientToFront(Client client) {
-//        this.simpMessaging.convertAndSend("/topic/activity", client);
-//    }
-
+	public Client markRead(Long clientId) {
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		client.getMessages().forEach(message -> message.setRead(true));
+		clientsRepository.save(client);
+		return client;
+	}
 }

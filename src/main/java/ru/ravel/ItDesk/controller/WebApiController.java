@@ -1,11 +1,10 @@
 package ru.ravel.ItDesk.controller;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import ru.ravel.ItDesk.models.Message;
-import ru.ravel.ItDesk.models.Task;
+import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.service.ClientService;
 
 @RestController
@@ -13,12 +12,13 @@ import ru.ravel.ItDesk.service.ClientService;
 @CrossOrigin
 public class WebApiController {
 
-
 	private final ClientService clientService;
+
 
 	public WebApiController(ClientService clientService) {
 		this.clientService = clientService;
 	}
+
 
 	@GetMapping("/clients")
 	public ResponseEntity<Object> getClients() {
@@ -43,4 +43,9 @@ public class WebApiController {
 		return ResponseEntity.status(HttpStatus.OK).body(clientService.newMessage(clientId, message));
 	}
 
+
+	@PostMapping("/client/{clientId}/mark-read")
+	public ResponseEntity<Object> markRead(@PathVariable Long clientId) {
+		return ResponseEntity.status(HttpStatus.OK).body(clientService.markRead(clientId));
+	}
 }

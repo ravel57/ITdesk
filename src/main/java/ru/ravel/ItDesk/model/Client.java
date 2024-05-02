@@ -1,8 +1,9 @@
-package ru.ravel.ItDesk.models;
+package ru.ravel.ItDesk.model;
 
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -20,23 +21,22 @@ public class Client {
 
 	private String lastName;
 
-	private String userName;
-
-	private String organization;
+	@OneToOne(fetch = FetchType.EAGER)
+	private Organization organization;
 
 	private Long telegramId;
 
 	private Long whatsappId;
 
-//	private String cabinetNumber;
-
 	private String phoneNumber;
 
 	private String email;
 
-	@OneToMany(targetEntity = Task.class)
-	private List<Task> tasks;
+	@OneToMany(fetch = FetchType.EAGER)
+	@Builder.Default
+	private List<Task> tasks = new ArrayList<>();
 
-	@OneToMany(targetEntity = Message.class)
-	private List<Message> messages;
+	@OneToMany(fetch = FetchType.EAGER)
+	@Builder.Default
+	private List<Message> messages = new ArrayList<>();
 }

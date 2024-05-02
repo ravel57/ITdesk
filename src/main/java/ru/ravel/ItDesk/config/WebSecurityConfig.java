@@ -54,27 +54,18 @@ class WebSecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
 		requestCache.setMatchingRequestParameterName(null);
-		return http.cors(cors -> cors.configurationSource(request -> {
-					CorsConfiguration configuration = new CorsConfiguration();
-					configuration.setAllowedOrigins(List.of("http://localhost:8081"));
-					configuration.setAllowedMethods(List.of("*"));
-					configuration.setAllowedHeaders(List.of("*"));
-					return configuration;
-				}))
+		return http.cors(AbstractHttpConfigurer::disable)
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**").permitAll()
-						.requestMatchers(HttpMethod.POST, "/api/**").permitAll()
-						.anyRequest().permitAll())
-//				.formLogin(form -> form.loginPage("/login").permitAll())
-//				.formLogin(Customizer.withDefaults())
-//				.httpBasic(Customizer.withDefaults())
+						.requestMatchers(HttpMethod.POST, "/api/**").authenticated()
+						.anyRequest().authenticated())
 				.formLogin(form -> form.defaultSuccessUrl("/", true))
-				.logout(LogoutConfigurer::permitAll)
-//						.logoutSuccessUrl("/logout")
-//						.invalidateHttpSession(true)
-//						.deleteCookies("JSESSIONID")
-//						.permitAll())
+				.logout(logout -> logout
+						.logoutSuccessUrl("/logout")
+						.invalidateHttpSession(true)
+						.deleteCookies("JSESSIONID")
+						.permitAll())
 				.requestCache(cache -> cache.requestCache(requestCache))
 				.build();
 	}

@@ -1,22 +1,22 @@
 package ru.ravel.ItDesk.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.model.Client;
 
 import java.util.List;
 
 @Service
 public class WebSocketService {
 
-	@Autowired
-	private SimpMessagingTemplate simpMessaging;
+	private final SimpMessagingTemplate simpMessaging;
 
-	public void sendOrdersProgress(List<Object> message) {
-		simpMessaging.convertAndSend("/topic/ordersInWork/", message);
+	public WebSocketService(SimpMessagingTemplate simpMessaging) {
+		this.simpMessaging = simpMessaging;
 	}
 
-	public void sendOrdersCollection(Object message) {
-		simpMessaging.convertAndSend("/topic/orders/", message);
+	public void sendClients(List<Client> clients) {
+ 		simpMessaging.convertAndSend("/topic/clients/", clients);
 	}
+
 }

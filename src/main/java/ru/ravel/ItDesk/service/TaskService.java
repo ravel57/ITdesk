@@ -2,9 +2,6 @@ package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import ru.ravel.ItDesk.models.Task;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor

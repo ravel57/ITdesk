@@ -54,9 +54,9 @@ public class ClientService {
 
 	public boolean newMessage(Long clientId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
-		String username = SecurityContextHolder.getContext().getAuthentication().getName().intern();
+		String username = SecurityContextHolder.getContext().getAuthentication().getName();
 		User user = userService.getUsers().stream()
-				.filter(it -> it.getUsername().intern() == username)
+				.filter(it -> it.getUsername().equals(username))
 				.findFirst()
 				.orElse(User.builder().id(1L).build()); // FIXME
 		message.setUser(user);
@@ -81,7 +81,7 @@ public class ClientService {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		client.setFirstname((String) c.get("firstname"));
 		client.setLastname((String) c.get("lastname"));
-		client.setOrganization((String) c.get("organization"));
+//		client.setOrganization((String) c.get("organization"));
 		client.setMoreInfo((String) c.get("moreInfo"));
 		clientsRepository.save(client);
 		return client;

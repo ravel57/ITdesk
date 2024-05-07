@@ -36,6 +36,9 @@ public class User implements UserDetails {
 	@ElementCollection(fetch = FetchType.EAGER)
 	private List<Role> roles;
 
+	@ManyToMany(fetch = FetchType.EAGER)
+	private List<Organization> availableOrganizations;
+
 	@Builder.Default
 	@JsonIgnore
 	private boolean isAccountNonExpired = true;

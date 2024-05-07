@@ -20,6 +20,7 @@ public class WebApiController {
 	private final TagService tagService;
 	private final OrganizationService organizationService;
 	private final UserService userService;
+	private final TelegramService telegramService;
 
 
 	@GetMapping("/clients")
@@ -115,6 +116,18 @@ public class WebApiController {
 	@PostMapping("/get-logged-user")
 	public ResponseEntity<Object> getLoggedUser() {
 		return ResponseEntity.status(HttpStatus.OK).body(null);
+	}
+
+
+	@GetMapping("/telegram-bots")
+	public ResponseEntity<Object> getTelegramBots() {
+		return ResponseEntity.status(HttpStatus.OK).body(telegramService.getTelegramBots());
+	}
+
+
+	@PostMapping("/new-telegram-bot")
+	public ResponseEntity<Object> newTelegramBot(@RequestBody MyTelegramBot telegramBot) {
+		return ResponseEntity.status(HttpStatus.OK).body(telegramService.newTelegramBot(telegramBot));
 	}
 
 }

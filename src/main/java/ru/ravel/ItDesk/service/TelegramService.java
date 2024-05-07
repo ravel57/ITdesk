@@ -9,8 +9,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
-import ru.ravel.ItDesk.reposetory.ClientRepository;
-import ru.ravel.ItDesk.reposetory.MessageRepository;
+import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.telegrammessagebuilder.MessageBuilder;
 
 import java.time.*;
@@ -42,8 +42,8 @@ public class TelegramService {
 					messageRepository.save(message);
 					if (client == null) {
 						client = Client.builder()
-								.firstName(it.message().from().firstName())
-								.lastName(it.message().from().lastName())
+								.firstname(it.message().from().firstName())
+								.lastname(it.message().from().lastName())
 								.telegramId(it.message().from().id())
 								.messages(List.of(message))
 								.build();

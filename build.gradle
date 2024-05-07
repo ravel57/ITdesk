@@ -1,6 +1,7 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.2.4'
+	id 'war'
+	id 'org.springframework.boot' version '3.2.5'
 	id 'io.spring.dependency-management' version '1.1.4'
 }
 
@@ -11,25 +12,33 @@ java {
 	sourceCompatibility = '21'
 }
 
+repositories {
+	mavenCentral()
+}
+
+war {
+	enabled = true
+	webAppDirName = 'src/main/webapp'
+}
+
 configurations {
 	compileOnly {
 		extendsFrom annotationProcessor
 	}
 }
 
-repositories {
-	mavenCentral()
-}
-
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
-	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
-	implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 	runtimeOnly 'org.postgresql:postgresql'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
+
+	implementation 'org.apache.tomcat.embed:tomcat-embed-core'
+	implementation 'org.apache.tomcat.embed:tomcat-embed-jasper'
+	implementation 'org.apache.tomcat:tomcat-jsp-api'
+	implementation 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api'
 
 	implementation 'org.springframework:spring-messaging'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
@@ -38,12 +47,11 @@ dependencies {
 	implementation 'org.webjars:stomp-websocket:2.3.3'
 
 	implementation 'com.github.pengrad:java-telegram-bot-api:7.2.0'
-//	implementation 'com.google.code.gson:gson'
 //	compileOnly 'javax.servlet:servlet-api:2.5'
 
+	implementation 'org.junit.jupiter:junit-jupiter'
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
-	implementation 'org.junit.jupiter:junit-jupiter'
 	testImplementation 'junit:junit'
 }
 

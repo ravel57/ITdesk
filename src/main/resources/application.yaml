@@ -3,7 +3,7 @@ server:
   servlet.session.timeout: 4320
   
 spring:
-  datasource.url: jdbc:postgresql://localhost:5432/it_desk
+  datasource.url: ${SPRING_DATASOURCE_URL}
   datasource.username: postgres
   datasource.password: postgres
   jpa:
@@ -13,5 +13,14 @@ spring:
 
 logging:
   level:
-    org.hibernate.SQL: WARN
-    org.springframework.web.SimpLogging: WARN
+    org.hibernate:
+      SQL: WARN
+    org.springframework:
+      web.SimpLogging: WARN
+      boot.autoconfigure: WARN
+    org.springframework.web.servlet:
+      DispatcherServlet: WARN
+    org.springframework.web.servlet.handler:
+      SimpleUrlHandlerMapping: WARN
+    org.springframework.web.socket.config:
+      WebSocketMessageBrokerStats: WARN

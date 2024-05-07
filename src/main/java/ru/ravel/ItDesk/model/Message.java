@@ -1,13 +1,11 @@
 package ru.ravel.ItDesk.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 
 import java.time.ZonedDateTime;
 
@@ -17,7 +15,7 @@ import java.time.ZonedDateTime;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-public class Message {
+public class Message implements Comparable<Message> {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	Long id;
@@ -25,6 +23,9 @@ public class Message {
 	String text;
 
 	ZonedDateTime date;
+
+	@ManyToOne(targetEntity = User.class, fetch = FetchType.EAGER)
+	User user;
 
 	@Builder.Default
 	boolean isRead = false;
@@ -34,4 +35,9 @@ public class Message {
 
 	@Builder.Default
 	boolean isComment = false;
+
+	@Override
+	public int compareTo(@NotNull Message o) {
+		return getDate().compareTo(o.getDate());
+	}
 }

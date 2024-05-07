@@ -17,12 +17,14 @@ public class Client {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	private String firstName;
+	private String firstname;
 
-	private String lastName;
+	private String lastname;
 
-	@OneToOne(fetch = FetchType.EAGER)
-	private Organization organization;
+	private String moreInfo;
+
+//	@ManyToOne(fetch = FetchType.EAGER)
+	private /*Organization*/ String organization;
 
 	private Long telegramId;
 

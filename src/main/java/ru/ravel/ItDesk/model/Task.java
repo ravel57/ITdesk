@@ -24,8 +24,8 @@ public class Task {
 
 	private String priority;
 
-	//@OneToOne(targetEntity = User.class, cascade = CascadeType.ALL)
-	private String executor;
+	@ManyToOne(targetEntity = User.class, cascade = CascadeType.ALL)
+	private User executor;
 
 	@OneToMany(targetEntity = Tag.class, fetch = FetchType.EAGER)
 	private List<Tag> tags;

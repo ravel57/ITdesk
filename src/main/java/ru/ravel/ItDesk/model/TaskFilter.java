@@ -8,19 +8,30 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
+import java.util.List;
 
 @Entity
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Organization {
-
+public class TaskFilter {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+	Long id;
 
-	private String name;
+	String label;
 
+	@JdbcTypeCode(SqlTypes.JSON)
+	List<Filter> selectedOptions;
+
+	@Data
+	@AllArgsConstructor
+	public static class Filter {
+		String label;
+		List<String> selectedOptions;
+	}
 }

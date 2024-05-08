@@ -3,13 +3,15 @@ package ru.ravel.ItDesk.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 
 
+@Entity
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-@Entity
+@Builder
 public class Task {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,15 +22,20 @@ public class Task {
 	@Column(length = 1024)
 	private String description;
 
-	private String status;
+	@ManyToOne(fetch = FetchType.EAGER)
+	private Status status;
 
 	private String priority;
 
-	@OneToOne(targetEntity = User.class, cascade = CascadeType.ALL)
+	@ManyToOne(fetch = FetchType.EAGER)
 	private User executor;
 
-	@OneToMany(targetEntity = Tag.class, fetch = FetchType.EAGER)
+	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Tag> tags;
 
 	private boolean isCompleted;
+
+	private ZonedDateTime createdAt;
+
+	private ZonedDateTime deadline;
 }

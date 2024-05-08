@@ -35,7 +35,7 @@ public class UserService {
 				.username(frontendUser.getUsername())
 				.firstname(frontendUser.getFirstname())
 				.lastname(frontendUser.getLastname())
-				.roles(List.of(Role.valueOf(frontendUser.getRole())))
+				.authorities(List.of(Role.valueOf(frontendUser.getAuthorities())))
 				.password(passwordEncoder.encode(frontendUser.getPassword()))
 				.isEnabled(true)
 				.isAccountNonLocked(true)

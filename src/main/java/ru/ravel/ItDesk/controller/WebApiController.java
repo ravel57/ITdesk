@@ -21,6 +21,7 @@ public class WebApiController {
 	private final OrganizationService organizationService;
 	private final UserService userService;
 	private final TelegramService telegramService;
+	private final StatusService statusService;
 
 
 	@GetMapping("/clients")
@@ -30,8 +31,8 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/new-task")
-	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) {
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.newTask(clientId, task));
+	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Map<String, Object> map) { // FIXME
+		return ResponseEntity.status(HttpStatus.OK).body(clientService.newTask(clientId, map));
 	}
 
 
@@ -95,6 +96,12 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/statuses")
+	public ResponseEntity<Object> getStatuses() {
+		return ResponseEntity.status(HttpStatus.OK).body(statusService.getStatuses());
+	}
+
+
 	@PostMapping("/new-user")
 	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.status(HttpStatus.OK).body(userService.newUser(user));
@@ -126,7 +133,7 @@ public class WebApiController {
 
 
 	@PostMapping("/new-telegram-bot")
-	public ResponseEntity<Object> newTelegramBot(@RequestBody MyTelegramBot telegramBot) {
+	public ResponseEntity<Object> newTelegramBot(@RequestBody TgBot telegramBot) {
 		return ResponseEntity.status(HttpStatus.OK).body(telegramService.newTelegramBot(telegramBot));
 	}
 

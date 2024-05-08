@@ -34,7 +34,7 @@ public class User implements UserDetails {
 	private String password;
 
 	@ElementCollection(fetch = FetchType.EAGER)
-	private List<Role> roles;
+	private List<Role> authorities;
 
 	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Organization> availableOrganizations;
@@ -62,7 +62,7 @@ public class User implements UserDetails {
 
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
-		return roles;
+		return authorities;
 	}
 
 	@Override

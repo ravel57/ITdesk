@@ -25,7 +25,7 @@ public class AuthService implements UserDetailsService {
 					.username("admin")
 					.firstname("admin")
 					.password("$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.")
-					.roles(List.of(Role.ADMIN))
+					.authorities(List.of(Role.ADMIN))
 					.build());
 		}
 	}

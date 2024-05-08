@@ -41,4 +41,7 @@ public class Client {
 	@OneToMany(fetch = FetchType.EAGER)
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();
+
+	@ManyToOne(fetch = FetchType.EAGER)
+	private TgBot bot;
 }

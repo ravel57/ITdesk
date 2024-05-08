@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.pengrad.telegrambot.TelegramBot;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -10,20 +11,23 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class MyTelegramBot {
+public class TgBot {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
 	private String name;
 
-	//	@JsonIgnore
 	private String token;
 
 	@Transient
+	@JsonIgnore
 	private TelegramBot bot;
 
-	public void initBot() {
-		bot= new TelegramBot(token);
+	public TelegramBot getBot() {
+		if (bot == null) {
+			bot = new TelegramBot(token);
+		}
+		return bot;
 	}
 }

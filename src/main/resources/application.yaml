@@ -14,13 +14,16 @@ spring:
 logging:
   level:
     org.hibernate:
-      SQL: WARN
+      SQL: INFO
     org.springframework:
-      web.SimpLogging: WARN
-      boot.autoconfigure: WARN
+      web.SimpLogging: INFO
+      boot.autoconfigure: INFO
     org.springframework.web.servlet:
-      DispatcherServlet: WARN
+      DispatcherServlet: INFO
     org.springframework.web.servlet.handler:
-      SimpleUrlHandlerMapping: WARN
+      SimpleUrlHandlerMapping: INFO
     org.springframework.web.socket.config:
-      WebSocketMessageBrokerStats: WARN
+      WebSocketMessageBrokerStats: INFO
+    org.springframework.web.servlet.mvc.method.annotation:
+      HttpEntityMethodProcessor: INFO
+      RequestMappingHandlerMapping: INFO

@@ -41,47 +41,6 @@ public class TelegramService {
 				);
 	}
 
-	class BotUpdatesListener implements UpdatesListener {
-		private final TelegramBot bot;
-
-		public BotUpdatesListener(TelegramBot bot) {
-			this.bot = bot;
-		}
-
-		@Override
-		public int process(List<Update> updates) {
-			try {
-				updates.forEach(it -> {
-					Client client = clientRepository.findByTelegramId(it.message().from().id());
-					ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(it.message().date()), ZoneId.systemDefault());
-					Message message = Message.builder()
-							.text(it.message().text())
-							.date(zonedDateTime)
-							.isSent(false)
-							.isComment(false)
-							.isRead(false)
-							.build();
-					messageRepository.save(message);
-					if (client == null) {
-						client = Client.builder()
-								.firstname(it.message().from().firstName())
-								.lastname(it.message().from().lastName())
-								.telegramId(it.message().from().id())
-								.messages(List.of(message))
-								.bot(telegramRepository.findByToken(bot.getToken()))	//FIXME
-								.build();
-					} else {
-						client.getMessages().add(message);
-					}
-					clientRepository.save(client);
-				});
-			} catch (Exception e) {
-				logger.error(e.getMessage());
-			}
-			return UpdatesListener.CONFIRMED_UPDATES_ALL;
-		}
-	}
-
 
 	// FIXME send to front
 	ExceptionHandler exceptionHandler = e -> {
@@ -115,6 +74,48 @@ public class TelegramService {
 	public TgBot newTelegramBot(@NotNull TgBot tgBot) {
 		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
 		return telegramRepository.save(tgBot);
+	}
+
+
+	class BotUpdatesListener implements UpdatesListener {
+		private final TelegramBot bot;
+
+		public BotUpdatesListener(TelegramBot bot) {
+			this.bot = bot;
+		}
+
+		@Override
+		public int process(List<Update> updates) {
+			try {
+				updates.forEach(it -> {
+					Client client = clientRepository.findByTelegramId(it.message().from().id());
+					ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(it.message().date()), ZoneId.systemDefault());
+					Message message = Message.builder()
+							.text(it.message().text())
+							.date(zonedDateTime)
+							.isSent(false)
+							.isComment(false)
+							.isRead(false)
+							.build();
+					messageRepository.save(message);
+					if (client == null) {
+						client = Client.builder()
+								.firstname(it.message().from().firstName())
+								.lastname(it.message().from().lastName())
+								.telegramId(it.message().from().id())
+								.messages(List.of(message))
+								.bot(telegramRepository.findByToken(bot.getToken()))    //FIXME
+								.build();
+					} else {
+						client.getMessages().add(message);
+					}
+					clientRepository.save(client);
+				});
+			} catch (Exception e) {
+				logger.error(e.getMessage());
+			}
+			return UpdatesListener.CONFIRMED_UPDATES_ALL;
+		}
 	}
 
 }

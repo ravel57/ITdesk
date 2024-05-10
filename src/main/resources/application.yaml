@@ -27,3 +27,5 @@ logging:
     org.springframework.web.servlet.mvc.method.annotation:
       HttpEntityMethodProcessor: INFO
       RequestMappingHandlerMapping: INFO
+    org.springframework.web.socket.messaging:
+      WebSocketAnnotationMethodMessageHandler: INFO

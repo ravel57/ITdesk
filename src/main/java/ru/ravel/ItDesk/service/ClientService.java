@@ -86,8 +86,10 @@ public class ClientService {
 
 	public Client markRead(Long clientId) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		client.getMessages().forEach(message -> message.setRead(true));
-		clientsRepository.save(client);
+		messageRepository.saveAll(client.getMessages().stream()
+				.filter(message -> !message.isRead())
+				.peek(message -> message.setRead(true))
+				.toList());
 		return client;
 	}
 

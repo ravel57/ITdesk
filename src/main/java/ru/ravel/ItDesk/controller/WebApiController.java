@@ -48,12 +48,6 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/mark-read")
-	public ResponseEntity<Object> markRead(@PathVariable Long clientId) {
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.markRead(clientId));
-	}
-
-
 	@PostMapping("/client/{clientId}/update")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		return ResponseEntity.status(HttpStatus.OK).body(clientService.updateClient(clientId, client));

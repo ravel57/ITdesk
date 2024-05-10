@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -42,6 +43,7 @@ public class Client {
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();
 
+	@JsonIgnore
 	@ManyToOne(fetch = FetchType.EAGER)
 	private TgBot bot;
 }

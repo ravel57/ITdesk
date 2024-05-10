@@ -55,8 +55,9 @@ class WebSecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**").permitAll()
-						.anyRequest().authenticated())	//FIXME
-				.formLogin(form -> form.defaultSuccessUrl("/", true))
+						.anyRequest().authenticated())
+				.formLogin(form -> form.
+						defaultSuccessUrl("/", true))
 				.logout(logout -> logout
 						.logoutSuccessUrl("/logout")
 						.invalidateHttpSession(true)

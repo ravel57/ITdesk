@@ -25,7 +25,7 @@ public class SchedulerService {
 
 	@Scheduled(cron = "*/1 * * * * *")
 	void updateClientsInfo() throws ExecutionException, InterruptedException {
-		Executors.newSingleThreadExecutor().submit(new AsyncUpdater(clientService, webSocketService)).get();
+		Executors.newSingleThreadExecutor().submit(new AsyncUpdater(clientService, webSocketService));
 		logger.debug("update & sendClients ClientsInfo");
 	}
 

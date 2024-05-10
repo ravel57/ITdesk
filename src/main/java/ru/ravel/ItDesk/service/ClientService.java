@@ -40,20 +40,7 @@ public class ClientService {
 	}
 
 
-	public Task newTask(Long clientId, @NotNull Map<String, Object> map) {
-		Task task = Task.builder()
-//				.status(statusRepository.findAll().stream().filter(status -> status.getId()
-//						.equals(map.get("status_id"))).findFirst().orElseThrow())
-				.name(map.get("name").toString())
-				.description(map.get("description").toString())
-				.priority(map.get("priority").toString())
-				.executor(userService.getUsers().stream().filter(user -> user.getId()
-						.equals(((Integer)map.get("executor_id")).longValue())).findFirst().orElseThrow())
-				.tags(tagService.getTags().stream().filter(it -> ((List<Integer>) map.get("tags_ids"))
-						.contains(it.getId().intValue())).toList())
-				.isCompleted((Boolean) map.get("isCompleted"))
-				.createdAt(ZonedDateTime.now())
-				.build();
+	public Task newTask(Long clientId, @NotNull Task task) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		client.getTasks().add(task);
 		taskRepository.save(task);

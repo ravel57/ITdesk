@@ -31,8 +31,8 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/new-task")
-	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Map<String, Object> map) { // FIXME
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.newTask(clientId, map));
+	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) { // FIXME
+		return ResponseEntity.status(HttpStatus.OK).body(clientService.newTask(clientId, task));
 	}
 
 
@@ -48,7 +48,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/update")
+	@PostMapping("/client/{clientId}/update-client")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		return ResponseEntity.status(HttpStatus.OK).body(clientService.updateClient(clientId, client));
 	}

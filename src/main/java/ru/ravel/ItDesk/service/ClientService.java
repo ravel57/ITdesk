@@ -80,7 +80,7 @@ public class ClientService {
 		client.setLastname((String) c.get("lastname"));
 		client.setOrganization(organizationService.getOrganizations().stream()
 				.filter( it -> it.getName().equals(c.get("organization")))
-				.findFirst().orElseThrow());
+				.findFirst().orElse(null));
 		client.setMoreInfo((String) c.get("moreInfo"));
 		clientsRepository.save(client);
 		return client;

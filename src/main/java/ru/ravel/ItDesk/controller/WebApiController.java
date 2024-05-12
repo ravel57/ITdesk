@@ -32,7 +32,7 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/new-task")
-	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) { // FIXME
+	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) {
 		return ResponseEntity.ok().body(clientService.newTask(clientId, task));
 	}
 
@@ -127,6 +127,19 @@ public class WebApiController {
 	}
 
 
+	@PostMapping("/update-tag")
+	public ResponseEntity<Object> updateTag(@RequestBody Tag tag) {
+		return ResponseEntity.ok().body(tagService.updateTag(tag));
+	}
+
+
+	@DeleteMapping("/tag/{tagId}")
+	public ResponseEntity<Object> deleteTag(@PathVariable Long tagId) {
+		tagService.deleteTag(tagId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
 	@PostMapping("/new-organization")
 	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.newOrganization(organization));
@@ -164,9 +177,9 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/delete-telegram-bot")
-	public ResponseEntity<Object> deleteTelegramBot(@RequestBody TgBot telegramBot) {
-		telegramService.deleteTelegramBot(telegramBot);
+	@DeleteMapping("/telegram-bot/{tgBotId}")
+	public ResponseEntity<Object> deleteTelegramBot(@PathVariable Long tgBotId) {
+		telegramService.deleteTelegramBot(tgBotId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 

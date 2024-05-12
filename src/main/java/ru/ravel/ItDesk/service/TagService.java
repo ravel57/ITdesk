@@ -13,11 +13,23 @@ public class TagService {
 
 	private final TagRepository tagRepository;
 
+
 	public List<Tag> getTags() {
 		return tagRepository.findAll();
 	}
 
+
 	public Tag newTag(Tag tag) {
 		return tagRepository.save(tag);
+	}
+
+
+	public Tag updateTag(Tag tag) {
+		return tagRepository.save(tag);
+	}
+
+
+	public void deleteTag(Long tagId) {
+		tagRepository.deleteById(tagId);
 	}
 }

@@ -23,11 +23,15 @@ public class Task {
 	private String description;
 
 	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn
 	private Status status;
 
-	private String priority;
+	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn
+	private Priority priority;
 
 	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn
 	private User executor;
 
 	@ManyToMany(fetch = FetchType.EAGER)

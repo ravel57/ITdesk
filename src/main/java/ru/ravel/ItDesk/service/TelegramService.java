@@ -80,8 +80,8 @@ public class TelegramService {
 		return telegramRepository.save(telegramBot);
 	}
 
-	public void deleteTelegramBot(TgBot telegramBot) {
-		telegramRepository.delete(telegramBot);
+	public void deleteTelegramBot(Long tgBotId) {
+		telegramRepository.deleteById(tgBotId);
 	}
 
 

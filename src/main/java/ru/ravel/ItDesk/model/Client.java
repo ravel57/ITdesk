@@ -28,6 +28,7 @@ public class Client {
 	private String moreInfo;
 
 	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn(name = "organization_id")
 	private Organization organization;
 
 	private Long telegramId;

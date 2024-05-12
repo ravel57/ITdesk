@@ -29,7 +29,7 @@ public class FlywayConfig {
 		return Flyway.configure()
 				.dataSource(dataSource)
 				.locations(locations)
-				.baselineOnMigrate(true)
+//				.baselineOnMigrate(true)
 				.load();
 	}
 

@@ -22,6 +22,7 @@ public class WebApiController {
 	private final UserService userService;
 	private final TelegramService telegramService;
 	private final StatusService statusService;
+	private final PriorityService priorityService;
 
 
 	@GetMapping("/clients")
@@ -102,6 +103,12 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/priorities")
+	public ResponseEntity<Object> getPriorities() {
+		return ResponseEntity.ok().body(priorityService.getPriorities());
+	}
+
+
 	@PostMapping("/new-user")
 	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.ok().body(userService.newUser(user));
@@ -129,6 +136,13 @@ public class WebApiController {
 	@PostMapping("/update-organization")
 	public ResponseEntity<Object> updateOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.updateOrganization(organization));
+	}
+
+
+	@DeleteMapping("/organization/{organizationId}")
+	public ResponseEntity<Object> deleteOrganization(@PathVariable Long organizationId) {
+		organizationService.deleteOrganization(organizationId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 
 
@@ -160,6 +174,19 @@ public class WebApiController {
 	@PostMapping("/new-status")
 	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.newStatus(status));
+	}
+
+
+	@PostMapping("/new-priority")
+	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
+		return ResponseEntity.ok().body(priorityService.newPriority(priority));
+	}
+
+
+	@DeleteMapping("/priority/{priorityId}")
+	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {
+		priorityService.deletePriority(priorityId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 
 }

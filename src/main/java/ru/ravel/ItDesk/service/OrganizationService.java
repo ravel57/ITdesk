@@ -25,4 +25,8 @@ public class OrganizationService {
 	public Organization updateOrganization(Organization organization) {
 		return organizationRepository.save(organization);
 	}
+
+	public void deleteOrganization(Long organizationId) {
+		organizationRepository.deleteById(organizationId);
+	}
 }

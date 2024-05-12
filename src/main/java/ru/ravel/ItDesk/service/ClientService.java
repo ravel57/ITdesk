@@ -27,11 +27,6 @@ public class ClientService {
 	private final OrganizationService organizationService;
 
 
-	public Client getClient(long id) {
-		return clientsRepository.getReferenceById(id);
-	}
-
-
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(it -> it.getMessages().sort(Message::compareTo));

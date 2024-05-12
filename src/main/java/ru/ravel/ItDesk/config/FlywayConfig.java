@@ -22,13 +22,15 @@ public class FlywayConfig {
 	private String password;
 
 	@Value("${spring.flyway.locations}")
-	private String[] locations;
+	private String locations;
 
 	@Bean
-	public Flyway flyway() {
-		Flyway flyway = Flyway.configure().dataSource(dataSource()).locations(locations).load();
-		flyway.migrate();
-		return flyway;
+	public Flyway flyway(DataSource dataSource) {
+		return Flyway.configure()
+				.dataSource(dataSource)
+				.locations(locations)
+				.baselineOnMigrate(true)
+				.load();
 	}
 
 	@Bean

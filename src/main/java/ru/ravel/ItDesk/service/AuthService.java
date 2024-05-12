@@ -14,10 +14,22 @@ import java.util.List;
 
 
 @Service
-@RequiredArgsConstructor
 public class AuthService implements UserDetailsService {
 
 	private final UserRepository repository;
+
+
+	public AuthService(@NotNull UserRepository repository) {
+		this.repository = repository;
+		if (repository.findAll().isEmpty()) {
+			repository.save(User.builder()
+					.username("admin")
+					.firstname("admin")
+					.password("$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.")
+					.authorities(List.of(Role.ADMIN))
+					.build());
+		}
+	}
 
 
 	@Override

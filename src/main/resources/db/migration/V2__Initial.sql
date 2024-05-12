@@ -51,3 +51,27 @@ VALUES (DEFAULT, 'Низкий');
 
 INSERT INTO public.priority (id, name)
 VALUES (DEFAULT, 'Не трогаем');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Добрый день!', 'дд');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Доброе утро!', 'ду');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Добрый вечер!', 'дв');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Пришлите код от anydesk', 'эни');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Примите подкюлчение', 'примите');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Сотрудник в пути', 'впути');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Уже решаем', '-');
+
+INSERT INTO public.template (id, text, shortcut)
+VALUES (DEFAULT, 'Не наша зона ответственности', '-');

@@ -23,6 +23,7 @@ public class WebApiController {
 	private final TelegramService telegramService;
 	private final StatusService statusService;
 	private final PriorityService priorityService;
+	private final TemplateService templateService;
 
 
 	@GetMapping("/clients")
@@ -199,6 +200,31 @@ public class WebApiController {
 	@DeleteMapping("/priority/{priorityId}")
 	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {
 		priorityService.deletePriority(priorityId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@GetMapping("/templates")
+	public ResponseEntity<Object> getTemplates() {
+		return ResponseEntity.ok().body(templateService.getTemplates());
+	}
+
+
+	@PostMapping("/new-template")
+	public ResponseEntity<Object> newTemplate(@RequestBody Template template) {
+		return ResponseEntity.ok().body(templateService.newTemplate(template));
+	}
+
+
+	@PostMapping("/update-template")
+	public ResponseEntity<Object> updateTemplate(@RequestBody Template template) {
+		return ResponseEntity.ok().body(templateService.updateTemplate(template));
+	}
+
+
+	@DeleteMapping("/template/{templateId}")
+	public ResponseEntity<Object> deleteTemplate(@PathVariable Long templateId) {
+		templateService.deleteTemplate(templateId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 

@@ -1,0 +1,21 @@
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'ЭЦП');
+
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'Принтер');
+
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'Срочно');
+
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'ВКС');
+
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'Выезд');
+
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'Отложенно');
+
+INSERT INTO public.tag (id, description, name)
+VALUES (DEFAULT, null, 'Инфроструктурное оборудование');
+

@@ -36,3 +36,14 @@ out/
 ### VS Code ###
 .vscode/
 /src/main/webapp/dist/
+
+
+/src/main/resources/toTomcat/*.pem
+/src/main/webapp/css
+/src/main/webapp/js
+/src/main/webapp/fonts
+src/main/webapp/icons/
+/src/main/webapp/index.html
+/src/main/webapp/logo.png
+/src/main/webapp/favicon.ico
+

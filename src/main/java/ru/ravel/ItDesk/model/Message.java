@@ -20,6 +20,7 @@ public class Message implements Comparable<Message> {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	Long id;
 
+	@Column(length = 2048)
 	String text;
 
 	ZonedDateTime date;

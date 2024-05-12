@@ -44,4 +44,17 @@ public class UserService {
 				.build();
 		return userRepository.save(user);
 	}
+
+	public User updateUser(@NotNull FrontendUser frontendUser) {
+		User savedUser = userRepository.findById(frontendUser.getId()).orElseThrow();
+		User user = User.builder()
+				.id(frontendUser.getId())
+				.firstname(frontendUser.getFirstname())
+				.lastname(frontendUser.getLastname())
+				.authorities(List.of(Role.valueOf(frontendUser.getAuthorities())))
+				.username(savedUser.getUsername())
+				.password(savedUser.getPassword())
+				.build();
+		return userRepository.save(user);
+	}
 }

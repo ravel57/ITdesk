@@ -26,31 +26,31 @@ public class WebApiController {
 
 	@GetMapping("/clients")
 	public ResponseEntity<Object> getClients() {
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.getClients());
+		return ResponseEntity.ok().body(clientService.getClients());
 	}
 
 
 	@PostMapping("/client/{clientId}/new-task")
 	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) { // FIXME
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.newTask(clientId, task));
+		return ResponseEntity.ok().body(clientService.newTask(clientId, task));
 	}
 
 
 	@PostMapping("/client/{clientId}/update-task")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.updateTask(clientId, task));
+		return ResponseEntity.ok().body(clientService.updateTask(clientId, task));
 	}
 
 
 	@PostMapping("/client/{clientId}/new-message")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.newMessage(clientId, message));
+		return ResponseEntity.ok().body(clientService.newMessage(clientId, message));
 	}
 
 
 	@PostMapping("/client/{clientId}/update-client")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
-		return ResponseEntity.status(HttpStatus.OK).body(clientService.updateClient(clientId, client));
+		return ResponseEntity.ok().body(clientService.updateClient(clientId, client));
 	}
 
 
@@ -62,73 +62,104 @@ public class WebApiController {
 
 	@PostMapping("/new-filter")
 	public ResponseEntity<Object> saveTaskFilter(@RequestBody TaskFilter taskFilter) {
-		return ResponseEntity.status(HttpStatus.OK).body(taskFilterService.saveTaskFilter(taskFilter));
+		return ResponseEntity.ok().body(taskFilterService.saveTaskFilter(taskFilter));
 	}
 
 
 	@GetMapping("/tags")
 	public ResponseEntity<Object> getTags() {
-		return ResponseEntity.status(HttpStatus.OK).body(tagService.getTags());
+		return ResponseEntity.ok().body(tagService.getTags());
 	}
 
 
 	@GetMapping("/organizations")
 	public ResponseEntity<Object> getOrganizations() {
-		return ResponseEntity.status(HttpStatus.OK).body(organizationService.getOrganizations());
+		return ResponseEntity.ok().body(organizationService.getOrganizations());
 	}
 
 
 	@GetMapping("/users")
 	public ResponseEntity<Object> getUsers() {
-		return ResponseEntity.status(HttpStatus.OK).body(userService.getUsers());
+		return ResponseEntity.ok().body(userService.getUsers());
 	}
 
 
 	@GetMapping("/roles")
 	public ResponseEntity<Object> getRoles() {
-		return ResponseEntity.status(HttpStatus.OK).body(userService.getRoles());
+		return ResponseEntity.ok().body(userService.getRoles());
 	}
 
 
 	@GetMapping("/statuses")
 	public ResponseEntity<Object> getStatuses() {
-		return ResponseEntity.status(HttpStatus.OK).body(statusService.getStatuses());
-	}
-
-
-	@PostMapping("/new-user")
-	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
-		return ResponseEntity.status(HttpStatus.OK).body(userService.newUser(user));
-	}
-
-
-	@PostMapping("/new-tag")
-	public ResponseEntity<Object> newTag(@RequestBody Tag tag) {
-		return ResponseEntity.status(HttpStatus.OK).body(tagService.newTag(tag));
-	}
-
-
-	@PostMapping("/new-organization")
-	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
-		return ResponseEntity.status(HttpStatus.OK).body(organizationService.newOrganization(organization));
-	}
-
-
-	@PostMapping("/get-logged-user")
-	public ResponseEntity<Object> getLoggedUser() {
-		return ResponseEntity.status(HttpStatus.OK).body(null);
+		return ResponseEntity.ok().body(statusService.getStatuses());
 	}
 
 
 	@GetMapping("/telegram-bots")
 	public ResponseEntity<Object> getTelegramBots() {
-		return ResponseEntity.status(HttpStatus.OK).body(telegramService.getTelegramBots());
+		return ResponseEntity.ok().body(telegramService.getTelegramBots());
 	}
+
+
+	@PostMapping("/new-user")
+	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
+		return ResponseEntity.ok().body(userService.newUser(user));
+	}
+
+
+	@PostMapping("/update-user")
+	public ResponseEntity<Object> updateUser(@RequestBody FrontendUser user) {
+		return ResponseEntity.ok().body(userService.updateUser(user));
+	}
+
+
+	@PostMapping("/new-tag")
+	public ResponseEntity<Object> newTag(@RequestBody Tag tag) {
+		return ResponseEntity.ok().body(tagService.newTag(tag));
+	}
+
+
+	@PostMapping("/new-organization")
+	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
+		return ResponseEntity.ok().body(organizationService.newOrganization(organization));
+	}
+
+
+	@PostMapping("/update-organization")
+	public ResponseEntity<Object> updateOrganization(@RequestBody Organization organization) {
+		return ResponseEntity.ok().body(organizationService.updateOrganization(organization));
+	}
+
+
+//	@GetMapping("/get-logged-user")
+//	public ResponseEntity<Object> getLoggedUser() {
+//		return ResponseEntity.ok().body(null);
+//	}
 
 
 	@PostMapping("/new-telegram-bot")
 	public ResponseEntity<Object> newTelegramBot(@RequestBody TgBot telegramBot) {
-		return ResponseEntity.status(HttpStatus.OK).body(telegramService.newTelegramBot(telegramBot));
+		return ResponseEntity.ok().body(telegramService.newTelegramBot(telegramBot));
+	}
+
+
+	@PostMapping("/update-telegram-bot")
+	public ResponseEntity<Object> updateTelegramBot(@RequestBody TgBot telegramBot) {
+		return ResponseEntity.ok().body(telegramService.updateTelegramBot(telegramBot));
+	}
+
+
+	@PostMapping("/delete-telegram-bot")
+	public ResponseEntity<Object> deleteTelegramBot(@RequestBody TgBot telegramBot) {
+		telegramService.deleteTelegramBot(telegramBot);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@PostMapping("/new-status")
+	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
+		return ResponseEntity.ok().body(statusService.newStatus(status));
 	}
 
 }

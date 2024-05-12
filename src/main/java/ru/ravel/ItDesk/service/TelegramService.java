@@ -53,7 +53,7 @@ public class TelegramService {
 
 
 	public void sendMessage(@NotNull Client client, @NotNull Message message) {
-		TelegramBot bot = client.getBot().getBot();
+		TelegramBot bot = client.getTgBot().getBot();
 		try {
 			new MessageBuilder(bot)
 					.send()
@@ -74,6 +74,14 @@ public class TelegramService {
 	public TgBot newTelegramBot(@NotNull TgBot tgBot) {
 		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
 		return telegramRepository.save(tgBot);
+	}
+
+	public TgBot updateTelegramBot(TgBot telegramBot) {
+		return telegramRepository.save(telegramBot);
+	}
+
+	public void deleteTelegramBot(TgBot telegramBot) {
+		telegramRepository.delete(telegramBot);
 	}
 
 
@@ -104,7 +112,7 @@ public class TelegramService {
 								.lastname(it.message().from().lastName())
 								.telegramId(it.message().from().id())
 								.messages(List.of(message))
-								.bot(telegramRepository.findByToken(bot.getToken()))    //FIXME
+								.tgBot(telegramRepository.findByToken(bot.getToken()))    //FIXME
 								.build();
 					} else {
 						client.getMessages().add(message);

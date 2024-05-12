@@ -15,10 +15,14 @@ public class OrganizationService {
 
 
 	public List<Organization> getOrganizations() {
-		return organizationRepository.findAll();
+		return organizationRepository.findAll().stream().sorted().toList();
 	}
 
 	public Organization newOrganization(Organization organization) {
+		return organizationRepository.save(organization);
+	}
+
+	public Organization updateOrganization(Organization organization) {
 		return organizationRepository.save(organization);
 	}
 }

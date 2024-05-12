@@ -4,6 +4,8 @@ import lombok.Data;
 
 @Data
 public class FrontendUser {
+	private Long id;
+
 	private String firstname;
 
 	private String lastname;

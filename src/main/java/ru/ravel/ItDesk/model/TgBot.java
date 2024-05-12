@@ -24,6 +24,7 @@ public class TgBot {
 	@JsonIgnore
 	private TelegramBot bot;
 
+
 	public TelegramBot getBot() {
 		if (bot == null) {
 			bot = new TelegramBot(token);

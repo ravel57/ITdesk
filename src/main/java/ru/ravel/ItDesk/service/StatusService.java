@@ -17,4 +17,8 @@ public class StatusService {
 	public List<Status> getStatuses() {
 		return statusRepository.findAll();
 	}
+
+	public Status newStatus(Status status) {
+		return statusRepository.save(status);
+	}
 }

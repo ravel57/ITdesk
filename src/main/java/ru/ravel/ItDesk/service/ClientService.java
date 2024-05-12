@@ -24,8 +24,7 @@ public class ClientService {
 	private final MessageRepository messageRepository;
 	private final TelegramService telegramService;
 	private final UserService userService;
-	private final TagService tagService;
-//	private final StatusRepository statusRepository;
+	private final OrganizationService organizationService;
 
 
 	public Client getClient(long id) {
@@ -84,7 +83,9 @@ public class ClientService {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		client.setFirstname((String) c.get("firstname"));
 		client.setLastname((String) c.get("lastname"));
-//		client.setOrganization((String) c.get("organization"));
+		client.setOrganization(organizationService.getOrganizations().stream()
+				.filter( it -> it.getName().equals(c.get("organization")))
+				.findFirst().orElseThrow());
 		client.setMoreInfo((String) c.get("moreInfo"));
 		clientsRepository.save(client);
 		return client;

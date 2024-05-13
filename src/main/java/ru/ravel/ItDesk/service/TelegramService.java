@@ -2,6 +2,7 @@ package ru.ravel.ItDesk.service;
 
 import com.pengrad.telegrambot.ExceptionHandler;
 import com.pengrad.telegrambot.TelegramBot;
+import com.pengrad.telegrambot.TelegramException;
 import com.pengrad.telegrambot.UpdatesListener;
 import com.pengrad.telegrambot.model.Update;
 import org.jetbrains.annotations.NotNull;
@@ -52,16 +53,18 @@ public class TelegramService {
 	};
 
 
-	public void sendMessage(@NotNull Client client, @NotNull Message message) {
+	public Long sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
 		TelegramBot bot = client.getTgBot().getBot();
 		try {
-			new MessageBuilder(bot)
+			Integer messageId = new MessageBuilder(bot)
 					.send()
 					.telegramId(client.getTelegramId())
 					.text(message.getText())
 					.execute();
-		} catch (NoSuchFieldException e) {
+			return Long.valueOf(messageId);
+		} catch (Exception e) {
 			logger.error(e.getMessage());
+			throw new RuntimeException("Message not delivered");
 		}
 	}
 
@@ -76,8 +79,9 @@ public class TelegramService {
 		return telegramRepository.save(tgBot);
 	}
 
-	public TgBot updateTelegramBot(TgBot telegramBot) {
-		return telegramRepository.save(telegramBot);
+	public TgBot updateTelegramBot(@NotNull TgBot tgBot) {
+		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
+		return telegramRepository.save(tgBot);
 	}
 
 	public void deleteTelegramBot(Long tgBotId) {
@@ -95,22 +99,23 @@ public class TelegramService {
 		@Override
 		public int process(List<Update> updates) {
 			try {
-				updates.forEach(it -> {
-					Client client = clientRepository.findByTelegramId(it.message().from().id());
-					ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(it.message().date()), ZoneId.systemDefault());
+				updates.forEach(update -> {
+					Client client = clientRepository.findByTelegramId(update.message().from().id());
+					ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
 					Message message = Message.builder()
-							.text(it.message().text())
+							.text(update.message().text())
 							.date(zonedDateTime)
 							.isSent(false)
 							.isComment(false)
 							.isRead(false)
+							.messengerMessageId(Long.valueOf(update.message().messageId()))
 							.build();
 					messageRepository.save(message);
 					if (client == null) {
 						client = Client.builder()
-								.firstname(it.message().from().firstName())
-								.lastname(it.message().from().lastName())
-								.telegramId(it.message().from().id())
+								.firstname(update.message().from().firstName())
+								.lastname(update.message().from().lastName())
+								.telegramId(update.message().from().id())
 								.messages(List.of(message))
 								.tgBot(telegramRepository.findByToken(bot.getToken()))    //FIXME
 								.build();

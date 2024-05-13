@@ -28,8 +28,8 @@ VALUES (DEFAULT, null, 'Инфроструктурное оборудовани�
 INSERT INTO public.tag (id, description, name)
 VALUES (DEFAULT, null, 'VIP');
 
-INSERT INTO public.status (id, name)
-VALUES (DEFAULT, 'Новая');
+INSERT INTO public.status (id, name, default_selection)
+VALUES (DEFAULT, 'Новая', true);
 
 INSERT INTO public.status (id, name)
 VALUES (DEFAULT, 'В работе');
@@ -43,8 +43,8 @@ VALUES (DEFAULT, 'Критичный');
 INSERT INTO public.priority (id, name)
 VALUES (DEFAULT, 'Высокий');
 
-INSERT INTO public.priority (id, name)
-VALUES (DEFAULT, 'Средний');
+INSERT INTO public.priority (id, name, default_selection)
+VALUES (DEFAULT, 'Средний', true);
 
 INSERT INTO public.priority (id, name)
 VALUES (DEFAULT, 'Низкий');
@@ -65,13 +65,13 @@ INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Пришлите код от anydesk', 'эни');
 
 INSERT INTO public.template (id, text, shortcut)
-VALUES (DEFAULT, 'Примите подкюлчение', 'примите');
+VALUES (DEFAULT, 'Примите подкюлчение', 'подключ');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Сотрудник в пути', 'впути');
 
 INSERT INTO public.template (id, text, shortcut)
-VALUES (DEFAULT, 'Уже решаем', '-');
+VALUES (DEFAULT, 'Уже решаем', 'решаем');
 
 INSERT INTO public.template (id, text, shortcut)
-VALUES (DEFAULT, 'Не наша зона ответственности', '-');
+VALUES (DEFAULT, 'Не наша зона ответственности', 'немы');

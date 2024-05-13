@@ -20,4 +20,6 @@ public class Priority {
 	private Long id;
 
 	private String name;
+
+	private Boolean defaultSelection;
 }

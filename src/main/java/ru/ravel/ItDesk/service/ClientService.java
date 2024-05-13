@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.service;
 
+import com.pengrad.telegrambot.TelegramException;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,12 +54,17 @@ public class ClientService {
 		User user = userService.getUsers().stream()
 				.filter(it -> it.getUsername().equals(username))
 				.findFirst()
-				.orElse(User.builder().id(1L).build()); // FIXME
+				.orElseThrow();
 		message.setUser(user);
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {
-			telegramService.sendMessage(client, message);
+			try {
+				Long messageId = telegramService.sendMessage(client, message);
+				message.setMessengerMessageId(messageId);
+			} catch (Exception e) {
+				return false;
+			}
 		}
 		client.getMessages().add(message);
 		clientsRepository.save(client);
@@ -79,7 +85,7 @@ public class ClientService {
 		client.setFirstname((String) c.get("firstname"));
 		client.setLastname((String) c.get("lastname"));
 		client.setOrganization(organizationService.getOrganizations().stream()
-				.filter( it -> it.getName().equals(c.get("organization")))
+				.filter(it -> it.getName().equals(c.get("organization")))
 				.findFirst().orElse(null));
 		client.setMoreInfo((String) c.get("moreInfo"));
 		clientsRepository.save(client);

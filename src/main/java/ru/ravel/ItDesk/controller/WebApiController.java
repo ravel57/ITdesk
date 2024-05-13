@@ -46,7 +46,12 @@ public class WebApiController {
 
 	@PostMapping("/client/{clientId}/new-message")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
-		return ResponseEntity.ok().body(clientService.newMessage(clientId, message));
+		boolean isMessageDelivered = clientService.newMessage(clientId, message);
+		if(isMessageDelivered) {
+			return ResponseEntity.ok().body(true);
+		} else {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
 	}
 
 
@@ -226,6 +231,18 @@ public class WebApiController {
 	public ResponseEntity<Object> deleteTemplate(@PathVariable Long templateId) {
 		templateService.deleteTemplate(templateId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@PostMapping("/update-status/set-default")
+	public ResponseEntity<Object> statusSetDefaultSelection(@RequestBody Status status) {
+		return ResponseEntity.ok().body(statusService.statusSetDefaultSelection(status));
+	}
+
+
+	@PostMapping("/update-priority/set-default")
+	public ResponseEntity<Object> statusPriorityDefaultSelection(@RequestBody Priority priority) {
+		return ResponseEntity.ok().body(priorityService.statusSetDefaultSelection(priority));
 	}
 
 }

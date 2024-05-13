@@ -10,32 +10,34 @@ import org.jetbrains.annotations.NotNull;
 import java.time.ZonedDateTime;
 
 
+@Entity
 @Data
-@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@Entity
+@Builder
 public class Message implements Comparable<Message> {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	Long id;
+	private Long id;
 
 	@Column(length = 2048)
-	String text;
+	private String text;
 
-	ZonedDateTime date;
+	private ZonedDateTime date;
 
-	@ManyToOne(targetEntity = User.class, fetch = FetchType.EAGER)
-	User user;
-
-	@Builder.Default
-	boolean isRead = false;
+	@ManyToOne(fetch = FetchType.EAGER)
+	private User user;
 
 	@Builder.Default
-	boolean isSent = false;
+	private boolean isRead = false;
 
 	@Builder.Default
-	boolean isComment = false;
+	private boolean isSent = false;
+
+	@Builder.Default
+	private boolean isComment = false;
+
+	private Long messengerMessageId;
 
 	@Override
 	public int compareTo(@NotNull Message o) {

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -243,6 +244,12 @@ public class WebApiController {
 	@PostMapping("/update-priority/set-default")
 	public ResponseEntity<Object> statusPriorityDefaultSelection(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.statusSetDefaultSelection(priority));
+	}
+
+
+	@PostMapping("/update-status/resort")
+	public ResponseEntity<Object> resortStatuses (@RequestBody List<Status> statuses) {
+		return ResponseEntity.ok().body(statusService.getResortedStatuses(statuses));
 	}
 
 }

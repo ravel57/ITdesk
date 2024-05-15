@@ -1,6 +1,5 @@
 package ru.ravel.ItDesk.service;
 
-import com.pengrad.telegrambot.ExceptionHandler;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.TelegramException;
 import com.pengrad.telegrambot.UpdatesListener;
@@ -38,19 +37,19 @@ public class TelegramService {
 		this.clientRepository = clientRepository;
 		telegramRepository.findAll().stream()
 				.map(TgBot::getBot)
-				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot), exceptionHandler)
+				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot)/*, exceptionHandler*/)
 				);
 	}
 
 
 	// FIXME send to front
-	ExceptionHandler exceptionHandler = e -> {
-		if (e.response() != null) {
-			logger.error(String.valueOf(e.response().errorCode()), e.response().description());
-		} else {
-			logger.error(e.getMessage());
-		}
-	};
+//	ExceptionHandler exceptionHandler = e -> {
+//		if (e.response() != null) {
+//			logger.error(String.valueOf(e.response().errorCode()), e.response().description());
+//		} else {
+//			logger.error(e.getMessage());
+//		}
+//	};
 
 
 	public Long sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
@@ -64,7 +63,7 @@ public class TelegramService {
 			return Long.valueOf(messageId);
 		} catch (Exception e) {
 			logger.error(e.getMessage());
-			throw new RuntimeException("Message not delivered");
+			throw new TelegramException(new RuntimeException("Message not delivered"));
 		}
 	}
 
@@ -75,12 +74,12 @@ public class TelegramService {
 
 
 	public TgBot newTelegramBot(@NotNull TgBot tgBot) {
-		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
+		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot())/*, exceptionHandler*/);
 		return telegramRepository.save(tgBot);
 	}
 
 	public TgBot updateTelegramBot(@NotNull TgBot tgBot) {
-		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
+		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot())/*, exceptionHandler*/);
 		return telegramRepository.save(tgBot);
 	}
 

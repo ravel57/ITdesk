@@ -16,7 +16,7 @@ public class StatusService {
 
 
 	public List<Status> getStatuses() {
-		return statusRepository.findAll();
+		return statusRepository.findAll().stream().sorted().toList();
 	}
 
 
@@ -33,6 +33,15 @@ public class StatusService {
 		status.setDefaultSelection(true);
 		statusRepository.save(status);
 		return status;
+	}
+
+	public List<Status> getResortedStatuses(@NotNull List<Status> statuses) {
+		for (int i = 0; i < statuses.size(); i++) {
+			statuses.get(i).setOrderNumber(i);
+		}
+		List<Status> list = statuses.stream().sorted().toList();
+		statusRepository.saveAll(list);
+		return list;
 	}
 
 }

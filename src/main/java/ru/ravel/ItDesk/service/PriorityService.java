@@ -16,7 +16,7 @@ public class PriorityService {
 
 
 	public List<Priority> getPriorities() {
-		return priorityRepository.findAll();
+		return priorityRepository.findAll().stream().sorted().toList();
 	}
 
 
@@ -38,6 +38,16 @@ public class PriorityService {
 		priority.setDefaultSelection(true);
 		priorityRepository.save(priority);
 		return priority;
+	}
+
+
+	public List<Priority> resortPriorities(@NotNull List<Priority> newOrderedPriorities) {
+		List<Priority> priorities = priorityRepository.findAll();
+		for (Priority tag : priorities) {
+			tag.setOrderNumber(newOrderedPriorities.indexOf(tag));
+		}
+		priorityRepository.saveAll(priorities);
+		return priorities.stream().sorted().toList();
 	}
 
 }

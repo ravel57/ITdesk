@@ -35,7 +35,8 @@ public class StatusService {
 		return status;
 	}
 
-	public List<Status> getResortedStatuses(@NotNull List<Status> statuses) {
+
+	public List<Status> resortStatuses(@NotNull List<Status> statuses) {
 		for (int i = 0; i < statuses.size(); i++) {
 			statuses.get(i).setOrderNumber(i);
 		}

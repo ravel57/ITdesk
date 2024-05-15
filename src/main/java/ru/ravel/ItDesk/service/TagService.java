@@ -1,6 +1,7 @@
 package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Tag;
 import ru.ravel.ItDesk.repository.TagRepository;
@@ -15,7 +16,7 @@ public class TagService {
 
 
 	public List<Tag> getTags() {
-		return tagRepository.findAll();
+		return tagRepository.findAll().stream().sorted().toList();
 	}
 
 
@@ -31,5 +32,15 @@ public class TagService {
 
 	public void deleteTag(Long tagId) {
 		tagRepository.deleteById(tagId);
+	}
+
+
+	public List<Tag> resortTags(@NotNull List<Tag> newOrderedTags) {
+		List<Tag> tags = tagRepository.findAll();
+		for (Tag tag : tags) {
+			tag.setOrderNumber(newOrderedTags.indexOf(tag));
+		}
+		tagRepository.saveAll(tags);
+		return tags.stream().sorted().toList();
 	}
 }

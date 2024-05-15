@@ -247,9 +247,33 @@ public class WebApiController {
 	}
 
 
+	@PostMapping("/get-authenticated-users")
+	public ResponseEntity<Object> getAllAuthenticatedUsers () {
+		return ResponseEntity.ok().body(userService.getAllAuthenticatedUsers());
+	}
+
+
 	@PostMapping("/update-status/resort")
 	public ResponseEntity<Object> resortStatuses (@RequestBody List<Status> statuses) {
-		return ResponseEntity.ok().body(statusService.getResortedStatuses(statuses));
+		return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
+	}
+
+
+	@PostMapping("/update-templates/resort")
+	public ResponseEntity<Object> resortTemplates (@RequestBody List<Template> templates) {
+		return ResponseEntity.ok().body(templateService.resortTemplates(templates));
+	}
+
+
+	@PostMapping("/update-tags/resort")
+	public ResponseEntity<Object> resortTags (@RequestBody List<Tag> tags) {
+		return ResponseEntity.ok().body(tagService.resortTags(tags));
+	}
+
+
+	@PostMapping("/update-priorities/resort")
+	public ResponseEntity<Object> resortPriorities (@RequestBody List<Priority> priorities) {
+		return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
 	}
 
 }

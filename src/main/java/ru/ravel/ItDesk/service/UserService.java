@@ -2,6 +2,7 @@ package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.FrontendUser;
@@ -21,14 +22,18 @@ public class UserService {
 
 	private final PasswordEncoder passwordEncoder;
 
+	private final SessionRegistry sessionRegistry;
+
 
 	public List<User> getUsers() {
 		return userRepository.findAll();
 	}
 
+
 	public List<Role> getRoles() {
 		return Arrays.stream(Role.values()).toList();
 	}
+
 
 	public User newUser(@NotNull FrontendUser frontendUser) {
 		User user = User.builder()
@@ -45,6 +50,7 @@ public class UserService {
 		return userRepository.save(user);
 	}
 
+
 	public User updateUser(@NotNull FrontendUser frontendUser) {
 		User savedUser = userRepository.findById(frontendUser.getId()).orElseThrow();
 		User user = User.builder()
@@ -56,5 +62,13 @@ public class UserService {
 				.password(savedUser.getPassword())
 				.build();
 		return userRepository.save(user);
+	}
+
+
+	public List<User> getAllAuthenticatedUsers() {
+		return sessionRegistry.getAllPrincipals().stream()
+				.filter(principal -> principal instanceof User)
+				.map(principal -> (User) principal)
+				.toList();
 	}
 }

@@ -1,10 +1,7 @@
 package ru.ravel.ItDesk.model;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.jetbrains.annotations.NotNull;
 
 
@@ -13,9 +10,11 @@ import org.jetbrains.annotations.NotNull;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Status implements Comparable<Status> {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@EqualsAndHashCode.Include
 	private Long id;
 
 	private String name;
@@ -24,6 +23,7 @@ public class Status implements Comparable<Status> {
 
 	@Column(nullable = false, columnDefinition = "int default 0")
 	private Integer orderNumber;
+
 
 	@Override
 	public int compareTo(@NotNull Status o) {

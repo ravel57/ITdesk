@@ -14,11 +14,19 @@ public class TaskFilterService {
 
 	private final TaskFilterRepository taskFilterRepository;
 
+
 	public List<TaskFilter> getAll() {
 		return taskFilterRepository.findAll();
 	}
 
+
 	public TaskFilter saveTaskFilter(@NotNull TaskFilter taskFilter) {
 		return taskFilterRepository.save(taskFilter);
 	}
+
+
+	public void deleteTaskFilter(Long filterId) {
+		taskFilterRepository.deleteById(filterId);
+	}
+
 }

@@ -87,6 +87,13 @@ public class WebApiController {
 	}
 
 
+	@DeleteMapping("/filter/{filterId}")
+	public ResponseEntity<Object> deleteTaskFilter(@PathVariable Long filterId) {
+		taskFilterService.deleteTaskFilter(filterId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
 	@GetMapping("/tags")
 	public ResponseEntity<Object> getTags() {
 		return ResponseEntity.ok().body(tagService.getTags());

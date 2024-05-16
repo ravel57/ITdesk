@@ -12,10 +12,24 @@ spring:
     hibernate:
       ddl-auto: update
     generate-ddl: true
-  flyway.locations: classpath:db/migration
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+  session:
+    jdbc:
+      flush-mode: on_save
+      table-name: SPRING_SESSION
+      initialize-schema: always
+#  sql:
+#    init:
+#      mode: always
+#      schema-locations: classpath:org/springframework/session/jdbc/schema-postgresql.sql
 
 logging:
   level:
+    org.flywaydb: INFO
     org.hibernate:
       SQL: INFO
     org.springframework:
@@ -32,3 +46,5 @@ logging:
       RequestMappingHandlerMapping: INFO
     org.springframework.web.socket.messaging:
       WebSocketAnnotationMethodMessageHandler: INFO
+    org.springframework.jdbc.core:
+      JdbcTemplate: INFO

@@ -1,8 +1,8 @@
--- INSERT INTO public.t_user (id, firstname, is_account_non_expired, is_account_non_locked, is_credentials_non_expired, is_enabled, lastname, password, username)
--- VALUES (DEFAULT, 'admin', true, true, true, true, null, '$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.', 'admin');
---
--- INSERT INTO public.user_authorities (user_id, authorities)
--- VALUES (1, 0);
+INSERT INTO public.t_user (id, firstname, is_account_non_expired, is_account_non_locked, is_credentials_non_expired, is_enabled, lastname, password, username)
+VALUES (DEFAULT, 'admin', true, true, true, true, null, '$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.', 'admin');
+
+INSERT INTO public.user_authorities (user_id, authorities)
+VALUES (1, 0);
 
 INSERT INTO public.tag (id, description, name)
 VALUES (DEFAULT, null, 'ЭЦП');
@@ -75,3 +75,27 @@ VALUES (DEFAULT, 'Уже решаем', 'решаем');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Не наша зона ответственности', 'немы');
+
+
+CREATE TABLE spring_session (
+                                PRIMARY_ID CHAR(36) NOT NULL,
+                                SESSION_ID CHAR(36) NOT NULL,
+                                CREATION_TIME BIGINT NOT NULL,
+                                LAST_ACCESS_TIME BIGINT NOT NULL,
+                                MAX_INACTIVE_INTERVAL INT NOT NULL,
+                                EXPIRY_TIME BIGINT NOT NULL,
+                                PRINCIPAL_NAME VARCHAR(100),
+                                CONSTRAINT SPRING_SESSION_PK PRIMARY KEY (PRIMARY_ID)
+);
+
+CREATE UNIQUE INDEX SPRING_SESSION_IX1 ON spring_session (SESSION_ID);
+CREATE INDEX SPRING_SESSION_IX2 ON spring_session (EXPIRY_TIME);
+CREATE INDEX SPRING_SESSION_IX3 ON spring_session (PRINCIPAL_NAME);
+
+CREATE TABLE spring_session_attributes (
+                                           SESSION_PRIMARY_ID CHAR(36) NOT NULL,
+                                           ATTRIBUTE_NAME VARCHAR(200) NOT NULL,
+                                           ATTRIBUTE_BYTES BYTEA NOT NULL,
+                                           CONSTRAINT SPRING_SESSION_ATTRIBUTES_PK PRIMARY KEY (SESSION_PRIMARY_ID, ATTRIBUTE_NAME),
+                                           CONSTRAINT SPRING_SESSION_ATTRIBUTES_FK FOREIGN KEY (SESSION_PRIMARY_ID) REFERENCES spring_session(PRIMARY_ID) ON DELETE CASCADE
+);

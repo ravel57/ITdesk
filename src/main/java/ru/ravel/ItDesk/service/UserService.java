@@ -1,8 +1,9 @@
 package ru.ravel.ItDesk.service;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
-import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.FrontendUser;
@@ -10,8 +11,7 @@ import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.repository.UserRepository;
 
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 
 @Service
@@ -19,10 +19,10 @@ import java.util.List;
 public class UserService {
 
 	private final UserRepository userRepository;
-
 	private final PasswordEncoder passwordEncoder;
 
-	private final SessionRegistry sessionRegistry;
+	@Getter
+	private final Set<User> usersOnline = new HashSet<>();
 
 
 	public List<User> getUsers() {
@@ -65,10 +65,30 @@ public class UserService {
 	}
 
 
-	public List<User> getAllAuthenticatedUsers() {
-		return sessionRegistry.getAllPrincipals().stream()
-				.filter(principal -> principal instanceof User)
-				.map(principal -> (User) principal)
-				.toList();
+	public User getUserByUsername(@NotNull String username) {
+		return userRepository.findByUsername(username).orElseThrow();
 	}
+
+
+	public User getCurrentUser() {
+		String username = SecurityContextHolder.getContext().getAuthentication().getName();
+		return getUsers().stream()
+				.filter(it -> it.getUsername().equals(username))
+				.findFirst()
+				.orElseThrow();
+	}
+
+
+	public User userOnline() {
+		User currentUser = getCurrentUser();
+		usersOnline.add(currentUser);
+		return currentUser;
+	}
+
+
+	public User userOffline(User user) {
+		usersOnline.remove(user);
+		return user;
+	}
+
 }

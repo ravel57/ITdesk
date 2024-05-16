@@ -11,9 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class ItDeskApplication {
 
 	public static void main(String[] args) {
-		ConfigurableApplicationContext context = SpringApplication.run(ItDeskApplication.class, args);
-		Flyway flyway = context.getBean(Flyway.class);
-		flyway.migrate();
+		SpringApplication.run(ItDeskApplication.class, args);
 	}
 
 }

@@ -50,12 +50,7 @@ public class ClientService {
 
 	public boolean newMessage(Long clientId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
-		String username = SecurityContextHolder.getContext().getAuthentication().getName();
-		User user = userService.getUsers().stream()
-				.filter(it -> it.getUsername().equals(username))
-				.findFirst()
-				.orElseThrow();
-		message.setUser(user);
+		message.setUser(userService.getCurrentUser());
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {

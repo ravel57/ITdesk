@@ -27,6 +27,18 @@ public class WebApiController {
 	private final TemplateService templateService;
 
 
+	@PostMapping("/user-online")
+	ResponseEntity<Object> userOnline() {
+		return ResponseEntity.ok(userService.userOnline());
+	}
+
+
+	@PostMapping("/user-offline")
+	ResponseEntity<Object> userOffline(@RequestBody User user) {
+		return ResponseEntity.ok(userService.userOffline(user));
+	}
+
+
 	@GetMapping("/clients")
 	public ResponseEntity<Object> getClients() {
 		return ResponseEntity.ok().body(clientService.getClients());
@@ -249,7 +261,7 @@ public class WebApiController {
 
 	@PostMapping("/get-authenticated-users")
 	public ResponseEntity<Object> getAllAuthenticatedUsers () {
-		return ResponseEntity.ok().body(userService.getAllAuthenticatedUsers());
+		return ResponseEntity.ok().body(userService.getUsersOnline());
 	}
 
 

@@ -34,8 +34,9 @@ public class WebApiController {
 
 
 	@PostMapping("/user-offline")
-	ResponseEntity<Object> userOffline(@RequestBody User user) {
-		return ResponseEntity.ok(userService.userOffline(user));
+	ResponseEntity<Object> userOffline() {
+		userService.userOffline();
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 
 

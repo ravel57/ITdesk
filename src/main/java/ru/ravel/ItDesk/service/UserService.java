@@ -86,9 +86,8 @@ public class UserService {
 	}
 
 
-	public User userOffline(User user) {
-		usersOnline.remove(user);
-		return user;
+	public void userOffline() {
+		usersOnline.remove(getCurrentUser());
 	}
 
 }

@@ -21,7 +21,7 @@ spring:
     jdbc:
       flush-mode: on_save
       table-name: SPRING_SESSION
-      initialize-schema: always
+      initialize-schema: never
 #  sql:
 #    init:
 #      mode: always

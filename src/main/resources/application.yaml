@@ -22,10 +22,6 @@ spring:
       flush-mode: on_save
       table-name: SPRING_SESSION
       initialize-schema: always
-#  sql:
-#    init:
-#      mode: always
-#      schema-locations: classpath:org/springframework/session/jdbc/schema-postgresql.sql
 
 logging:
   level:

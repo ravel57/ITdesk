@@ -21,6 +21,7 @@ public class PriorityService {
 
 
 	public Priority newPriority(Priority priority) {
+		priority.setOrderNumber(getPriorities().size() + 1);
 		return priorityRepository.save(priority);
 	}
 

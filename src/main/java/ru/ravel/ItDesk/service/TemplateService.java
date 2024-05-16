@@ -21,6 +21,7 @@ public class TemplateService {
 
 
 	public Template newTemplate(Template template) {
+		template.setOrderNumber(getTemplates().size() + 1);
 		return templateRepository.save(template);
 	}
 

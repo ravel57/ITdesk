@@ -21,6 +21,7 @@ public class TagService {
 
 
 	public Tag newTag(Tag tag) {
+		tag.setOrderNumber(getTags().size() + 1);
 		return tagRepository.save(tag);
 	}
 

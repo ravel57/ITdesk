@@ -209,6 +209,19 @@ public class WebApiController {
 	}
 
 
+	@PostMapping("/update-status")
+	public ResponseEntity<Object> updateStatus(@RequestBody Status status) {
+		return ResponseEntity.ok().body(statusService.updateStatus(status));
+	}
+
+
+	@DeleteMapping("/status/{statusId}")
+	public ResponseEntity<Object> deleteStatus(@PathVariable Long statusId) {
+		statusService.deleteStatus(statusId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
 	@PostMapping("/new-priority")
 	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.newPriority(priority));

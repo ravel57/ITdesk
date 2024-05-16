@@ -20,8 +20,19 @@ public class StatusService {
 	}
 
 
-	public Status newStatus(Status status) {
+	public Status newStatus(@NotNull Status status) {
+		status.setOrderNumber(getStatuses().size() + 1);
 		return statusRepository.save(status);
+	}
+
+
+	public Status updateStatus(Status status) {
+		return statusRepository.save(status);
+	}
+
+
+	public void deleteStatus(Long statusId) {
+		statusRepository.deleteById(statusId);
 	}
 
 

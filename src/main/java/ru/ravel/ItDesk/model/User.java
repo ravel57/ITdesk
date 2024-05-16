@@ -33,6 +33,9 @@ public class User implements UserDetails {
 	private String password;
 
 	@ElementCollection(fetch = FetchType.EAGER)
+	@Enumerated(EnumType.ORDINAL)
+	@CollectionTable(name = "user_authorities", joinColumns = @JoinColumn(name = "user_id"))
+	@Column(name = "authorities")
 	private List<Role> authorities;
 
 	@ManyToMany(fetch = FetchType.EAGER)

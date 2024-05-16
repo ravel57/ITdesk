@@ -1,19 +1,24 @@
 package ru.ravel.ItDesk.service;
 
-import com.pengrad.telegrambot.TelegramException;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.ClientUser;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
-import ru.ravel.ItDesk.repository.*;
+import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.repository.MessageRepository;
+import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 @Service
@@ -27,6 +32,7 @@ public class ClientService {
 	private final UserService userService;
 	private final OrganizationService organizationService;
 
+	private volatile Map<ClientUser, ExecutorService> clientUserMap = new ConcurrentHashMap<>();
 
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
@@ -48,6 +54,7 @@ public class ClientService {
 		return taskRepository.save(task);
 	}
 
+
 	public boolean newMessage(Long clientId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
@@ -66,6 +73,7 @@ public class ClientService {
 		return true;
 	}
 
+
 	public Client markRead(Long clientId) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		messageRepository.saveAll(client.getMessages().stream()
@@ -74,6 +82,7 @@ public class ClientService {
 				.toList());
 		return client;
 	}
+
 
 	public Client updateClient(Long clientId, @NotNull Map<String, Object> c) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
@@ -86,4 +95,43 @@ public class ClientService {
 		clientsRepository.save(client);
 		return client;
 	}
+
+
+	public void typing(@NotNull ClientUser clientUser) throws ExecutionException, InterruptedException {
+		ExecutorService pool = clientUserMap.get(clientUser);
+		if (pool != null) {
+			pool.shutdownNow();
+		}
+		pool = Executors.newSingleThreadExecutor();
+		clientUserMap.put(clientUser, pool);
+		pool.submit(new ClientWaiter(clientUser.getClient(), clientUser.getUser(), clientsRepository));
+	}
+
+	private static class ClientWaiter implements Runnable {
+		Client client;
+		User user;
+		ClientRepository clientRepository;
+
+		public ClientWaiter(Client client, User user, ClientRepository clientRepository) {
+			this.client = client;
+			this.user = user;
+			this.clientRepository = clientRepository;
+		}
+
+		@Override
+		public void run() {
+			client.getTypingUsers().add(user);
+			clientRepository.save(client);
+			System.out.printf("added %d\n", Thread.currentThread().getId());
+			try {
+				Thread.sleep(7_500);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+			client.getTypingUsers().remove(user);
+			clientRepository.save(client);
+			System.out.printf("stopped %d\n", Thread.currentThread().getId());
+		}
+	}
+
 }

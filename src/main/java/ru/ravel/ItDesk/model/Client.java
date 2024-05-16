@@ -6,8 +6,8 @@ import lombok.*;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 
 @Data
@@ -55,4 +55,8 @@ public class Client {
 	@ManyToOne(fetch = FetchType.EAGER)
 	@OnDelete(action = OnDeleteAction.CASCADE)
 	private TgBot tgBot;
+
+	//FIXME придумать как получать его не из репозитория для SchedulerService
+	@ManyToMany(fetch = FetchType.EAGER)
+	private Set<User> typingUsers = new ConcurrentSkipListSet<>();
 }

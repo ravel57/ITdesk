@@ -3,8 +3,10 @@ package ru.ravel.ItDesk.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
+import org.hibernate.type.SqlTypes;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -57,5 +59,10 @@ public class Client {
 	private TgBot tgBot;
 
 	@Transient
+	@Builder.Default
 	private Set<User> typingUsers = new ConcurrentSkipListSet<>();
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Builder.Default
+	private Map<Long, String> typingMessageText = new HashMap<>();
 }

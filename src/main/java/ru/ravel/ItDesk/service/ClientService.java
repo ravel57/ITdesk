@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import ru.ravel.ItDesk.dto.ClientUser;
+import ru.ravel.ItDesk.dto.ClientUserText;
 import ru.ravel.ItDesk.dto.ExecuteFuture;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
@@ -16,10 +16,7 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.ZonedDateTime;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 
@@ -35,7 +32,7 @@ public class ClientService {
 	private final UserService userService;
 	private final OrganizationService organizationService;
 
-	private final Map<ClientUser, ExecuteFuture> clientUserMapExecutorServices = new ConcurrentHashMap<>();
+	private final Map<ClientUserText, ExecuteFuture> clientUserMapExecutorServices = new ConcurrentHashMap<>();
 	private final Map<Client, Set<User>> typingUsers = new ConcurrentHashMap<>();
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -46,11 +43,7 @@ public class ClientService {
 		clients.forEach(client -> {
 			client.getMessages().sort(Message::compareTo);
 			Set<User> userSet = typingUsers.get(client);
-			if (userSet != null) {
-				client.setTypingUsers(userSet);
-			} else {
-				client.setTypingUsers(Collections.emptySet());
-			}
+			client.setTypingUsers(Objects.requireNonNullElse(userSet, Collections.emptySet()));
 		});
 		return clients;
 	}
@@ -112,15 +105,17 @@ public class ClientService {
 	}
 
 
-	public void typing(@NotNull ClientUser clientUser) {
-		ExecuteFuture executeFuture = clientUserMapExecutorServices.get(clientUser);
+	public void typing(@NotNull ClientUserText clientUserText) {
+		clientUserText.getClient().getTypingMessageText().put(clientUserText.getUser().getId(), clientUserText.getText());
+		clientsRepository.save(clientUserText.getClient());
+		ExecuteFuture executeFuture = clientUserMapExecutorServices.get(clientUserText);
 		if (executeFuture != null) {
-			clientUserMapExecutorServices.get(clientUser).getFuture().cancel(true);
+			clientUserMapExecutorServices.get(clientUserText).getFuture().cancel(true);
 		} else {
 			executeFuture = new ExecuteFuture();
-			clientUserMapExecutorServices.put(clientUser, executeFuture);
+			clientUserMapExecutorServices.put(clientUserText, executeFuture);
 		}
-		ClientTypingWaiter task = new ClientTypingWaiter(clientUser.getClient(), clientUser.getUser(), typingUsers, logger);
+		ClientTypingWaiter task = new ClientTypingWaiter(clientUserText.getClient(), clientUserText.getUser(), typingUsers, logger);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 	}
 

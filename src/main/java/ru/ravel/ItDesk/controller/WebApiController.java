@@ -54,7 +54,7 @@ public class WebApiController {
 
 	@PostMapping("/client/{clientId}/update-task")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
-		return ResponseEntity.ok().body(clientService.updateTask(clientId, task));
+		return ResponseEntity.ok().body(clientService.updateTask(task));
 	}
 
 

@@ -56,7 +56,6 @@ public class Client {
 	@OnDelete(action = OnDeleteAction.CASCADE)
 	private TgBot tgBot;
 
-	//FIXME придумать как получать его не из репозитория для SchedulerService
-	@ManyToMany(fetch = FetchType.EAGER)
+	@Transient
 	private Set<User> typingUsers = new ConcurrentSkipListSet<>();
 }

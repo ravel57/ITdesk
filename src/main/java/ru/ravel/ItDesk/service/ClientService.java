@@ -2,8 +2,11 @@ package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientUser;
+import ru.ravel.ItDesk.dto.ExecuteFuture;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Task;
@@ -13,12 +16,12 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.ZonedDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 
 @Service
@@ -32,11 +35,23 @@ public class ClientService {
 	private final UserService userService;
 	private final OrganizationService organizationService;
 
-	private volatile Map<ClientUser, ExecutorService> clientUserMap = new ConcurrentHashMap<>();
+	private final Map<ClientUser, ExecuteFuture> clientUserMapExecutorServices = new ConcurrentHashMap<>();
+	private final Map<Client, Set<User>> typingUsers = new ConcurrentHashMap<>();
+
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
+
 
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
-		clients.forEach(it -> it.getMessages().sort(Message::compareTo));
+		clients.forEach(client -> {
+			client.getMessages().sort(Message::compareTo);
+			Set<User> userSet = typingUsers.get(client);
+			if (userSet != null) {
+				client.setTypingUsers(userSet);
+			} else {
+				client.setTypingUsers(Collections.emptySet());
+			}
+		});
 		return clients;
 	}
 
@@ -50,7 +65,7 @@ public class ClientService {
 	}
 
 
-	public Task updateTask(Long clientId, Task task) {
+	public Task updateTask(Task task) {
 		return taskRepository.save(task);
 	}
 
@@ -97,40 +112,39 @@ public class ClientService {
 	}
 
 
-	public void typing(@NotNull ClientUser clientUser) throws ExecutionException, InterruptedException {
-		ExecutorService pool = clientUserMap.get(clientUser);
-		if (pool != null) {
-			pool.shutdownNow();
+	public void typing(@NotNull ClientUser clientUser) {
+		ExecuteFuture executeFuture = clientUserMapExecutorServices.get(clientUser);
+		if (executeFuture != null) {
+			clientUserMapExecutorServices.get(clientUser).getFuture().cancel(true);
+		} else {
+			executeFuture = new ExecuteFuture();
+			clientUserMapExecutorServices.put(clientUser, executeFuture);
 		}
-		pool = Executors.newSingleThreadExecutor();
-		clientUserMap.put(clientUser, pool);
-		pool.submit(new ClientWaiter(clientUser.getClient(), clientUser.getUser(), clientsRepository));
+		ClientTypingWaiter task = new ClientTypingWaiter(clientUser.getClient(), clientUser.getUser(), typingUsers, logger);
+		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 	}
 
-	private static class ClientWaiter implements Runnable {
-		Client client;
-		User user;
-		ClientRepository clientRepository;
-
-		public ClientWaiter(Client client, User user, ClientRepository clientRepository) {
-			this.client = client;
-			this.user = user;
-			this.clientRepository = clientRepository;
-		}
-
+	private record ClientTypingWaiter(
+			Client client,
+			User user,
+			Map<Client, Set<User>> typingUsers,
+			Logger logger
+	) implements Runnable {
 		@Override
 		public void run() {
-			client.getTypingUsers().add(user);
-			clientRepository.save(client);
-			System.out.printf("added %d\n", Thread.currentThread().getId());
-			try {
-				Thread.sleep(7_500);
-			} catch (InterruptedException e) {
-				throw new RuntimeException(e);
+			Set<User> users = typingUsers.get(client);
+			if (users == null) {
+				ConcurrentSkipListSet<User> listSet = new ConcurrentSkipListSet<>();
+				listSet.add(user);
+				typingUsers.put(client, listSet);
+			} else {
+				users.add(user);
 			}
-			client.getTypingUsers().remove(user);
-			clientRepository.save(client);
-			System.out.printf("stopped %d\n", Thread.currentThread().getId());
+			try {
+				Thread.sleep(30_000);
+				typingUsers.get(client).remove(user);
+			} catch (InterruptedException ignored) {
+			}
 		}
 	}
 

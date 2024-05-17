@@ -63,7 +63,7 @@ public class ClientService {
 	}
 
 
-	public boolean newMessage(Long clientId, @NotNull Message message) {
+	public boolean sendMessage(Long clientId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
 		messageRepository.save(message);
@@ -106,8 +106,9 @@ public class ClientService {
 
 
 	public void typing(@NotNull ClientUserText clientUserText) {
-		clientUserText.getClient().getTypingMessageText().put(clientUserText.getUser().getId(), clientUserText.getText());
-		clientsRepository.save(clientUserText.getClient());
+		Client	client = clientsRepository.findById(clientUserText.getClient().getId()).orElseThrow();
+		client.getTypingMessageText().put(clientUserText.getUser().getId(), clientUserText.getText());
+		clientsRepository.save(client);
 		ExecuteFuture executeFuture = clientUserMapExecutorServices.get(clientUserText);
 		if (executeFuture != null) {
 			clientUserMapExecutorServices.get(clientUserText).getFuture().cancel(true);
@@ -115,7 +116,7 @@ public class ClientService {
 			executeFuture = new ExecuteFuture();
 			clientUserMapExecutorServices.put(clientUserText, executeFuture);
 		}
-		ClientTypingWaiter task = new ClientTypingWaiter(clientUserText.getClient(), clientUserText.getUser(), typingUsers, logger);
+		ClientTypingWaiter task = new ClientTypingWaiter(client, clientUserText.getUser(), typingUsers, logger);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 	}
 

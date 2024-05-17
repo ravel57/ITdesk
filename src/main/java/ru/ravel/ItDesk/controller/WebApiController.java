@@ -60,7 +60,7 @@ public class WebApiController {
 
 	@PostMapping("/client/{clientId}/new-message")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
-		boolean isMessageDelivered = clientService.newMessage(clientId, message);
+		boolean isMessageDelivered = clientService.sendMessage(clientId, message);
 		if(isMessageDelivered) {
 			return ResponseEntity.ok().body(true);
 		} else {

@@ -8,18 +8,26 @@ import org.springframework.stereotype.Controller;
 import ru.ravel.ItDesk.dto.ClientUserText;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.service.ClientService;
+import ru.ravel.ItDesk.service.UserService;
 
 @Controller
 @RequiredArgsConstructor
 public class WebSocketController {
 
 	private final ClientService clientService;
+	private final UserService userService;
 
 
 	@MessageMapping("/mark-read")
 	@SendTo("/topic/mark-read")
 	public Client markRead(String clientId) {
 		return clientService.markRead(Long.valueOf(clientId));
+	}
+
+
+	@MessageMapping("/user-online")
+	public void userOnline() {
+		userService.userOnline();
 	}
 
 

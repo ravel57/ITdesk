@@ -74,7 +74,7 @@ class WebSecurityConfig {
 						.logoutSuccessUrl("/logout")
 						.invalidateHttpSession(true)
 						.deleteCookies("JSESSIONID")
-						.logoutSuccessHandler((request, response, authentication) -> userService.userOffline())
+//						.logoutSuccessHandler((request, response, authentication) -> userService.userOffline()) // FIXME
 						.permitAll())
 				.requestCache(cache -> cache.requestCache(requestCache))
 				.build();

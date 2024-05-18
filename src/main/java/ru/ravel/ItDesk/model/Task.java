@@ -44,4 +44,6 @@ public class Task {
 	private ZonedDateTime createdAt;
 
 	private ZonedDateTime deadline;
+
+	private Long linkedMessageId;
 }

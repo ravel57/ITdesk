@@ -86,8 +86,13 @@ public class UserService {
 	}
 
 
-	public void userOffline() {
-		usersOnline.remove(getCurrentUser());
+	public void userOnline(@NotNull User user) {
+		userRepository.findById(user.getId()).ifPresent(usersOnline::add);
+	}
+
+
+	public void userOffline(@NotNull User user) {
+		userRepository.findById(user.getId()).ifPresent(usersOnline::remove);
 	}
 
 }

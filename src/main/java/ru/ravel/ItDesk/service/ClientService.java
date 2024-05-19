@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientUserText;
 import ru.ravel.ItDesk.dto.ExecuteFuture;
+import ru.ravel.ItDesk.dto.MessageTask;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Task;
@@ -118,6 +119,14 @@ public class ClientService {
 		}
 		ClientTypingWaiter task = new ClientTypingWaiter(client, clientUserText.getUser(), typingUsers, logger);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
+	}
+
+
+	public MessageTask linkToTask(@NotNull MessageTask messageTask) {
+		Task task = taskRepository.findById(messageTask.getTask().getId()).orElseThrow();
+		task.setLinkedMessageId(messageTask.getMessage().getId());
+		taskRepository.save(task);
+		return messageTask;
 	}
 
 	private record ClientTypingWaiter(

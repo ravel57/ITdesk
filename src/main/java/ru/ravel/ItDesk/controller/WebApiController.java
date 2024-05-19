@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.ravel.ItDesk.dto.MessageTask;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
@@ -72,6 +73,12 @@ public class WebApiController {
 	@PostMapping("/client/{clientId}/update-client")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		return ResponseEntity.ok().body(clientService.updateClient(clientId, client));
+	}
+
+
+	@PostMapping("/client/{clientId}/link-message-to-task")
+	public ResponseEntity<Object> linkMessageToTask (@PathVariable Long clientId, @RequestBody MessageTask messageTask) {
+		return ResponseEntity.ok().body(clientService.linkToTask(messageTask));
 	}
 
 

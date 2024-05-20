@@ -63,7 +63,7 @@ public class WebApiController {
 	@PostMapping("/client/{clientId}/new-message")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
 		boolean isMessageDelivered = clientService.sendMessage(clientId, message);
-		if(isMessageDelivered) {
+		if (isMessageDelivered) {
 			return ResponseEntity.ok().body(true);
 		} else {
 			return ResponseEntity.status(HttpStatus.CONFLICT).build();
@@ -78,8 +78,19 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/link-message-to-task")
-	public ResponseEntity<Object> linkMessageToTask (@PathVariable Long clientId, @RequestBody MessageTask messageTask) {
+	public ResponseEntity<Object> linkMessageToTask(@PathVariable Long clientId, @RequestBody MessageTask messageTask) {
 		return ResponseEntity.ok().body(clientService.linkToTask(messageTask));
+	}
+
+
+	@DeleteMapping("/client/{clientId}/delete-message/{messageId}")
+	public ResponseEntity<Object> deleteMessage(@PathVariable Long clientId, @PathVariable Long messageId) {
+		boolean isDeleted = clientService.deleteMessage(clientId, messageId);
+		if (isDeleted) {
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} else {
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+		}
 	}
 
 
@@ -295,31 +306,31 @@ public class WebApiController {
 
 
 	@PostMapping("/get-authenticated-users")
-	public ResponseEntity<Object> getAllAuthenticatedUsers () {
+	public ResponseEntity<Object> getAllAuthenticatedUsers() {
 		return ResponseEntity.ok().body(userService.getUsersOnline());
 	}
 
 
 	@PostMapping("/update-status/resort")
-	public ResponseEntity<Object> resortStatuses (@RequestBody List<Status> statuses) {
+	public ResponseEntity<Object> resortStatuses(@RequestBody List<Status> statuses) {
 		return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
 	}
 
 
 	@PostMapping("/update-templates/resort")
-	public ResponseEntity<Object> resortTemplates (@RequestBody List<Template> templates) {
+	public ResponseEntity<Object> resortTemplates(@RequestBody List<Template> templates) {
 		return ResponseEntity.ok().body(templateService.resortTemplates(templates));
 	}
 
 
 	@PostMapping("/update-tags/resort")
-	public ResponseEntity<Object> resortTags (@RequestBody List<Tag> tags) {
+	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		return ResponseEntity.ok().body(tagService.resortTags(tags));
 	}
 
 
 	@PostMapping("/update-priorities/resort")
-	public ResponseEntity<Object> resortPriorities (@RequestBody List<Priority> priorities) {
+	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
 		return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
 	}
 

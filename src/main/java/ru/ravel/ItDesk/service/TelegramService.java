@@ -52,7 +52,7 @@ public class TelegramService {
 //	};
 
 
-	public Long sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
+	public Integer sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
 		TelegramBot bot = client.getTgBot().getBot();
 		try {
 			Integer messageId = new MessageBuilder(bot)
@@ -60,7 +60,7 @@ public class TelegramService {
 					.telegramId(client.getTelegramId())
 					.text(message.getText())
 					.execute();
-			return Long.valueOf(messageId);
+			return messageId;
 		} catch (Exception e) {
 			logger.error(e.getMessage());
 			throw new TelegramException(new RuntimeException("Message not delivered"));
@@ -78,13 +78,30 @@ public class TelegramService {
 		return telegramRepository.save(tgBot);
 	}
 
+
 	public TgBot updateTelegramBot(@NotNull TgBot tgBot) {
 		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot())/*, exceptionHandler*/);
 		return telegramRepository.save(tgBot);
 	}
 
+
 	public void deleteTelegramBot(Long tgBotId) {
 		telegramRepository.deleteById(tgBotId);
+	}
+
+
+	public void deleteMessage(@NotNull Client client, Message message) throws TelegramException {
+		TelegramBot bot = client.getTgBot().getBot();
+		try {
+			new MessageBuilder(bot)
+					.delete()
+					.telegramId(client.getTelegramId())
+					.messageId(message.getMessengerMessageId())
+					.execute();
+		} catch (Exception e) {
+			logger.error(e.getMessage());
+			throw new TelegramException(new RuntimeException("Message not deleted"));
+		}
 	}
 
 
@@ -107,7 +124,7 @@ public class TelegramService {
 							.isSent(false)
 							.isComment(false)
 							.isRead(false)
-							.messengerMessageId(Long.valueOf(update.message().messageId()))
+							.messengerMessageId(update.message().messageId())
 							.build();
 					messageRepository.save(message);
 					if (client == null) {

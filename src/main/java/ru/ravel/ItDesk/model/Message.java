@@ -36,7 +36,10 @@ public class Message implements Comparable<Message> {
 	@Builder.Default
 	private boolean isComment = false;
 
-	private Long messengerMessageId;
+	private Integer messengerMessageId;
+
+	@Builder.Default
+	private Boolean deleted = false;
 
 	@Override
 	public int compareTo(@NotNull Message o) {

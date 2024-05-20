@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.service;
 
+import com.pengrad.telegrambot.TelegramException;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -71,7 +72,7 @@ public class ClientService {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {
 			try {
-				Long messageId = telegramService.sendMessage(client, message);
+				Integer messageId = telegramService.sendMessage(client, message);
 				message.setMessengerMessageId(messageId);
 			} catch (Exception e) {
 				return false;
@@ -127,6 +128,19 @@ public class ClientService {
 		task.setLinkedMessageId(messageTask.getMessage().getId());
 		taskRepository.save(task);
 		return messageTask;
+	}
+
+	public boolean deleteMessage(Long clientId, Long messageId) {
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Message message = messageRepository.findById(messageId).orElseThrow();
+		try {
+			telegramService.deleteMessage(client, message);
+			message.setDeleted(true);
+			messageRepository.save(message);
+			return true;
+		} catch (TelegramException e) {
+			return false;
+		}
 	}
 
 	private record ClientTypingWaiter(

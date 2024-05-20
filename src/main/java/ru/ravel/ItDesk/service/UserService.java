@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.model.FrontendUser;
 import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.User;
@@ -65,11 +66,6 @@ public class UserService {
 	}
 
 
-	public User getUserByUsername(@NotNull String username) {
-		return userRepository.findByUsername(username).orElseThrow();
-	}
-
-
 	public User getCurrentUser() {
 		String username = SecurityContextHolder.getContext().getAuthentication().getName();
 		return getUsers().stream()
@@ -95,4 +91,9 @@ public class UserService {
 		userRepository.findById(user.getId()).ifPresent(usersOnline::remove);
 	}
 
+	public User changePassword(@NotNull Password password) {
+		User user = getCurrentUser();
+		user.setPassword(passwordEncoder.encode(password.getPassword()));
+		return user;
+	}
 }

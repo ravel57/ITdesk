@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.dto.MessageTask;
+import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
@@ -116,6 +117,12 @@ public class WebApiController {
 	@GetMapping("/users")
 	public ResponseEntity<Object> getUsers() {
 		return ResponseEntity.ok().body(userService.getUsers());
+	}
+
+
+	@PostMapping("/user/change-password")
+	public ResponseEntity<Object> changePassword(@RequestBody Password password) {
+		return ResponseEntity.ok().body(userService.changePassword(password));
 	}
 
 

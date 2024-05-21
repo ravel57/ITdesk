@@ -32,7 +32,7 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
-      - SPRING_DATASOURCE_URL=http://minio:9009
+      - MINIO_URL=http://minio:9009
     command: server /data --console-address ":9009"
     volumes:
       - /srv/minio:/bitnami/minio/data

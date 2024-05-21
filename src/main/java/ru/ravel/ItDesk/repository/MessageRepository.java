@@ -7,4 +7,5 @@ import ru.ravel.ItDesk.model.Message;
 
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
+	Message findByFileUuid(String fileUuid);
 }

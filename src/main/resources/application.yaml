@@ -1,7 +1,8 @@
 server:
   port: 8080
   servlet.session.timeout: 4320
-  
+  tomcat.max-swallow-size: 512MB
+
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL}
@@ -22,6 +23,10 @@ spring:
       flush-mode: on_save
       table-name: SPRING_SESSION
       initialize-schema: always
+  servlet:
+    multipart:
+      max-file-size: 512MB
+      max-request-size: 512MB
 
 minio:
   url: ${MINIO_URL}

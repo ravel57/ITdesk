@@ -6,6 +6,8 @@ import com.pengrad.telegrambot.UpdatesListener;
 import com.pengrad.telegrambot.model.PhotoSize;
 import com.pengrad.telegrambot.model.Update;
 import com.pengrad.telegrambot.request.GetFile;
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,8 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TelegramRepository;
 import ru.ravel.ItDesk.telegrammessagebuilder.MessageBuilder;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -62,7 +66,29 @@ public class TelegramService {
 
 	public Integer sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
 		TelegramBot bot = client.getTgBot().getBot();
-		try {
+		try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
+			if (message.getFileUuid() != null) {
+				GetObjectResponse getObjectResponse = minioClient.getObject(
+						GetObjectArgs.builder()
+								.bucket(bucketName)
+								.object(message.getFileUuid())
+								.build());
+				byte[] buf = new byte[8192];
+				int bytesRead;
+				while ((bytesRead = getObjectResponse.read(buf)) != -1) {
+					fos.write(buf, 0, bytesRead);
+				}
+				File file = new File(message.getFileName());
+				Integer messageId = new MessageBuilder(bot)
+						.document()
+						.telegramId(client.getTelegramId())
+						.file(file)
+						.execute();
+				boolean delete = file.delete();
+				if (message.getText().isEmpty()) {
+					return messageId;
+				}
+			}
 			return new MessageBuilder(bot)
 					.send()
 					.telegramId(client.getTelegramId())
@@ -70,7 +96,7 @@ public class TelegramService {
 					.execute();
 		} catch (Exception e) {
 			logger.error(e.getMessage());
-			throw new TelegramException(new RuntimeException("Message not delivered"));
+			throw new TelegramException(new RuntimeException(e.getMessage()));
 		}
 	}
 
@@ -170,6 +196,15 @@ public class TelegramService {
 			} else if (update.message().voice() != null) {
 				request = new GetFile(update.message().voice().fileId());
 				type = update.message().voice().mimeType();
+			} else if (update.message().sticker() != null) {
+				request = new GetFile(update.message().sticker().fileId());
+				if (update.message().sticker().isVideo()) {
+					type = "video/webm";
+				} else if (update.message().sticker().isAnimated()) {
+					type = null;    // FIXME
+				} else {
+					type = MediaType.IMAGE_PNG_VALUE;
+				}
 			} else {
 				return;
 			}
@@ -185,7 +220,9 @@ public class TelegramService {
 						.contentType(type)
 						.build());
 				inputStream.close();
-				message.setText(update.message().caption());
+				if (update.message().caption() != null) {
+					message.setText(update.message().caption());
+				}
 				message.setFileType(type);
 				message.setFileUuid(uuid);
 			} catch (Exception e) {

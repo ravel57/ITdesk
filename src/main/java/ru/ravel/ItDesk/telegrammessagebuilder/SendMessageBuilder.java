@@ -1,6 +1,7 @@
 package ru.ravel.ItDesk.telegrammessagebuilder;
 
 import com.pengrad.telegrambot.TelegramBot;
+import com.pengrad.telegrambot.TelegramException;
 import com.pengrad.telegrambot.model.request.InlineKeyboardButton;
 import com.pengrad.telegrambot.model.request.InlineKeyboardMarkup;
 import com.pengrad.telegrambot.model.request.ParseMode;
@@ -59,7 +60,7 @@ public class SendMessageBuilder extends MessageBuilder {
 		return this;
 	}
 
-	public Integer execute() throws NoSuchFieldException {
+	public Integer execute() throws NoSuchFieldException, TelegramException {
 		if (telegramId == null || text == null) {
 			throw new NoSuchFieldException();
 		}
@@ -83,11 +84,11 @@ public class SendMessageBuilder extends MessageBuilder {
 			message.parseMode(parseMode);
 		}
 
-		SendResponse response = (SendResponse) bot.execute(message);
+		SendResponse response = bot.execute(message);
 		if (response.isOk()) {
 			return response.message().messageId();
 		} else {
-			throw new RuntimeException(response.description());
+			throw new TelegramException(new RuntimeException(response.description()));
 		}
 	}
 }

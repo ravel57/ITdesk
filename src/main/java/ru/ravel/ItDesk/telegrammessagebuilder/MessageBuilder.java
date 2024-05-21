@@ -27,4 +27,8 @@ public class MessageBuilder {
 		return new DeleteMessageBuilder(bot);
 	}
 
+	public DocumentMessageBuilder document() {
+		return new DocumentMessageBuilder(bot);
+	}
+
 }

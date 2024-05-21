@@ -17,12 +17,12 @@ public class MinioRunner implements CommandLineRunner {
 	private final MinioClient minioClient;
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	@Value("minio.bucketName")
+	@Value("${minio.bucket-name}")
 	String bucketName;
 
 
 	@Override
-	public void run(String... args) throws Exception {
+	public void run(String... args)  {
 		try {
 			boolean isExist = minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build());
 			if (isExist) {

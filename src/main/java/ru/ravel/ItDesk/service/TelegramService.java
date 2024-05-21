@@ -44,7 +44,7 @@ public class TelegramService {
 	private final MessageRepository messageRepository;
 	private final MinioClient minioClient;
 
-	@Value("minio.bucketName")
+	@Value("${minio.bucket-name}")
 	private String bucketName;
 
 

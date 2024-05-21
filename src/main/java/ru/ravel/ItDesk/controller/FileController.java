@@ -24,7 +24,7 @@ public class FileController {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final MinioClient minioClient;
-	@Value("minio.bucketName")
+	@Value("${minio.bucket-name}")
 	String bucketName;
 
 

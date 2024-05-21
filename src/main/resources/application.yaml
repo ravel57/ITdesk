@@ -27,7 +27,7 @@ minio:
   url: ${MINIO_URL}
   accessKey: minioadmin
   secretKey: minioadmin
-  bucketName: main
+  bucket-name: main
 
 logging:
   level:

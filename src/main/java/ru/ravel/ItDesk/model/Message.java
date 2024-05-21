@@ -41,6 +41,12 @@ public class Message implements Comparable<Message> {
 	@Builder.Default
 	private Boolean deleted = false;
 
+	private String fileName;
+
+	private String fileType;
+
+	private String fileUuid;
+
 	@Override
 	public int compareTo(@NotNull Message o) {
 		return getDate().compareTo(o.getDate());

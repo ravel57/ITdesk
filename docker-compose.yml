@@ -20,6 +20,21 @@ services:
       - '56481:443'
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/
+  minio:
+    image: minio/minio:latest
+    restart: always
+    hostname: minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+      - SPRING_DATASOURCE_URL=http://minio:9001
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
 
 networks:
   default:

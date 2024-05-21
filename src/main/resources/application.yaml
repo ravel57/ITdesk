@@ -23,6 +23,12 @@ spring:
       table-name: SPRING_SESSION
       initialize-schema: always
 
+minio:
+  url: ${MINIO_URL}
+  accessKey: minioadmin
+  secretKey: minioadmin
+  bucketName: main
+
 logging:
   level:
     org.flywaydb: INFO

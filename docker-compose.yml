@@ -35,7 +35,7 @@ services:
       - SPRING_DATASOURCE_URL=http://minio:9001
     command: server /data --console-address ":9001"
     volumes:
-      - minio-data:/data
+      - /srv/minio:/bitnami/minio/data
 
 networks:
   default:

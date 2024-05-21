@@ -16,12 +16,13 @@ services:
     restart: always
     links:
       - 'postgres:postgres'
+      - 'minio:minio'
     ports:
       - '56481:443'
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/
   minio:
-    image: minio/minio:latest
+    image: bitnami/minio:latest
     restart: always
     hostname: minio
     container_name: minio

@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,8 @@ public class FileController {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final MinioClient minioClient;
+	@Value("minio.bucketName")
+	String bucketName;
 
 
 	@GetMapping(value = "/jpeg/{uuid}", produces = MediaType.IMAGE_JPEG_VALUE)
@@ -64,7 +67,7 @@ public class FileController {
 	@Nullable
 	private byte[] getFileBytes(String uuid) {
 		try {
-			InputStream inputStream = minioClient.getObject(GetObjectArgs.builder().bucket("main").object(uuid).build());
+			InputStream inputStream = minioClient.getObject(GetObjectArgs.builder().bucket(bucketName).object(uuid).build());
 			byte[] imageBytes = inputStream.readAllBytes();
 			inputStream.close();
 			return imageBytes;

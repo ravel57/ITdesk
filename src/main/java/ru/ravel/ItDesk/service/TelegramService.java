@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
@@ -42,6 +43,9 @@ public class TelegramService {
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
 	private final MinioClient minioClient;
+
+	@Value("minio.bucketName")
+	private String bucketName;
 
 
 	TelegramService(ClientRepository clientRepository, MessageRepository messageRepository,
@@ -175,7 +179,7 @@ public class TelegramService {
 				InputStream inputStream = connection.getInputStream();
 				String uuid = UUID.randomUUID().toString();
 				minioClient.putObject(PutObjectArgs.builder()
-						.bucket("main")
+						.bucket(bucketName)
 						.object(uuid)
 						.stream(inputStream, connection.getContentLengthLong(), -1)
 						.contentType(type)

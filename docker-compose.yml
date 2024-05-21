@@ -21,6 +21,7 @@ services:
       - '56481:443'
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/
+      - MINIO_URL=http://minio:9009
   minio:
     image: bitnami/minio:latest
     restart: always
@@ -32,7 +33,6 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
-      - MINIO_URL=http://minio:9009
     command: server /data --console-address ":9009"
     volumes:
       - /srv/minio:/bitnami/minio/data

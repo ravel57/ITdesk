@@ -3,11 +3,34 @@ name: deploy
 on:
   push:
     branches:
-      - master
+      - 'master'
 jobs:
-  deploy:
-    name: Deploy to server
-    runs-on: self-hosted
+  test:
+    runs-on: ubuntu-latest
     steps:
-      - uses: docker/setup-buildx-action@v1
-      - run: docker-compose build --no-cache && docker-compose up -d
+      - name: cd into repo
+        uses: actions/checkout@v3
+      - name: set up Java and Gradle
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+      - name: run tests
+        run: gradle test
+  prepare-environment:
+   runs-on: self-hosted
+   needs: test
+   steps:
+     - name: Stop and remove containers, networks
+       run: docker-compose down
+     - name: Remove unused data
+       run: docker system prune -a -f
+  deploy:
+    runs-on: self-hosted
+    needs: prepare-environment
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v3
+      - name: docker-compose
+        run: docker-compose up -d

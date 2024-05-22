@@ -40,4 +40,4 @@ jobs:
       - name: checkout repo
         uses: actions/checkout@v3
       - name: docker-compose
-        run: docker-compose up -d
+        run: docker-compose up -d --build

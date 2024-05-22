@@ -65,28 +65,30 @@ public class TelegramService {
 
 
 	public Integer sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
-		TelegramBot bot = client.getTgBot().getBot();
-		try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
+		try {
+			TelegramBot bot = client.getTgBot().getBot();
 			if (message.getFileUuid() != null) {
-				GetObjectResponse getObjectResponse = minioClient.getObject(
-						GetObjectArgs.builder()
-								.bucket(bucketName)
-								.object(message.getFileUuid())
-								.build());
-				byte[] buf = new byte[8192];
-				int bytesRead;
-				while ((bytesRead = getObjectResponse.read(buf)) != -1) {
-					fos.write(buf, 0, bytesRead);
-				}
-				File file = new File(message.getFileName());
-				Integer messageId = new MessageBuilder(bot)
-						.document()
-						.telegramId(client.getTelegramId())
-						.file(file)
-						.execute();
-				boolean delete = file.delete();
-				if (message.getText().isEmpty()) {
-					return messageId;
+				try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
+					GetObjectResponse getObjectResponse = minioClient.getObject(
+							GetObjectArgs.builder()
+									.bucket(bucketName)
+									.object(message.getFileUuid())
+									.build());
+					byte[] buf = new byte[8192];
+					int bytesRead;
+					while ((bytesRead = getObjectResponse.read(buf)) != -1) {
+						fos.write(buf, 0, bytesRead);
+					}
+					File file = new File(message.getFileName());
+					Integer messageId = new MessageBuilder(bot)
+							.document()
+							.telegramId(client.getTelegramId())
+							.file(file)
+							.execute();
+					boolean delete = file.delete();
+					if (message.getText().isEmpty()) {
+						return messageId;
+					}
 				}
 			}
 			return new MessageBuilder(bot)

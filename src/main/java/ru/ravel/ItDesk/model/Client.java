@@ -58,6 +58,8 @@ public class Client {
 	@OnDelete(action = OnDeleteAction.CASCADE)
 	private TgBot tgBot;
 
+	private String sourceChannel;
+
 	@Transient
 	@Builder.Default
 	private Set<User> typingUsers = new ConcurrentSkipListSet<>();

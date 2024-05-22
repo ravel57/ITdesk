@@ -46,6 +46,7 @@ public class ClientService {
 			client.getMessages().sort(Message::compareTo);
 			Set<User> userSet = typingUsers.get(client);
 			client.setTypingUsers(Objects.requireNonNullElse(userSet, Collections.emptySet()));
+			client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
 		});
 		return clients;
 	}

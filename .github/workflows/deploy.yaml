@@ -25,13 +25,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Display Docker status
-        run: sudo docker ps -a
+        run: docker ps -a
       - name: Display Docker Compose logs
-        run: sudo docker-compose logs
+        run: docker-compose logs
       - name: Stop and remove containers, networks
-        run: sudo docker-compose down
+        run: docker-compose down
       - name: Remove unused data
-        run: sudo docker system prune -a -f
+        run: docker system prune -a -f
 
   deploy:
     runs-on: self-hosted

@@ -26,8 +26,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Check current user
-        run: whoami
       - name: Stop and remove containers, networks
         run: sudo docker-compose down
       - name: Remove unused data

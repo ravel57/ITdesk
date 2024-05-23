@@ -63,7 +63,7 @@ public class FileController {
 
 	@GetMapping(value = "/documents/{uuid}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
 	public ResponseEntity<Object> documentFile(@PathVariable String uuid) {
-		String filename = messageRepository.findByFileUuid(uuid).getFileName();
+		String filename = messageRepository.findByFileUuid(uuid).orElseThrow().getFileName();
 		byte[] fileBytes = getFileBytes(uuid);
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);

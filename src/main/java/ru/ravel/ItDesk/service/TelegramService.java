@@ -95,6 +95,7 @@ public class TelegramService {
 					.send()
 					.telegramId(client.getTelegramId())
 					.text(message.getText())
+					.replyMessage(message.getReplyMessageMessengerId())
 					.execute();
 		} catch (Exception e) {
 			logger.error(e.getMessage());
@@ -158,6 +159,12 @@ public class TelegramService {
 							.isRead(false)
 							.messengerMessageId(update.message().messageId())
 							.build();
+					if (update.message().replyToMessage() != null) {
+						Integer reply = update.message().replyToMessage().messageId();
+						message.setReplyMessageMessengerId(reply);
+						Message messengerMessage = messageRepository.findByMessengerMessageId(reply).orElseThrow();
+						message.setReplyMessageId(messengerMessage.getId());
+					}
 					saveAttachments(update, message);
 					messageRepository.save(message);
 					if (client != null) {

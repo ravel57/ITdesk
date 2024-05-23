@@ -47,6 +47,10 @@ public class Message implements Comparable<Message> {
 
 	private String fileUuid;
 
+	private Long replyMessageId;
+
+	private Integer replyMessageMessengerId;
+
 	@Override
 	public int compareTo(@NotNull Message o) {
 		return getDate().compareTo(o.getDate());

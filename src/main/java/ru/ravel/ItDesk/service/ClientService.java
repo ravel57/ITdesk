@@ -73,6 +73,8 @@ public class ClientService {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {
 			try {
+				Message reply = messageRepository.findById(Long.valueOf(message.getReplyMessageId())).orElseThrow();
+				message.setReplyMessageMessengerId(reply.getMessengerMessageId());
 				Integer messageId = telegramService.sendMessage(client, message);
 				message.setMessengerMessageId(messageId);
 			} catch (Exception e) {

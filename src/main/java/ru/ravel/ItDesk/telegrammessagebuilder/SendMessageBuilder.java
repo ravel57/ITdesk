@@ -17,6 +17,7 @@ public class SendMessageBuilder extends MessageBuilder {
 	private ParseMode parseMode;
 	private List<InlineKeyboardButton> buttons;
 	private Integer keyboardOffset;
+	private Integer replyMessageId;
 
 
 	public SendMessageBuilder(TelegramBot bot) {
@@ -60,6 +61,11 @@ public class SendMessageBuilder extends MessageBuilder {
 		return this;
 	}
 
+	public 	SendMessageBuilder replyMessage(Integer replyMessageId) {
+		this.replyMessageId = replyMessageId;
+		return this;
+	}
+
 	public Integer execute() throws NoSuchFieldException, TelegramException {
 		if (telegramId == null || text == null) {
 			throw new NoSuchFieldException();
@@ -82,6 +88,9 @@ public class SendMessageBuilder extends MessageBuilder {
 		}
 		if (parseMode != null) {
 			message.parseMode(parseMode);
+		}
+		if (replyMessageId != null) {
+			message.replyToMessageId(replyMessageId);
 		}
 
 		SendResponse response = bot.execute(message);

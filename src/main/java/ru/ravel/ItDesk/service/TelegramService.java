@@ -95,7 +95,7 @@ public class TelegramService {
 					.send()
 					.telegramId(client.getTelegramId())
 					.text(message.getText())
-					.replyMessage(message.getReplyMessageMessengerId())
+					.replyMessage(message.getReplyMessageMessengerId() != null ? message.getReplyMessageMessengerId() : null)
 					.execute();
 		} catch (Exception e) {
 			logger.error(e.getMessage());

@@ -219,7 +219,7 @@ public class TelegramService {
 			}
 			try {
 				String path = this.bot.getFullFilePath(bot.execute(request).file());
-				HttpURLConnection connection = (HttpURLConnection) new URL(path).openConnection();
+				HttpURLConnection connection = (HttpURLConnection) new URL(path).openConnection();	//FIXME
 				InputStream inputStream = connection.getInputStream();
 				String uuid = UUID.randomUUID().toString();
 				minioClient.putObject(PutObjectArgs.builder()

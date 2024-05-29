@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.stereotype.Controller;
+import ru.ravel.ItDesk.dto.ClientUser;
 import ru.ravel.ItDesk.dto.ClientUserText;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.User;
@@ -21,8 +22,8 @@ public class WebSocketController {
 
 	@MessageMapping("/mark-read")
 	@SendTo("/topic/mark-read")
-	public Client markRead(String clientId) {
-		return clientService.markRead(Long.valueOf(clientId));
+	public Client markRead(ClientUser clientUser) {
+		return clientService.markRead(clientUser);
 	}
 
 

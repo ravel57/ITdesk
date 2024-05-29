@@ -67,4 +67,8 @@ public class Client {
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Builder.Default
 	private Map<Long, String> typingMessageText = new HashMap<>();
+
+	@Transient
+	@Builder.Default
+	private Set<User> watchingUsers = new ConcurrentSkipListSet<>();
 }

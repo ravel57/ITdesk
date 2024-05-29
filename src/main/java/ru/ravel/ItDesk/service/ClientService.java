@@ -6,6 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.ClientUser;
 import ru.ravel.ItDesk.dto.ClientUserText;
 import ru.ravel.ItDesk.dto.ExecuteFuture;
 import ru.ravel.ItDesk.dto.MessageTask;
@@ -34,8 +35,10 @@ public class ClientService {
 	private final UserService userService;
 	private final OrganizationService organizationService;
 
-	private final Map<ClientUserText, ExecuteFuture> clientUserMapExecutorServices = new ConcurrentHashMap<>();
+	private final Map<ClientUserText, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
+	private final Map<ClientUser, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<Client, Set<User>> typingUsers = new ConcurrentHashMap<>();
+	private final Map<Client, Set<User>> watchingUsers = new ConcurrentHashMap<>();
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -44,8 +47,8 @@ public class ClientService {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
 			client.getMessages().sort(Message::compareTo);
-			Set<User> userSet = typingUsers.get(client);
-			client.setTypingUsers(Objects.requireNonNullElse(userSet, Collections.emptySet()));
+			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
+			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
 		});
 		return clients;
@@ -89,17 +92,28 @@ public class ClientService {
 	}
 
 
-	public Client markRead(Long clientId) {
-		Client client = clientsRepository.findById(clientId).orElseThrow();
-		messageRepository.saveAll(client.getMessages().stream()
+	public Client markRead(@NotNull ClientUser clientUser) {
+		Client client = clientsRepository.findById(clientUser.getClient().getId()).orElseThrow();
+		ExecuteFuture executeFuture = clientUserMapWatchingExecutorServices.get(clientUser);
+		if (executeFuture != null) {
+			clientUserMapWatchingExecutorServices.get(clientUser).getFuture().cancel(true);
+		} else {
+			executeFuture = new ExecuteFuture();
+			clientUserMapWatchingExecutorServices.put(clientUser, executeFuture);
+		}
+		UserActionWaiter task = new UserActionWaiter(client, clientUser.getUser(), watchingUsers, logger, 30_000);
+		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
+
+		List<Message> list = client.getMessages().stream()
 				.filter(message -> !message.isRead())
 				.peek(message -> message.setRead(true))
-				.toList());
+				.toList();
+		messageRepository.saveAll(list);
 		return client;
 	}
 
 
-	public Client updateClient(Long clientId, @NotNull Map<String, Object> c) {
+	public Client updateClient(Long clientId, @NotNull Map<String, Object> c) {    // FIXME
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		client.setFirstname((String) c.get("firstname"));
 		client.setLastname((String) c.get("lastname"));
@@ -113,17 +127,17 @@ public class ClientService {
 
 
 	public void typing(@NotNull ClientUserText clientUserText) {
-		Client	client = clientsRepository.findById(clientUserText.getClient().getId()).orElseThrow();
+		Client client = clientsRepository.findById(clientUserText.getClient().getId()).orElseThrow();
 		client.getTypingMessageText().put(clientUserText.getUser().getId(), clientUserText.getText());
 		clientsRepository.save(client);
-		ExecuteFuture executeFuture = clientUserMapExecutorServices.get(clientUserText);
+		ExecuteFuture executeFuture = clientUserMapTypingExecutorServices.get(clientUserText);
 		if (executeFuture != null) {
-			clientUserMapExecutorServices.get(clientUserText).getFuture().cancel(true);
+			clientUserMapTypingExecutorServices.get(clientUserText).getFuture().cancel(true);
 		} else {
 			executeFuture = new ExecuteFuture();
-			clientUserMapExecutorServices.put(clientUserText, executeFuture);
+			clientUserMapTypingExecutorServices.put(clientUserText, executeFuture);
 		}
-		ClientTypingWaiter task = new ClientTypingWaiter(client, clientUserText.getUser(), typingUsers, logger);
+		UserActionWaiter task = new UserActionWaiter(client, clientUserText.getUser(), typingUsers, logger, 30_000);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 	}
 
@@ -134,6 +148,7 @@ public class ClientService {
 		taskRepository.save(task);
 		return messageTask;
 	}
+
 
 	public boolean deleteMessage(Long clientId, Long messageId) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
@@ -148,25 +163,27 @@ public class ClientService {
 		}
 	}
 
-	private record ClientTypingWaiter(
+
+	private record UserActionWaiter(
 			Client client,
 			User user,
-			Map<Client, Set<User>> typingUsers,
-			Logger logger
+			Map<Client, Set<User>> usersByClient,
+			Logger logger,
+			long sleep
 	) implements Runnable {
 		@Override
 		public void run() {
-			Set<User> users = typingUsers.get(client);
+			Set<User> users = usersByClient.get(client);
 			if (users == null) {
 				ConcurrentSkipListSet<User> listSet = new ConcurrentSkipListSet<>();
 				listSet.add(user);
-				typingUsers.put(client, listSet);
+				usersByClient.put(client, listSet);
 			} else {
 				users.add(user);
 			}
 			try {
-				Thread.sleep(30_000);
-				typingUsers.get(client).remove(user);
+				Thread.sleep(sleep);
+				usersByClient.get(client).remove(user);
 			} catch (InterruptedException ignored) {
 			}
 		}

@@ -63,6 +63,7 @@ dependencies {
 
 //	email
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
+	implementation 'org.jsoup:jsoup:1.15.3'
 
 //	tests
 	implementation 'org.junit.jupiter:junit-jupiter'

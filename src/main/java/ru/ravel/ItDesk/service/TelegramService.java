@@ -170,12 +170,14 @@ public class TelegramService {
 					if (client != null) {
 						client.getMessages().add(message);
 					} else {
+						TgBot tgBot = telegramRepository.findByToken(bot.getToken()); 	// FIXME
 						client = Client.builder()
 								.firstname(update.message().from().firstName())
 								.lastname(update.message().from().lastName())
 								.telegramId(update.message().from().id())
 								.messages(List.of(message))
-								.tgBot(telegramRepository.findByToken(bot.getToken()))
+								.sourceChannel(tgBot.getName())
+								.tgBot(tgBot)
 								.build();
 					}
 					clientRepository.save(client);

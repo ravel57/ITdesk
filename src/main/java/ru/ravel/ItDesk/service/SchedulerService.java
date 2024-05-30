@@ -14,14 +14,20 @@ public class SchedulerService {
 	private final ClientService clientService;
 	private final WebSocketService webSocketService;
 	private final UserService userService;
+	private final EmailService emailService;
 
 	Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
-	@Scheduled(cron = "*/1 * * * * *")
+	@Scheduled(fixedRate = 500)
 	void updateClientsInfo() {
 		webSocketService.sendClients(clientService.getClients());
 		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
+	}
+
+	@Scheduled(fixedRate = 60_000)
+	void receiveEmails(){
+		emailService.receiveEmails();
 	}
 
 }

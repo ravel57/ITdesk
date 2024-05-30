@@ -19,7 +19,7 @@ public class Message implements Comparable<Message> {
 	@EqualsAndHashCode.Include
 	private Long id;
 
-	@Column(length = 2048)
+	@Column(length = 32768)
 	private String text;
 
 	private ZonedDateTime date;

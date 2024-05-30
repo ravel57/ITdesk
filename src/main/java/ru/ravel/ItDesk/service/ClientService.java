@@ -41,6 +41,7 @@ public class ClientService {
 	private final Map<Client, Set<User>> watchingUsers = new ConcurrentHashMap<>();
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
+	private final EmailService emailService;
 
 
 	public List<Client> getClients() {
@@ -49,6 +50,10 @@ public class ClientService {
 			client.getMessages().sort(Message::compareTo);
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
+			switch (client.getMessageFrom()) {
+				case TELEGRAM -> client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
+				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmail(), ""));    // FIXME
+			}
 		});
 		return clients;
 	}
@@ -74,15 +79,22 @@ public class ClientService {
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {
-			try {
-				if (message.getReplyMessageId() != null) {
-					Message reply = messageRepository.findById(message.getReplyMessageId()).orElseThrow();
-					message.setReplyMessageMessengerId(reply.getMessengerMessageId());
+			switch (client.getMessageFrom()) {
+				case TELEGRAM -> {
+					try {
+						if (message.getReplyMessageId() != null) {
+							Message reply = messageRepository.findById(message.getReplyMessageId()).orElseThrow();
+							message.setReplyMessageMessengerId(reply.getMessengerMessageId());
+						}
+						Integer messageId = telegramService.sendMessage(client, message);
+						message.setMessengerMessageId(messageId);
+					} catch (Exception e) {
+						return false;
+					}
 				}
-				Integer messageId = telegramService.sendMessage(client, message);
-				message.setMessengerMessageId(messageId);
-			} catch (Exception e) {
-				return false;
+				case EMAIL -> {
+					emailService.sendSimpleEmail(client.getEmail(), "***", message.getText());
+				}
 			}
 		}
 		client.getMessages().add(message);

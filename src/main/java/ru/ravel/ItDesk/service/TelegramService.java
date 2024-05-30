@@ -19,6 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.model.TgBot;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
@@ -176,7 +177,7 @@ public class TelegramService {
 								.lastname(update.message().from().lastName())
 								.telegramId(update.message().from().id())
 								.messages(List.of(message))
-								.sourceChannel(tgBot.getName())
+								.messageFrom(MessageFrom.TELEGRAM)
 								.tgBot(tgBot)
 								.build();
 					}

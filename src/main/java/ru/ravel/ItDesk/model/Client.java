@@ -58,7 +58,10 @@ public class Client {
 	@OnDelete(action = OnDeleteAction.CASCADE)
 	private TgBot tgBot;
 
+	@Transient
 	private String sourceChannel;
+
+	private MessageFrom messageFrom;
 
 	@Transient
 	@Builder.Default

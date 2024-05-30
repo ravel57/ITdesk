@@ -25,7 +25,7 @@ public class SchedulerService {
 		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
 	}
 
-	@Scheduled(fixedRate = 60_000)
+	@Scheduled(fixedRate = 5_000)
 	void receiveEmails(){
 		emailService.receiveEmails();
 	}

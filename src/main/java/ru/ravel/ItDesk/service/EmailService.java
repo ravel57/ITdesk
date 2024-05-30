@@ -9,10 +9,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
@@ -24,7 +26,6 @@ import java.util.Arrays;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
 public class EmailService {
 
 	private final ClientService clientService;
@@ -32,6 +33,16 @@ public class EmailService {
 	private final MessageRepository messageRepository;
 	private final JavaMailSender mailSender;
 	private final Store mailStore;
+
+	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
+						MessageRepository messageRepository, JavaMailSender mailSender, Store mailStore) {
+		this.clientService = clientService;
+		this.clientRepository = clientRepository;
+		this.messageRepository = messageRepository;
+		this.mailSender = mailSender;
+		this.mailStore = mailStore;
+	}
+
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
@@ -40,7 +51,7 @@ public class EmailService {
 		message.setTo(toEmail);
 		message.setSubject(subject);
 		message.setText(body);
-		message.setFrom("");
+		message.setFrom("***");
 		mailSender.send(message);
 	}
 
@@ -69,7 +80,7 @@ public class EmailService {
 					client = Client.builder()
 							.email(emailFrom)
 							.firstname(emailFrom)
-							.sourceChannel("***")
+							.messageFrom(MessageFrom.EMAIL)
 							.messages(List.of(message))
 							.build();
 				}

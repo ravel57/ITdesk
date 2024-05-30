@@ -36,9 +36,9 @@ dependencies {
 	implementation 'org.springframework.session:spring-session-core'
 	implementation 'org.springframework.session:spring-session-jdbc'
 	runtimeOnly 'org.postgresql:postgresql'
+	implementation 'org.flywaydb:flyway-core'
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
-	implementation 'org.flywaydb:flyway-core'
 
 //	minio
 	implementation 'io.minio:minio:8.5.10'
@@ -60,6 +60,9 @@ dependencies {
 
 //	telegram
 	implementation 'com.github.pengrad:java-telegram-bot-api:7.2.0'
+
+//	email
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
 
 //	tests
 	implementation 'org.junit.jupiter:junit-jupiter'

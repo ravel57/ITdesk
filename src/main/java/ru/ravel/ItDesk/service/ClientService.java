@@ -15,6 +15,7 @@ import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.repository.EmailRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
@@ -42,6 +43,7 @@ public class ClientService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final EmailService emailService;
+	private final EmailRepository emailRepository;
 
 
 	public List<Client> getClients() {
@@ -93,7 +95,7 @@ public class ClientService {
 					}
 				}
 				case EMAIL -> {
-					emailService.sendSimpleEmail(client.getEmail(), "***", message.getText());
+					emailService.sendSimpleEmail(message, emailRepository.findAll().get(0), client);
 				}
 			}
 		}

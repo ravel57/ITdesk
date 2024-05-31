@@ -4,7 +4,6 @@ import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.search.FlagTerm;
-import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jsoup.Jsoup;
 import org.slf4j.Logger;
@@ -14,8 +13,10 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.Email;
 import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.repository.EmailRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
 import java.io.IOException;
@@ -33,26 +34,48 @@ public class EmailService {
 	private final MessageRepository messageRepository;
 	private final JavaMailSender mailSender;
 	private final Store mailStore;
+	private final EmailRepository emailRepository;
 
 	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
-						MessageRepository messageRepository, JavaMailSender mailSender, Store mailStore) {
+						MessageRepository messageRepository, JavaMailSender mailSender, Store mailStore,
+						EmailRepository emailRepository) {
 		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
 		this.mailSender = mailSender;
 		this.mailStore = mailStore;
+		this.emailRepository = emailRepository;
 	}
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
+	public List<Email> getEmails() {
+		return emailRepository.findAll();
+	}
 
-	public void sendSimpleEmail(String toEmail, String subject, String body) {
-		SimpleMailMessage message = new SimpleMailMessage();
-		message.setTo(toEmail);
-		message.setSubject(subject);
-		message.setText(body);
-		message.setFrom("***");
-		mailSender.send(message);
+
+	public Email newEmail(Email email) {
+		return emailRepository.save(email);
+	}
+
+
+	public Email updateEmail(Email email) {
+		return emailRepository.save(email);
+	}
+
+
+	public void deleteEmail(Long emailId) {
+		emailRepository.deleteById(emailId);
+	}
+
+
+	public void sendSimpleEmail(@NotNull ru.ravel.ItDesk.model.Message message, @NotNull Email email, @NotNull Client client) {
+		SimpleMailMessage emailMessage = new SimpleMailMessage();
+		emailMessage.setTo(client.getEmail());
+		emailMessage.setSubject(email.getSubject());
+		emailMessage.setText(message.getText());
+		emailMessage.setFrom(email.getEmailFrom());
+		mailSender.send(emailMessage);
 	}
 
 

@@ -27,19 +27,7 @@ public class WebApiController {
 	private final StatusService statusService;
 	private final PriorityService priorityService;
 	private final TemplateService templateService;
-
-
-	@PostMapping("/user-online")
-	ResponseEntity<Object> userOnline() {
-		return ResponseEntity.ok(userService.userOnline());
-	}
-
-
-	@PostMapping("/user-offline")
-	ResponseEntity<Object> userOffline(@RequestBody User user) {
-		userService.userOffline(user);
-		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
-	}
+	private final EmailService emailService;
 
 
 	@GetMapping("/clients")
@@ -113,18 +101,6 @@ public class WebApiController {
 	}
 
 
-	@GetMapping("/tags")
-	public ResponseEntity<Object> getTags() {
-		return ResponseEntity.ok().body(tagService.getTags());
-	}
-
-
-	@GetMapping("/organizations")
-	public ResponseEntity<Object> getOrganizations() {
-		return ResponseEntity.ok().body(organizationService.getOrganizations());
-	}
-
-
 	@GetMapping("/users")
 	public ResponseEntity<Object> getUsers() {
 		return ResponseEntity.ok().body(userService.getUsers());
@@ -143,24 +119,6 @@ public class WebApiController {
 	}
 
 
-	@GetMapping("/statuses")
-	public ResponseEntity<Object> getStatuses() {
-		return ResponseEntity.ok().body(statusService.getStatuses());
-	}
-
-
-	@GetMapping("/telegram-bots")
-	public ResponseEntity<Object> getTelegramBots() {
-		return ResponseEntity.ok().body(telegramService.getTelegramBots());
-	}
-
-
-	@GetMapping("/priorities")
-	public ResponseEntity<Object> getPriorities() {
-		return ResponseEntity.ok().body(priorityService.getPriorities());
-	}
-
-
 	@PostMapping("/new-user")
 	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.ok().body(userService.newUser(user));
@@ -170,6 +128,25 @@ public class WebApiController {
 	@PostMapping("/update-user")
 	public ResponseEntity<Object> updateUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.ok().body(userService.updateUser(user));
+	}
+
+
+	@PostMapping("/user-online")
+	ResponseEntity<Object> userOnline() {
+		return ResponseEntity.ok(userService.userOnline());
+	}
+
+
+	@PostMapping("/user-offline")
+	ResponseEntity<Object> userOffline(@RequestBody User user) {
+		userService.userOffline(user);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@GetMapping("/tags")
+	public ResponseEntity<Object> getTags() {
+		return ResponseEntity.ok().body(tagService.getTags());
 	}
 
 
@@ -192,6 +169,12 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/organizations")
+	public ResponseEntity<Object> getOrganizations() {
+		return ResponseEntity.ok().body(organizationService.getOrganizations());
+	}
+
+
 	@PostMapping("/new-organization")
 	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.newOrganization(organization));
@@ -211,10 +194,16 @@ public class WebApiController {
 	}
 
 
-//	@GetMapping("/get-logged-user")
-//	public ResponseEntity<Object> getLoggedUser() {
-//		return ResponseEntity.ok().body(null);
-//	}
+	@GetMapping("/get-logged-user")
+	public ResponseEntity<Object> getLoggedUser() {
+		return ResponseEntity.ok().body(userService.getUsersOnline());
+	}
+
+
+	@GetMapping("/telegram-bots")
+	public ResponseEntity<Object> getTelegramBots() {
+		return ResponseEntity.ok().body(telegramService.getTelegramBots());
+	}
 
 
 	@PostMapping("/new-telegram-bot")
@@ -232,6 +221,31 @@ public class WebApiController {
 	@DeleteMapping("/telegram-bot/{tgBotId}")
 	public ResponseEntity<Object> deleteTelegramBot(@PathVariable Long tgBotId) {
 		telegramService.deleteTelegramBot(tgBotId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@GetMapping("/emails")
+	public ResponseEntity<Object> getEmails() {
+		return ResponseEntity.ok().body(emailService.getEmails());
+	}
+
+
+	@PostMapping("/new-email")
+	public ResponseEntity<Object> newEmail(@RequestBody Email email) {
+		return ResponseEntity.ok().body(emailService.newEmail(email));
+	}
+
+
+	@PostMapping("/update-email")
+	public ResponseEntity<Object> updateEmail(@RequestBody Email email) {
+		return ResponseEntity.ok().body(emailService.updateEmail(email));
+	}
+
+
+	@DeleteMapping("/email/{emailId}")
+	public ResponseEntity<Object> deleteEmail(@PathVariable Long emailId) {
+		emailService.deleteEmail(emailId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 
@@ -311,6 +325,12 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/statuses")
+	public ResponseEntity<Object> getStatuses() {
+		return ResponseEntity.ok().body(statusService.getStatuses());
+	}
+
+
 	@PostMapping("/update-status/resort")
 	public ResponseEntity<Object> resortStatuses(@RequestBody List<Status> statuses) {
 		return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
@@ -326,6 +346,12 @@ public class WebApiController {
 	@PostMapping("/update-tags/resort")
 	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		return ResponseEntity.ok().body(tagService.resortTags(tags));
+	}
+
+
+	@GetMapping("/priorities")
+	public ResponseEntity<Object> getPriorities() {
+		return ResponseEntity.ok().body(priorityService.getPriorities());
 	}
 
 

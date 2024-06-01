@@ -28,4 +28,11 @@ class MvcConfig implements WebMvcConfigurer {
 		registry.addViewController("/phone").setViewName("index");
 	}
 
+
+	@Override
+	public void addResourceHandlers(@NotNull ResourceHandlerRegistry registry) {
+		registry.addResourceHandler("/static/**")
+				.addResourceLocations("classpath:/static/");
+	}
+
 }

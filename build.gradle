@@ -1,6 +1,5 @@
 plugins {
 	id 'java'
-	id 'war'
 	id 'org.springframework.boot' version '3.2.5'
 	id 'io.spring.dependency-management' version '1.1.4'
 }
@@ -14,11 +13,6 @@ java {
 
 repositories {
 	mavenCentral()
-}
-
-war {
-	enabled = true
-	webAppDirName = 'src/main/webapp'
 }
 
 configurations {
@@ -45,11 +39,9 @@ dependencies {
 	implementation 'commons-io:commons-io:2.16.1'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
-//	tomcat server
-	implementation 'org.apache.tomcat.embed:tomcat-embed-core'
-	implementation 'org.apache.tomcat.embed:tomcat-embed-jasper'
-	implementation 'org.apache.tomcat:tomcat-jsp-api'
-	implementation 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api'
+//	thymeleaf
+	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 
 //	websocket
 	implementation 'org.springframework:spring-messaging'

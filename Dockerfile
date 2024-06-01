@@ -8,7 +8,7 @@ RUN yarn build
 
 FROM gradle:8.7.0-jdk21-alpine AS gradle
 COPY --chown=gradle:gradle . /home/gradle/
-COPY --from=nodejs /usr/src/node/itdesk-front/dist/spa/   /home/gradle/src/main/webapp/
+COPY --from=nodejs /usr/src/node/itdesk-front/dist/spa/   /home/gradle/src/main/resources/static/
 WORKDIR /home/gradle/
 RUN gradle bootJar
 

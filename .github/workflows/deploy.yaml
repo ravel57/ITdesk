@@ -22,7 +22,7 @@ jobs:
 
   deploy:
     runs-on: self-hosted
-    needs: prepare-environment
+    needs: test
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3

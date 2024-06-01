@@ -27,6 +27,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Build Docker containers
-        run: sudo docker compose build --no-cache
+        run: sudo /usr/bin/docker compose build --no-cache
       - name: Start Docker containers
-        run: sudo docker compose up -d
+        run: sudo /usr/bin/docker compose up -d

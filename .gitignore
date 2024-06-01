@@ -38,5 +38,5 @@ out/
 /src/main/webapp/dist/
 
 
-src/main/resources/static
+src/main/resources/static/*
 

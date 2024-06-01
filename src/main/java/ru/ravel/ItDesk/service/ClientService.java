@@ -43,7 +43,6 @@ public class ClientService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final EmailService emailService;
-	private final EmailRepository emailRepository;
 
 
 	public List<Client> getClients() {
@@ -54,7 +53,7 @@ public class ClientService {
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
-				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmail(), ""));    // FIXME
+				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmailSender().getName(), ""));    // FIXME
 			}
 		});
 		return clients;
@@ -94,9 +93,7 @@ public class ClientService {
 						return false;
 					}
 				}
-				case EMAIL -> {
-					emailService.sendSimpleEmail(message, emailRepository.findAll().get(0), client);
-				}
+				case EMAIL -> emailService.sendEmail(message, client);
 			}
 		}
 		client.getMessages().add(message);

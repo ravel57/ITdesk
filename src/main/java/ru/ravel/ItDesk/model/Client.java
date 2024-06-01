@@ -58,6 +58,11 @@ public class Client {
 	@OnDelete(action = OnDeleteAction.CASCADE)
 	private TgBot tgBot;
 
+	@JsonIgnore
+	@ManyToOne(fetch = FetchType.EAGER)
+	@OnDelete(action = OnDeleteAction.CASCADE)
+	private Email emailSender;
+
 	@Transient
 	private String sourceChannel;
 

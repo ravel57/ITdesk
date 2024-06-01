@@ -15,11 +15,9 @@ RUN mv js/vendor.*.js     js/vendor.js
 RUN mv css/app.*.css      css/app.css
 RUN mv css/vendor.*.css   css/vendor.css
 WORKDIR /home/gradle/
-RUN gradle war
+RUN gradle bootJar
 
-FROM tomcat:10.1.23-jre21 AS tomcat9
-RUN rm -rf /usr/local/tomcat/webapps/* /usr/local/tomcat/conf/server.xml
-COPY ./src/main/resources/toTomcat/* /usr/local/tomcat/conf/
-COPY --from=gradle /home/gradle/build/libs/*.war /usr/local/tomcat/webapps/ROOT.war
-RUN chmod +x /usr/local/tomcat/bin/catalina.sh
-CMD ["catalina.sh", "run"]
+FROM alpine/java:21-jdk AS java
+WORKDIR /home/java/
+COPY --from=gradle /home/gradle/build/libs/*.jar /home/java/ItDesk.jar
+CMD ["java", "-jar", "ItDesk.jar"]

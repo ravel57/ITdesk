@@ -1,6 +1,5 @@
 plugins {
 	id 'java'
-	id 'war'
 	id 'org.springframework.boot' version '3.2.5'
 	id 'io.spring.dependency-management' version '1.1.4'
 }
@@ -14,11 +13,6 @@ java {
 
 repositories {
 	mavenCentral()
-}
-
-war {
-	enabled = true
-	webAppDirName = 'src/main/webapp'
 }
 
 configurations {

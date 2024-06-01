@@ -35,25 +35,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-
-      - name: Create certificate files from secrets
-        run: |
-          echo ${{ secrets.CHAIN }} | base64 --decode > ./src/main/resources/toTomcat/chain.pem
-          echo ${{ secrets.ENCODED_CERT }} | base64 --decode > ./src/main/resources/toTomcat/cert.pem
-          echo ${{ secrets.PRIVKEY }} | base64 --decode > ./src/main/resources/toTomcat/privkey.pem
-        env:
-          CHAIN: ${{ secrets.CHAIN }}
-          ENCODED_CERT: ${{ secrets.ENCODED_CERT }}
-          PRIVKEY: ${{ secrets.PRIVKEY }}
-
-      - name: Verify certificates
-        run: |
-          openssl x509 -in chain.pem -text -noout
-          openssl x509 -in cert.pem -text -noout
-          openssl x509 -in privkey.pem -text -noout
-
       - name: Build Docker containers
         run: sudo docker-compose build --no-cache
-
       - name: Start Docker containers
         run: sudo docker-compose up -d

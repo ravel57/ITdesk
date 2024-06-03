@@ -67,7 +67,7 @@ class WebSecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**").permitAll()
-						.anyRequest().permitAll())
+						.anyRequest().authenticated())
 				.formLogin(form -> form.
 						defaultSuccessUrl("/", true))
 				.logout(logout -> logout

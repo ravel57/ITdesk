@@ -226,26 +226,26 @@ public class WebApiController {
 
 
 	@GetMapping("/emails")
-	public ResponseEntity<Object> getEmails() {
-		return ResponseEntity.ok().body(emailService.getEmails());
+	public ResponseEntity<Object> getEmailAccounts() {
+		return ResponseEntity.ok().body(emailService.getEmailsAccounts());
 	}
 
 
 	@PostMapping("/new-email")
-	public ResponseEntity<Object> newEmail(@RequestBody Email email) {
-		return ResponseEntity.ok().body(emailService.newEmail(email));
+	public ResponseEntity<Object> newEmailAccount(@RequestBody EmailAccount emailAccount) {
+		return ResponseEntity.ok().body(emailService.newEmailAccount(emailAccount));
 	}
 
 
 	@PostMapping("/update-email")
-	public ResponseEntity<Object> updateEmail(@RequestBody Email email) {
-		return ResponseEntity.ok().body(emailService.updateEmail(email));
+	public ResponseEntity<Object> updateEmailAccount(@RequestBody EmailAccount emailAccount) {
+		return ResponseEntity.ok().body(emailService.updateEmailAccount(emailAccount));
 	}
 
 
-	@DeleteMapping("/email/{emailId}")
-	public ResponseEntity<Object> deleteEmail(@PathVariable Long emailId) {
-		emailService.deleteEmail(emailId);
+	@DeleteMapping("/email/{emailAccountId}")
+	public ResponseEntity<Object> deleteEmailAccount(@PathVariable Long emailAccountId) {
+		emailService.deleteEmailAccount(emailAccountId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 

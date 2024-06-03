@@ -43,12 +43,12 @@ public class Client {
 
 	private String email;
 
-	@OneToMany(fetch = FetchType.EAGER)
+	@OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
 	@JoinColumn(name = "client_id")
 	@Builder.Default
 	private List<Task> tasks = new ArrayList<>();
 
-	@OneToMany(fetch = FetchType.EAGER)
+	@OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
 	@JoinColumn(name = "client_id")
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();
@@ -56,12 +56,14 @@ public class Client {
 	@JsonIgnore
 	@ManyToOne(fetch = FetchType.EAGER)
 	@OnDelete(action = OnDeleteAction.CASCADE)
+	@JoinColumn(name = "tg_bot_id")
 	private TgBot tgBot;
 
 	@JsonIgnore
 	@ManyToOne(fetch = FetchType.EAGER)
 	@OnDelete(action = OnDeleteAction.CASCADE)
-	private Email emailSender;
+	@JoinColumn(name = "email_account_id")
+	private EmailAccount emailAccountSender;
 
 	@Transient
 	private String sourceChannel;

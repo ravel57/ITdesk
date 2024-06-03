@@ -15,7 +15,6 @@ import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.repository.ClientRepository;
-import ru.ravel.ItDesk.repository.EmailRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
@@ -53,7 +52,7 @@ public class ClientService {
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
-				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmailSender().getName(), ""));    // FIXME
+				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmailAccountSender().getName(), ""));    // FIXME
 			}
 		});
 		return clients;

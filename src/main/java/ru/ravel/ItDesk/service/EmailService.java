@@ -16,10 +16,10 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
-import ru.ravel.ItDesk.model.Email;
+import ru.ravel.ItDesk.model.EmailAccount;
 import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.repository.ClientRepository;
-import ru.ravel.ItDesk.repository.EmailRepository;
+import ru.ravel.ItDesk.repository.EmailAccountRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
 import java.io.IOException;
@@ -27,6 +27,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 
@@ -36,53 +37,53 @@ public class EmailService {
 	private final ClientService clientService;
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
-	private final EmailRepository emailRepository;
+	private final EmailAccountRepository emailAccountRepository;
 
-	private final Map<Email, Store> imapStores = new HashMap<>();
-	private final Map<Email, JavaMailSender> smtpSenders = new HashMap<>();
+	private final Map<EmailAccount, Store> imapStores = new ConcurrentHashMap<>();
+	private final Map<EmailAccount, JavaMailSender> smtpSenders = new ConcurrentHashMap<>();
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
 	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
-						MessageRepository messageRepository, EmailRepository emailRepository) {
+						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository) {
 		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
-		this.emailRepository = emailRepository;
-		emailRepository.findAll().forEach(this::addMailAccount);
+		this.emailAccountRepository = emailAccountRepository;
+		emailAccountRepository.findAll().forEach(this::addMailAccount);
 	}
 
 
-	public List<Email> getEmails() {
-		return emailRepository.findAll();
+	public List<EmailAccount> getEmailsAccounts() {
+		return emailAccountRepository.findAll();
 	}
 
 
-	public Email newEmail(Email email) {
-		addMailAccount(email);
-		return emailRepository.save(email);
+	public EmailAccount newEmailAccount(EmailAccount emailAccount) {
+		addMailAccount(emailAccount);
+		return emailAccountRepository.save(emailAccount);
 	}
 
 
-	public Email updateEmail(Email email) {
-		return emailRepository.save(email);
+	public EmailAccount updateEmailAccount(EmailAccount emailAccount) {
+		return emailAccountRepository.save(emailAccount);
 	}
 
 
-	public void deleteEmail(Long emailId) {
-		emailRepository.deleteById(emailId);
+	public void deleteEmailAccount(Long emailId) {
+		emailAccountRepository.deleteById(emailId);
 	}
 
 
 	public void sendEmail(@NotNull ru.ravel.ItDesk.model.Message message, @NotNull Client client) {
-		Email email = client.getEmailSender();
-		JavaMailSender mailSender = smtpSenders.get(email);
+		EmailAccount emailAccount = client.getEmailAccountSender();
+		JavaMailSender mailSender = smtpSenders.get(emailAccount);
 		SimpleMailMessage emailMessage = new SimpleMailMessage();
 		emailMessage.setTo(client.getEmail());
-		emailMessage.setSubject(email.getSubject());
+		emailMessage.setSubject(emailAccount.getSubject());
 		emailMessage.setText(message.getText());
-		emailMessage.setFrom(email.getEmailFrom());
+		emailMessage.setFrom(emailAccount.getEmailFrom());
 		mailSender.send(emailMessage);
 	}
 
@@ -90,9 +91,9 @@ public class EmailService {
 	@Async
 	@Scheduled(fixedRate = 10, timeUnit = TimeUnit.SECONDS)
 	public void checkEmails() {
-		imapStores.forEach((email, store) -> {
+		imapStores.forEach((emailAccount, store) -> {
 			try {
-				receiveEmails(store, email);
+				receiveEmails(store, emailAccount);
 			} catch (Exception e) {
 				logger.error(e.getMessage(), e);
 			}
@@ -100,35 +101,35 @@ public class EmailService {
 	}
 
 
-	public void addMailAccount(Email email) {
+	public void addMailAccount(EmailAccount emailAccount) {
 		try {
 			Properties imapProps = new Properties();
 			imapProps.put("mail.store.protocol", "imaps");
-			imapProps.put("mail.imaps.host", email.getImapServer());
-			imapProps.put("mail.imaps.port", email.getImapPort());
+			imapProps.put("mail.imaps.host", emailAccount.getImapServer());
+			imapProps.put("mail.imaps.port", emailAccount.getImapPort());
 			imapProps.put("mail.imaps.ssl.enable", "true");
 			Session imapSession = Session.getDefaultInstance(imapProps);
 			Store store = imapSession.getStore("imaps");
-			store.connect(email.getImapServer(), email.getEmailFrom(), email.getPassword());
-			imapStores.put(email, store);
+			store.connect(emailAccount.getImapServer(), emailAccount.getEmailFrom(), emailAccount.getPassword());
+			imapStores.put(emailAccount, store);
 			JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
-			mailSender.setHost(email.getSmtpServer());
-			mailSender.setPort(email.getSmtpPort());
-			mailSender.setUsername(email.getEmailFrom());
-			mailSender.setPassword(email.getPassword());
+			mailSender.setHost(emailAccount.getSmtpServer());
+			mailSender.setPort(emailAccount.getSmtpPort());
+			mailSender.setUsername(emailAccount.getEmailFrom());
+			mailSender.setPassword(emailAccount.getPassword());
 			Properties smtpProps = mailSender.getJavaMailProperties();
 			smtpProps.put("mail.transport.protocol", "smtp");
 			smtpProps.put("mail.smtp.auth", "true");
 			smtpProps.put("mail.smtp.starttls.enable", "true");
 			smtpProps.put("mail.smtp.ssl.enable", "true");
-			smtpSenders.put(email, mailSender);
+			smtpSenders.put(emailAccount, mailSender);
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);
 		}
 	}
 
 
-	public void receiveEmails(Store store, Email email) {
+	public void receiveEmails(Store store, EmailAccount emailAccount) {
 		try {
 			Folder emailFolder = store.getFolder("INBOX");
 			emailFolder.open(Folder.READ_WRITE);
@@ -154,7 +155,7 @@ public class EmailService {
 							.firstname(emailFrom)
 							.messageFrom(MessageFrom.EMAIL)
 							.messages(List.of(message))
-							.emailSender(email)
+							.emailAccountSender(emailAccount)
 							.build();
 				}
 				clientRepository.save(client);

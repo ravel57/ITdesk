@@ -52,7 +52,7 @@ public class ClientService {
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
-				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmailAccountSender().getName(), ""));    // FIXME
+//				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmailAccountSender().getName(), ""));
 			}
 		});
 		return clients;

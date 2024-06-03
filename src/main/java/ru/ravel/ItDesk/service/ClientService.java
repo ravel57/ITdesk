@@ -170,6 +170,12 @@ public class ClientService {
 	}
 
 
+	public Boolean deleteClient(Long clientId) {
+		clientsRepository.deleteById(clientId);
+		return true;
+	}
+
+
 	private record UserActionWaiter(
 			Client client,
 			User user,

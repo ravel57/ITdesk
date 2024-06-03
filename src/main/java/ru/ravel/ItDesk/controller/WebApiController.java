@@ -82,6 +82,17 @@ public class WebApiController {
 	}
 
 
+	@DeleteMapping("/client/{clientId}")
+	public ResponseEntity<Object> deleteClient(@PathVariable Long clientId) {
+		boolean isDeleted = clientService.deleteClient(clientId);
+		if (isDeleted) {
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} else {
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+		}
+	}
+
+
 	@GetMapping("/filters")
 	public ResponseEntity<Object> getFilters() {
 		return ResponseEntity.ok().body(taskFilterService.getAll());

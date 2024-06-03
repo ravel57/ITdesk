@@ -67,7 +67,7 @@ public class EmailService {
 
 
 	public EmailAccount updateEmailAccount(EmailAccount emailAccount) {
-		return emailAccountRepository.save(emailAccount);
+		return newEmailAccount(emailAccount);
 	}
 
 
@@ -89,7 +89,7 @@ public class EmailService {
 
 
 	@Async
-	@Scheduled(fixedRate = 10, timeUnit = TimeUnit.SECONDS)
+	@Scheduled(fixedRate = 3, timeUnit = TimeUnit.SECONDS)
 	public void checkEmails() {
 		imapStores.forEach((emailAccount, store) -> {
 			try {

@@ -37,8 +37,9 @@ minio:
   url: ${MINIO_URL}
   accessKey: minioadmin
   secretKey: minioadmin
-  bucket-name: main
+  bucket-name: ${MINIO_DEFAULT_BUCKET}
 
+allowed-origin: ${ALLOWED_ORIGIN}
 
 logging:
   level:

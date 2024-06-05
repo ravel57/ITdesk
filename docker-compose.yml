@@ -32,6 +32,7 @@ services:
       - MINIO_URL=http://minio:9009
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
+      - MAX_USERS=4
 
 networks:
   default:

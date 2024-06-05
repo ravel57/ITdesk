@@ -132,13 +132,24 @@ public class WebApiController {
 
 	@PostMapping("/new-user")
 	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
-		return ResponseEntity.ok().body(userService.newUser(user));
+		try {
+			return ResponseEntity.ok().body(userService.newUser(user));
+		} catch (Exception e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
 	}
 
 
 	@PostMapping("/update-user")
 	public ResponseEntity<Object> updateUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.ok().body(userService.updateUser(user));
+	}
+
+
+	@DeleteMapping("/delete-user/{userId}")
+	public ResponseEntity<Object> updateUser(@PathVariable Long userId) {
+		userService.deleteUser(userId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
 
 

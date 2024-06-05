@@ -1,5 +1,7 @@
 package ru.ravel.ItDesk.service;
 
+import io.minio.MinioClient;
+import io.minio.PutObjectArgs;
 import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMultipart;
@@ -8,6 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -22,13 +25,18 @@ import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.EmailAccountRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 @Service
@@ -38,19 +46,25 @@ public class EmailService {
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
 	private final EmailAccountRepository emailAccountRepository;
+	private final MinioClient minioClient;
 
 	private final Map<EmailAccount, Store> imapStores = new ConcurrentHashMap<>();
 	private final Map<EmailAccount, JavaMailSender> smtpSenders = new ConcurrentHashMap<>();
+
+	@Value("${minio.bucket-name}")
+	private String bucketName;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
 	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
-						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository) {
+						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository,
+						MinioClient minioClient) {
 		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
 		this.emailAccountRepository = emailAccountRepository;
+		this.minioClient = minioClient;
 		emailAccountRepository.findAll().forEach(this::addMailAccount);
 	}
 
@@ -67,7 +81,8 @@ public class EmailService {
 
 
 	public EmailAccount updateEmailAccount(EmailAccount emailAccount) {
-		return newEmailAccount(emailAccount);
+		addMailAccount(emailAccount);
+		return emailAccountRepository.save(emailAccount);
 	}
 
 
@@ -145,6 +160,7 @@ public class EmailService {
 						.isRead(false)
 						.isSent(false)
 						.build();
+				saveAttachments(emailMessage, message);
 				messageRepository.save(message);
 				Client client = clients.stream().filter(c -> c.getEmail().equals(emailFrom)).findFirst().orElse(null);
 				if (client != null) {
@@ -197,6 +213,50 @@ public class EmailService {
 			}
 		}
 		return result.toString();
+	}
+
+
+	private void saveAttachments(@NotNull Message emailMessage, ru.ravel.ItDesk.model.Message message) throws Exception {
+		if (emailMessage.isMimeType("multipart/*")) {
+			Multipart multipart = (Multipart) emailMessage.getContent();
+			for (int i = 0; i < multipart.getCount(); i++) {
+				BodyPart bodyPart = multipart.getBodyPart(i);
+				if (Part.ATTACHMENT.equalsIgnoreCase(bodyPart.getDisposition()) ||
+						(bodyPart.getFileName() != null && !bodyPart.getFileName().isEmpty())) {
+					String uuid = UUID.randomUUID().toString();
+					try (InputStream is = bodyPart.getInputStream(); ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+						byte[] data = new byte[16384];
+						int nRead;
+						while ((nRead = is.read(data, 0, data.length)) != -1) {
+							buffer.write(data, 0, nRead);
+						}
+						buffer.flush();
+						byte[] attachmentData = buffer.toByteArray();
+						InputStream attachmentStream = new ByteArrayInputStream(attachmentData);
+						long contentLength = attachmentData.length;
+						String contentType = bodyPart.getContentType();
+						Pattern pattern = Pattern.compile("^[^;]+");
+						Matcher matcher = pattern.matcher(contentType);
+						if (matcher.find()) {
+							contentType = matcher.group();
+						}
+						minioClient.putObject(PutObjectArgs.builder()
+								.bucket(bucketName)
+								.object(uuid)
+								.stream(attachmentStream, contentLength, -1)
+								.contentType(contentType)
+								.build()
+						);
+						message.setFileUuid(uuid);
+						message.setFileName(bodyPart.getFileName());
+						message.setFileType(contentType);
+						logger.debug("Saved attachment to MinIO: {}", bodyPart.getFileName());
+					} catch (Exception e) {
+						logger.error("Error saving attachment: {}", e.getMessage(), e);
+					}
+				}
+			}
+		}
 	}
 
 }

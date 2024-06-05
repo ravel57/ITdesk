@@ -291,6 +291,12 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/priorities")
+	public ResponseEntity<Object> getPriorities() {
+		return ResponseEntity.ok().body(priorityService.getPriorities());
+	}
+
+
 	@PostMapping("/new-priority")
 	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.newPriority(priority));
@@ -301,6 +307,24 @@ public class WebApiController {
 	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {
 		priorityService.deletePriority(priorityId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@PostMapping("/update-priority/set-default")
+	public ResponseEntity<Object> prioritySetDefaultSelection(@RequestBody Priority priority) {
+		return ResponseEntity.ok().body(priorityService.prioritySetDefaultSelection(priority));
+	}
+
+
+	@PostMapping("/update-priority/set-high-priority")
+	public ResponseEntity<Object> prioritySetCritical(@RequestBody Priority priority) {
+		return ResponseEntity.ok().body(priorityService.prioritySetCritical(priority));
+	}
+
+
+	@PostMapping("/update-priorities/resort")
+	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
+		return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
 	}
 
 
@@ -335,12 +359,6 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-priority/set-default")
-	public ResponseEntity<Object> statusPriorityDefaultSelection(@RequestBody Priority priority) {
-		return ResponseEntity.ok().body(priorityService.statusSetDefaultSelection(priority));
-	}
-
-
 	@PostMapping("/get-authenticated-users")
 	public ResponseEntity<Object> getAllAuthenticatedUsers() {
 		return ResponseEntity.ok().body(userService.getUsersOnline());
@@ -368,18 +386,6 @@ public class WebApiController {
 	@PostMapping("/update-tags/resort")
 	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		return ResponseEntity.ok().body(tagService.resortTags(tags));
-	}
-
-
-	@GetMapping("/priorities")
-	public ResponseEntity<Object> getPriorities() {
-		return ResponseEntity.ok().body(priorityService.getPriorities());
-	}
-
-
-	@PostMapping("/update-priorities/resort")
-	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
-		return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
 	}
 
 }

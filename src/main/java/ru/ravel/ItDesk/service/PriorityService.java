@@ -31,12 +31,23 @@ public class PriorityService {
 	}
 
 
-	public Priority statusSetDefaultSelection(@NotNull Priority priority) {
+	public Priority prioritySetDefaultSelection(@NotNull Priority priority) {
 		List<Priority> statuses = priorityRepository.findAll().stream()
 				.peek(p -> p.setDefaultSelection(false))
 				.toList();
 		priorityRepository.saveAll(statuses);
 		priority.setDefaultSelection(true);
+		priorityRepository.save(priority);
+		return priority;
+	}
+
+
+	public Priority prioritySetCritical(Priority priority) {
+		List<Priority> statuses = priorityRepository.findAll().stream()
+				.peek(p -> p.setCritical(false))
+				.toList();
+		priorityRepository.saveAll(statuses);
+		priority.setCritical(true);
 		priorityRepository.save(priority);
 		return priority;
 	}

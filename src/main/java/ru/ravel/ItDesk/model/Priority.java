@@ -23,6 +23,7 @@ public class Priority implements Comparable<Priority> {
 	@Column(nullable = false, columnDefinition = "int default 0")
 	private Integer orderNumber;
 
+	private Boolean critical;
 
 	@Override
 	public int compareTo(@NotNull Priority o) {

@@ -37,8 +37,8 @@ VALUES (DEFAULT, 'В работе');
 INSERT INTO public.status (id, name)
 VALUES (DEFAULT, 'На поддержке');
 
-INSERT INTO public.priority (id, name)
-VALUES (DEFAULT, 'Критичный');
+INSERT INTO public.priority (id, name, critical)
+VALUES (DEFAULT, 'Критичный', true);
 
 INSERT INTO public.priority (id, name)
 VALUES (DEFAULT, 'Высокий');

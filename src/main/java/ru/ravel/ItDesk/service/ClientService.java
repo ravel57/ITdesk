@@ -62,23 +62,29 @@ public class ClientService {
 
 	public Task newTask(Long clientId, @NotNull Task task) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		Duration duration = organizationService.getSlaByPriority().get(client.getOrganization()).get(task.getPriority());
-		Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
-		slaRepository.save(sla);
-		task.setSla(sla);
+		setSla(client, task);
+		taskRepository.save(task);
 		client.getTasks().add(task);
 		clientsRepository.save(client);
-		return taskRepository.save(task);
+		return task;
 	}
 
 
 	public Task updateTask(Long clientId, @NotNull Task task) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		Duration duration = organizationService.getSlaByPriority().get(client.getOrganization()).get(task.getPriority());
-		Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
-		slaRepository.save(sla);
-		task.setSla(sla);
+		setSla(client, task);
 		return taskRepository.save(task);
+	}
+
+
+	private void setSla(@NotNull Client client, Task task) {
+		Organization organization = client.getOrganization();
+		if (organization != null) {
+			Duration duration = organizationService.getSlaByPriority().get(organization).get(task.getPriority());
+			Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
+			slaRepository.save(sla);
+			task.setSla(sla);
+		}
 	}
 
 

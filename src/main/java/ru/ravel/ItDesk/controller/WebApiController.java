@@ -409,7 +409,7 @@ public class WebApiController {
 
 	@PostMapping("/sla")
 	public ResponseEntity<Object> postSlaByPriority(@RequestBody OrganizationPriorityDuration slaByPriority) {
-		organizationService.postSlaByPriority(slaByPriority);
+		organizationService.setSlaByPriority(slaByPriority);
 		return ResponseEntity.ok().build();
 	}
 

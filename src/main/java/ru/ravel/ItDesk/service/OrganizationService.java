@@ -46,7 +46,7 @@ public class OrganizationService {
 	public Map<Organization, Map<Priority, Duration>> getSlaByPriority() {
 		Map<Organization, Map<Priority, Duration>> slaByOrganization = new HashMap<>();
 		for (Organization organization : organizationRepository.findAll()) {
-			for (Priority priority : priorityRepository.findAll()) {
+			for (Priority priority : priorityRepository.findAll().stream().sorted().toList()) {
 				if (organization.getSlaByPriority() == null) {
 					organization.setSlaByPriority(new HashMap<>());
 				}
@@ -65,18 +65,21 @@ public class OrganizationService {
 	}
 
 
-	public void postSlaByPriority(@NotNull OrganizationPriorityDuration organizationPriorityDuration) {
+	public void setSlaByPriority(@NotNull OrganizationPriorityDuration organizationPriorityDuration) {
 		Organization organization = organizationRepository.findById(organizationPriorityDuration.getOrganization().getId()).orElseThrow();
 		Map<Long, Duration> slaByPriority = organization.getSlaByPriority();
 		Duration duration = Duration.of(organizationPriorityDuration.getDuration(), ChronoUnit.HOURS);
-		Long priorityId = organizationPriorityDuration.getPriority().getId();
-		if (slaByPriority != null) {
-			slaByPriority.put(priorityId, duration);
-		} else {
-			slaByPriority = Map.of(priorityId, duration);
+		Priority priority = organizationPriorityDuration.getPriority();
+		if (priority != null) {
+			Long priorityId = priority.getId();
+			if (slaByPriority != null) {
+				slaByPriority.put(priorityId, duration);
+			} else {
+				slaByPriority = Map.of(priorityId, duration);
+			}
+			organization.setSlaByPriority(slaByPriority);
+			organizationRepository.save(organization);
 		}
-		organization.setSlaByPriority(slaByPriority);
-		organizationRepository.save(organization);
 	}
 
 }

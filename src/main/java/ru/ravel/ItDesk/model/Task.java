@@ -39,11 +39,14 @@ public class Task {
 	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Tag> tags;
 
-	private boolean isCompleted;
+	private boolean completed;
 
 	private ZonedDateTime createdAt;
 
 	private ZonedDateTime deadline;
 
 	private Long linkedMessageId;
+
+	@OneToOne
+	private Sla sla;
 }

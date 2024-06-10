@@ -13,9 +13,12 @@ import ru.ravel.ItDesk.dto.MessageTask;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
+import ru.ravel.ItDesk.repository.SlaRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -31,6 +34,8 @@ public class ClientService {
 	private final TelegramService telegramService;
 	private final UserService userService;
 	private final OrganizationService organizationService;
+	private final EmailService emailService;
+	private final SlaRepository slaRepository;
 
 	private final Map<ClientUserText, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<ClientUser, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -38,7 +43,6 @@ public class ClientService {
 	private final Map<Client, Set<User>> watchingUsers = new ConcurrentHashMap<>();
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
-	private final EmailService emailService;
 
 
 	public List<Client> getClients() {
@@ -58,14 +62,22 @@ public class ClientService {
 
 	public Task newTask(Long clientId, @NotNull Task task) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Duration duration = organizationService.getSlaByPriority().get(client.getOrganization()).get(task.getPriority());
+		Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
+		slaRepository.save(sla);
+		task.setSla(sla);
 		client.getTasks().add(task);
-		taskRepository.save(task);
 		clientsRepository.save(client);
-		return task;
+		return taskRepository.save(task);
 	}
 
 
-	public Task updateTask(Task task) {
+	public Task updateTask(Long clientId, @NotNull Task task) {
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Duration duration = organizationService.getSlaByPriority().get(client.getOrganization()).get(task.getPriority());
+		Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
+		slaRepository.save(sla);
+		task.setSla(sla);
 		return taskRepository.save(task);
 	}
 

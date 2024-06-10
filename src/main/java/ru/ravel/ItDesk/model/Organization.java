@@ -5,7 +5,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jetbrains.annotations.NotNull;
+
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 
 @Entity
@@ -21,6 +27,12 @@ public class Organization implements Comparable<Organization> {
 	private Long id;
 
 	private String name;
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Builder.Default
+	//long=PriorityId
+	private Map<Long, Duration> slaByPriority = new HashMap<>();
+
 
 	@Override
 	public int compareTo(@NotNull Organization o) {

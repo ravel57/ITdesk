@@ -50,7 +50,7 @@ INSERT INTO public.priority (id, name)
 VALUES (DEFAULT, 'Низкий');
 
 INSERT INTO public.priority (id, name)
-VALUES (DEFAULT, 'Не трогаем');
+VALUES (DEFAULT, 'Приостановленно');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Добрый день!', 'дд');

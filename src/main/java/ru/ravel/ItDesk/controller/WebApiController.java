@@ -5,12 +5,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.dto.MessageTask;
+import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
 import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
+import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -44,7 +49,7 @@ public class WebApiController {
 
 	@PostMapping("/client/{clientId}/update-task")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
-		return ResponseEntity.ok().body(clientService.updateTask(task));
+		return ResponseEntity.ok().body(clientService.updateTask(clientId, task));
 	}
 
 
@@ -386,6 +391,26 @@ public class WebApiController {
 	@PostMapping("/update-tags/resort")
 	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		return ResponseEntity.ok().body(tagService.resortTags(tags));
+	}
+
+
+	@GetMapping("/sla")
+	public ResponseEntity<Object> getSlaByPriority() {
+		HashMap<Object, Object> out = new HashMap<>();
+		Map<Organization, Map<Priority, Duration>> slaByPriority = organizationService.getSlaByPriority();
+		for (Organization organization : slaByPriority.keySet()) {
+			Map<String, Duration> collect = slaByPriority.get(organization).entrySet().stream()
+					.collect(Collectors.toMap(e -> e.getKey().getName(), e -> Objects.requireNonNullElse(e.getValue(), Duration.ZERO)));
+			out.put(organization.getName(), collect);
+		}
+		return ResponseEntity.ok().body(out);
+	}
+
+
+	@PostMapping("/sla")
+	public ResponseEntity<Object> postSlaByPriority(@RequestBody OrganizationPriorityDuration slaByPriority) {
+		organizationService.postSlaByPriority(slaByPriority);
+		return ResponseEntity.ok().build();
 	}
 
 }

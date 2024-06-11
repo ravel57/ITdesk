@@ -107,7 +107,13 @@ public class ClientService {
 						return false;
 					}
 				}
-				case EMAIL -> emailService.sendEmail(message, client);
+				case EMAIL -> {
+					try {
+						emailService.sendEmail(message, client);
+					} catch (Exception e) {
+						return false;
+					}
+				}
 			}
 		}
 		client.getMessages().add(message);
@@ -177,14 +183,19 @@ public class ClientService {
 	public boolean deleteMessage(Long clientId, Long messageId) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		Message message = messageRepository.findById(messageId).orElseThrow();
-		try {
-			telegramService.deleteMessage(client, message);
-			message.setDeleted(true);
-			messageRepository.save(message);
-			return true;
-		} catch (TelegramException e) {
-			return false;
+		switch (client.getMessageFrom()) {
+			case TELEGRAM -> {
+				try {
+					telegramService.deleteMessage(client, message);
+				} catch (TelegramException e) {
+					return false;
+				}
+			}
+			case EMAIL -> {}
 		}
+		message.setDeleted(true);
+		messageRepository.save(message);
+		return true;
 	}
 
 

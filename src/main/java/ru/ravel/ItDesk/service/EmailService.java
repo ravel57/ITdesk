@@ -1,9 +1,12 @@
 package ru.ravel.ItDesk.service;
 
+import io.minio.GetObjectArgs;
+import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.mail.*;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.search.FlagTerm;
 import org.jetbrains.annotations.NotNull;
@@ -12,9 +15,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -25,10 +28,7 @@ import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.EmailAccountRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -91,15 +91,38 @@ public class EmailService {
 	}
 
 
-	public void sendEmail(@NotNull ru.ravel.ItDesk.model.Message message, @NotNull Client client) {
+	public void sendEmail(@NotNull ru.ravel.ItDesk.model.Message message, @NotNull Client client) throws MessagingException {
 		EmailAccount emailAccount = client.getEmailAccountSender();
 		JavaMailSender mailSender = smtpSenders.get(emailAccount);
-		SimpleMailMessage emailMessage = new SimpleMailMessage();
+		MimeMessage mimeMessage = mailSender.createMimeMessage();
+		MimeMessageHelper emailMessage = new MimeMessageHelper(mimeMessage, true);
+		File file = null;
 		emailMessage.setTo(client.getEmail());
 		emailMessage.setSubject(emailAccount.getSubject());
 		emailMessage.setText(message.getText());
 		emailMessage.setFrom(emailAccount.getEmailFrom());
-		mailSender.send(emailMessage);
+		if (message.getFileUuid() != null) {
+			try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
+				GetObjectResponse getObjectResponse = minioClient.getObject(
+						GetObjectArgs.builder()
+								.bucket(bucketName)
+								.object(message.getFileUuid())
+								.build());
+				byte[] buf = new byte[8192];
+				int bytesRead;
+				while ((bytesRead = getObjectResponse.read(buf)) != -1) {
+					fos.write(buf, 0, bytesRead);
+				}
+				file = new File(message.getFileName());
+				emailMessage.addAttachment(file.getName(), file);
+			} catch (Exception e) {
+				logger.error(e.getMessage(), e);
+			}
+		}
+		mailSender.send(mimeMessage);
+		if (file != null && !file.delete()) {
+			logger.error("File not deleted {}", file.getAbsolutePath());
+		}
 	}
 
 

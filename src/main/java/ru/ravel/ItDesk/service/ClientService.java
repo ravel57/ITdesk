@@ -53,7 +53,8 @@ public class ClientService {
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
-				case EMAIL -> client.setSourceChannel(Objects.requireNonNullElse(client.getEmailAccountSender(), new EmailAccount()).getName());
+				case EMAIL ->
+						client.setSourceChannel(Objects.requireNonNullElse(client.getEmailAccountSender(), new EmailAccount()).getName());
 			}
 		});
 		return clients;
@@ -94,26 +95,14 @@ public class ClientService {
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {
-			switch (client.getMessageFrom()) {
-				case TELEGRAM -> {
-					try {
-						if (message.getReplyMessageId() != null) {
-							Message reply = messageRepository.findById(message.getReplyMessageId()).orElseThrow();
-							message.setReplyMessageMessengerId(reply.getMessengerMessageId());
-						}
-						Integer messageId = telegramService.sendMessage(client, message);
-						message.setMessengerMessageId(messageId);
-					} catch (Exception e) {
-						return false;
-					}
+			try {
+				switch (client.getMessageFrom()) {
+					case TELEGRAM -> telegramService.sendMessage(client, message);
+					case EMAIL -> emailService.sendEmail(message, client);
 				}
-				case EMAIL -> {
-					try {
-						emailService.sendEmail(message, client);
-					} catch (Exception e) {
-						return false;
-					}
-				}
+			} catch (Exception e) {
+				logger.error(e.getMessage(), e);
+				return false;
 			}
 		}
 		client.getMessages().add(message);
@@ -191,7 +180,8 @@ public class ClientService {
 					return false;
 				}
 			}
-			case EMAIL -> {}
+			case EMAIL -> {
+			}
 		}
 		message.setDeleted(true);
 		messageRepository.save(message);

@@ -65,8 +65,12 @@ public class TelegramService {
 	}
 
 
-	public Integer sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
+	public void sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
 		try {
+			if (message.getReplyMessageId() != null) {
+				Message reply = messageRepository.findById(message.getReplyMessageId()).orElseThrow();
+				message.setReplyMessageMessengerId(reply.getMessengerMessageId());
+			}
 			TelegramBot bot = client.getTgBot().getBot();
 			if (message.getFileUuid() != null) {
 				try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
@@ -88,16 +92,17 @@ public class TelegramService {
 							.execute();
 					boolean delete = file.delete();
 					if (message.getText().isEmpty()) {
-						return messageId;
+						message.setMessengerMessageId(messageId);
 					}
 				}
 			}
-			return new MessageBuilder(bot)
+			Integer messageId = new MessageBuilder(bot)
 					.send()
 					.telegramId(client.getTelegramId())
 					.text(message.getText())
 					.replyMessage(message.getReplyMessageMessengerId())
 					.execute();
+			message.setMessengerMessageId(messageId);
 		} catch (Exception e) {
 			logger.error(e.getMessage());
 			throw new TelegramException(new RuntimeException(e.getMessage()));

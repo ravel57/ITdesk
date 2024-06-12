@@ -93,6 +93,7 @@ public class TelegramService {
 					boolean delete = file.delete();
 					if (message.getText().isEmpty()) {
 						message.setMessengerMessageId(messageId);
+						return;
 					}
 				}
 			}

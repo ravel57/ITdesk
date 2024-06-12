@@ -55,8 +55,8 @@ public class PriorityService {
 
 	public List<Priority> resortPriorities(@NotNull List<Priority> newOrderedPriorities) {
 		List<Priority> priorities = priorityRepository.findAll();
-		for (Priority tag : priorities) {
-			tag.setOrderNumber(newOrderedPriorities.indexOf(tag));
+		for (Priority priority : priorities) {
+			priority.setOrderNumber(newOrderedPriorities.indexOf(priority));
 		}
 		priorityRepository.saveAll(priorities);
 		return priorities.stream().sorted().toList();

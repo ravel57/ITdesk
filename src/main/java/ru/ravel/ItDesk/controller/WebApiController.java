@@ -33,6 +33,7 @@ public class WebApiController {
 	private final PriorityService priorityService;
 	private final TemplateService templateService;
 	private final EmailService emailService;
+	private final KnowledgeService knowledgeService;
 
 
 	@GetMapping("/clients")
@@ -411,6 +412,37 @@ public class WebApiController {
 	public ResponseEntity<Object> postSlaByPriority(@RequestBody OrganizationPriorityDuration slaByPriority) {
 		organizationService.setSlaByPriority(slaByPriority);
 		return ResponseEntity.ok().build();
+	}
+
+
+	@GetMapping("knowledge-base")
+	public ResponseEntity<Object> getKnowledgeBase() {
+		return ResponseEntity.ok().body(knowledgeService.getKnowledgeBase());
+	}
+
+
+	@PostMapping("knowledge-base")
+	public ResponseEntity<Object> newKnowledge(@RequestBody Knowledge knowledge) {
+		return ResponseEntity.ok().body(knowledgeService.newKnowledge(knowledge));
+	}
+
+
+	@PatchMapping("knowledge-base")
+	public ResponseEntity<Object> updateKnowledge(@RequestBody Knowledge knowledge) {
+		return ResponseEntity.ok().body(knowledgeService.updateKnowledge(knowledge));
+	}
+
+
+	@DeleteMapping("knowledge-base/{knowledgeId}")
+	public ResponseEntity<Object> deleteKnowledge(@PathVariable Long knowledgeId) {
+		knowledgeService.deleteKnowledge(knowledgeId);
+		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@PostMapping("knowledge-base/resort")
+	public ResponseEntity<Object> resortKnowledgeBase(@RequestBody List<Knowledge> knowledge) {
+		return ResponseEntity.ok().body(knowledgeService.resortKnowledge(knowledge));
 	}
 
 }

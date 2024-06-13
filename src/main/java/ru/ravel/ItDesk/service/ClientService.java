@@ -18,7 +18,6 @@ import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -52,9 +51,14 @@ public class ClientService {
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			switch (client.getMessageFrom()) {
-				case TELEGRAM -> client.setSourceChannel(Objects.requireNonNullElse(client.getTgBot().getName(), ""));
-				case EMAIL ->
-						client.setSourceChannel(Objects.requireNonNullElse(client.getEmailAccountSender(), new EmailAccount()).getName());
+				case TELEGRAM -> {
+					TgBot tgBot = Objects.requireNonNullElse(client.getTgBot(), new TgBot());
+					client.setSourceChannel(tgBot.getName());
+				}
+				case EMAIL -> {
+					EmailAccount emailAccount = Objects.requireNonNullElse(client.getEmailAccountSender(), new EmailAccount());
+					client.setSourceChannel(emailAccount.getName());
+				}
 			}
 		});
 		return clients;

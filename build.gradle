@@ -34,6 +34,13 @@ dependencies {
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 
+//	logs
+	implementation 'ch.qos.logback:logback-classic'
+	implementation 'io.prometheus:simpleclient'
+	implementation 'io.prometheus:simpleclient_hotspot'
+	implementation 'io.prometheus:simpleclient_logback'
+	implementation 'io.prometheus:simpleclient_httpserver'
+
 //	minio
 	implementation 'io.minio:minio:8.5.10'
 	implementation 'commons-io:commons-io:2.16.1'

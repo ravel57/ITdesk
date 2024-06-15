@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.dto.MessageTask;
 import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
@@ -37,24 +38,28 @@ public class WebApiController {
 
 
 	@GetMapping("/clients")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getClients() {
 		return ResponseEntity.ok().body(clientService.getClients());
 	}
 
 
 	@PostMapping("/client/{clientId}/new-task")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) {
 		return ResponseEntity.ok().body(clientService.newTask(clientId, task));
 	}
 
 
 	@PostMapping("/client/{clientId}/update-task")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
 		return ResponseEntity.ok().body(clientService.updateTask(clientId, task));
 	}
 
 
 	@PostMapping("/client/{clientId}/new-message")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
 		boolean isMessageDelivered = clientService.sendMessage(clientId, message);
 		if (isMessageDelivered) {
@@ -66,18 +71,21 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/update-client")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		return ResponseEntity.ok().body(clientService.updateClient(clientId, client));
 	}
 
 
 	@PostMapping("/client/{clientId}/link-message-to-task")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> linkMessageToTask(@PathVariable Long clientId, @RequestBody MessageTask messageTask) {
 		return ResponseEntity.ok().body(clientService.linkToTask(messageTask));
 	}
 
 
 	@DeleteMapping("/client/{clientId}/delete-message/{messageId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteMessage(@PathVariable Long clientId, @PathVariable Long messageId) {
 		boolean isDeleted = clientService.deleteMessage(clientId, messageId);
 		if (isDeleted) {
@@ -88,6 +96,7 @@ public class WebApiController {
 	}
 
 
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	@DeleteMapping("/client/{clientId}")
 	public ResponseEntity<Object> deleteClient(@PathVariable Long clientId) {
 		boolean isDeleted = clientService.deleteClient(clientId);
@@ -100,18 +109,21 @@ public class WebApiController {
 
 
 	@GetMapping("/filters")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getFilters() {
 		return ResponseEntity.ok().body(taskFilterService.getAll());
 	}
 
 
 	@PostMapping("/new-filter")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> saveTaskFilter(@RequestBody TaskFilter taskFilter) {
 		return ResponseEntity.ok().body(taskFilterService.saveTaskFilter(taskFilter));
 	}
 
 
 	@DeleteMapping("/filter/{filterId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteTaskFilter(@PathVariable Long filterId) {
 		taskFilterService.deleteTaskFilter(filterId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -119,6 +131,7 @@ public class WebApiController {
 
 
 	@GetMapping("/users")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getUsers() {
 		return ResponseEntity.ok().body(userService.getUsers());
 	}
@@ -131,12 +144,14 @@ public class WebApiController {
 
 
 	@GetMapping("/roles")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getRoles() {
 		return ResponseEntity.ok().body(userService.getRoles());
 	}
 
 
 	@PostMapping("/new-user")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
 		try {
 			return ResponseEntity.ok().body(userService.newUser(user));
@@ -147,12 +162,14 @@ public class WebApiController {
 
 
 	@PostMapping("/update-user")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.ok().body(userService.updateUser(user));
 	}
 
 
 	@DeleteMapping("/delete-user/{userId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateUser(@PathVariable Long userId) {
 		userService.deleteUser(userId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -173,24 +190,28 @@ public class WebApiController {
 
 
 	@GetMapping("/tags")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTags() {
 		return ResponseEntity.ok().body(tagService.getTags());
 	}
 
 
 	@PostMapping("/new-tag")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newTag(@RequestBody Tag tag) {
 		return ResponseEntity.ok().body(tagService.newTag(tag));
 	}
 
 
 	@PostMapping("/update-tag")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateTag(@RequestBody Tag tag) {
 		return ResponseEntity.ok().body(tagService.updateTag(tag));
 	}
 
 
 	@DeleteMapping("/tag/{tagId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteTag(@PathVariable Long tagId) {
 		tagService.deleteTag(tagId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -198,24 +219,28 @@ public class WebApiController {
 
 
 	@GetMapping("/organizations")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getOrganizations() {
 		return ResponseEntity.ok().body(organizationService.getOrganizations());
 	}
 
 
 	@PostMapping("/new-organization")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.newOrganization(organization));
 	}
 
 
 	@PostMapping("/update-organization")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.updateOrganization(organization));
 	}
 
 
 	@DeleteMapping("/organization/{organizationId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteOrganization(@PathVariable Long organizationId) {
 		organizationService.deleteOrganization(organizationId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -223,30 +248,35 @@ public class WebApiController {
 
 
 	@GetMapping("/get-logged-user")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getLoggedUser() {
 		return ResponseEntity.ok().body(userService.getUsersOnline());
 	}
 
 
 	@GetMapping("/telegram-bots")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTelegramBots() {
 		return ResponseEntity.ok().body(telegramService.getTelegramBots());
 	}
 
 
 	@PostMapping("/new-telegram-bot")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newTelegramBot(@RequestBody TgBot telegramBot) {
 		return ResponseEntity.ok().body(telegramService.newTelegramBot(telegramBot));
 	}
 
 
 	@PostMapping("/update-telegram-bot")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateTelegramBot(@RequestBody TgBot telegramBot) {
 		return ResponseEntity.ok().body(telegramService.updateTelegramBot(telegramBot));
 	}
 
 
 	@DeleteMapping("/telegram-bot/{tgBotId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteTelegramBot(@PathVariable Long tgBotId) {
 		telegramService.deleteTelegramBot(tgBotId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -254,24 +284,28 @@ public class WebApiController {
 
 
 	@GetMapping("/emails")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getEmailAccounts() {
 		return ResponseEntity.ok().body(emailService.getEmailsAccounts());
 	}
 
 
 	@PostMapping("/new-email")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newEmailAccount(@RequestBody EmailAccount emailAccount) {
 		return ResponseEntity.ok().body(emailService.newEmailAccount(emailAccount));
 	}
 
 
 	@PostMapping("/update-email")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateEmailAccount(@RequestBody EmailAccount emailAccount) {
 		return ResponseEntity.ok().body(emailService.updateEmailAccount(emailAccount));
 	}
 
 
 	@DeleteMapping("/email/{emailAccountId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteEmailAccount(@PathVariable Long emailAccountId) {
 		emailService.deleteEmailAccount(emailAccountId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -279,18 +313,21 @@ public class WebApiController {
 
 
 	@PostMapping("/new-status")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.newStatus(status));
 	}
 
 
 	@PostMapping("/update-status")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateStatus(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.updateStatus(status));
 	}
 
 
 	@DeleteMapping("/status/{statusId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteStatus(@PathVariable Long statusId) {
 		statusService.deleteStatus(statusId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -304,12 +341,14 @@ public class WebApiController {
 
 
 	@PostMapping("/new-priority")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.newPriority(priority));
 	}
 
 
 	@DeleteMapping("/priority/{priorityId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {
 		priorityService.deletePriority(priorityId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -317,42 +356,49 @@ public class WebApiController {
 
 
 	@PostMapping("/update-priority/set-default")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> prioritySetDefaultSelection(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.prioritySetDefaultSelection(priority));
 	}
 
 
 	@PostMapping("/update-priority/set-high-priority")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> prioritySetCritical(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.prioritySetCritical(priority));
 	}
 
 
 	@PostMapping("/update-priorities/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
 		return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
 	}
 
 
 	@GetMapping("/templates")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTemplates() {
 		return ResponseEntity.ok().body(templateService.getTemplates());
 	}
 
 
 	@PostMapping("/new-template")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newTemplate(@RequestBody Template template) {
 		return ResponseEntity.ok().body(templateService.newTemplate(template));
 	}
 
 
 	@PostMapping("/update-template")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateTemplate(@RequestBody Template template) {
 		return ResponseEntity.ok().body(templateService.updateTemplate(template));
 	}
 
 
 	@DeleteMapping("/template/{templateId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteTemplate(@PathVariable Long templateId) {
 		templateService.deleteTemplate(templateId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -360,12 +406,14 @@ public class WebApiController {
 
 
 	@PostMapping("/update-status/set-default")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> statusSetDefaultSelection(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.statusSetDefaultSelection(status));
 	}
 
 
 	@PostMapping("/get-authenticated-users")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getAllAuthenticatedUsers() {
 		return ResponseEntity.ok().body(userService.getUsersOnline());
 	}
@@ -378,18 +426,21 @@ public class WebApiController {
 
 
 	@PostMapping("/update-status/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortStatuses(@RequestBody List<Status> statuses) {
 		return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
 	}
 
 
 	@PostMapping("/update-templates/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortTemplates(@RequestBody List<Template> templates) {
 		return ResponseEntity.ok().body(templateService.resortTemplates(templates));
 	}
 
 
 	@PostMapping("/update-tags/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		return ResponseEntity.ok().body(tagService.resortTags(tags));
 	}
@@ -409,6 +460,7 @@ public class WebApiController {
 
 
 	@PostMapping("/sla")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> postSlaByPriority(@RequestBody OrganizationPriorityDuration slaByPriority) {
 		organizationService.setSlaByPriority(slaByPriority);
 		return ResponseEntity.ok().build();
@@ -416,24 +468,28 @@ public class WebApiController {
 
 
 	@GetMapping("knowledge-base")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getKnowledgeBase() {
 		return ResponseEntity.ok().body(knowledgeService.getKnowledgeBase());
 	}
 
 
 	@PostMapping("knowledge-base")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newKnowledge(@RequestBody Knowledge knowledge) {
 		return ResponseEntity.ok().body(knowledgeService.newKnowledge(knowledge));
 	}
 
 
 	@PatchMapping("knowledge-base")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateKnowledge(@RequestBody Knowledge knowledge) {
 		return ResponseEntity.ok().body(knowledgeService.updateKnowledge(knowledge));
 	}
 
 
 	@DeleteMapping("knowledge-base/{knowledgeId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteKnowledge(@PathVariable Long knowledgeId) {
 		knowledgeService.deleteKnowledge(knowledgeId);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -441,6 +497,7 @@ public class WebApiController {
 
 
 	@PostMapping("knowledge-base/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortKnowledgeBase(@RequestBody List<Knowledge> knowledge) {
 		return ResponseEntity.ok().body(knowledgeService.resortKnowledge(knowledge));
 	}

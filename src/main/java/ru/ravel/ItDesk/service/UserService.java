@@ -69,7 +69,7 @@ public class UserService {
 				.id(frontendUser.getId())
 				.firstname(frontendUser.getFirstname())
 				.lastname(frontendUser.getLastname())
-				.authorities(List.of(Role.valueOf(frontendUser.getAuthorities())))
+				.authorities(List.of(Role.getByName(frontendUser.getAuthorities())))
 				.username(savedUser.getUsername())
 				.password(savedUser.getPassword())
 				.build();

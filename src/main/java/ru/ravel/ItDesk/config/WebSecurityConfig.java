@@ -28,10 +28,12 @@ class WebSecurityConfig {
 	private final AuthService authService;
 	private final UserService userService;
 
+
 	WebSecurityConfig(AuthService authService, @Lazy UserService userService) {
 		this.authService = authService;
 		this.userService = userService;
 	}
+
 
 	@Bean
 	UserDetailsService userDetailsService() {
@@ -43,6 +45,7 @@ class WebSecurityConfig {
 	PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder(12);
 	}
+
 
 	@Bean
 	SessionRegistry sessionRegistry() {
@@ -67,7 +70,17 @@ class WebSecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**").permitAll()
+						.requestMatchers("/settings").permitAll()
+						.requestMatchers("/settings/profile").permitAll()
+						.requestMatchers("/settings/**").hasRole("ADMIN")
+						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
+						.requestMatchers("/ws/**").authenticated()
 						.anyRequest().authenticated())
+				.sessionManagement(sessionManagement -> sessionManagement
+						.maximumSessions(1)
+						.maxSessionsPreventsLogin(false)
+						.sessionRegistry(sessionRegistry())
+						.expiredUrl("/session-expired"))
 				.formLogin(form -> form.
 						defaultSuccessUrl("/", true))
 				.logout(logout -> logout

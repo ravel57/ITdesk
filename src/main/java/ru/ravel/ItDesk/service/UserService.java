@@ -3,6 +3,8 @@ package ru.ravel.ItDesk.service;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +27,8 @@ public class UserService {
 
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+
+	Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	@Value("${max-users}")
 	private int maxUsers;
@@ -58,6 +62,7 @@ public class UserService {
 					.build();
 			return userRepository.save(user);
 		} else {
+			logger.error("max users is {}", maxUsers);
 			throw new RuntimeException("max users is " + maxUsers);
 		}
 	}

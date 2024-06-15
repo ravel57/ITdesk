@@ -16,7 +16,8 @@
     <logger name="ru.ravel.ItDesk" level="WARN"/>
     <logger name="ru.ravel.ItDesk" level="ERROR"/>
     <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="PROMETHEUS" />
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="PROMETHEUS"/>
+<!--    <appender-ref ref="FLUENT"/>-->
     </root>
 </configuration>

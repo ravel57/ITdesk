@@ -20,8 +20,13 @@ public class PriorityService {
 	}
 
 
-	public Priority newPriority(Priority priority) {
+	public Priority newPriority(@NotNull Priority priority) {
 		priority.setOrderNumber(getPriorities().size() + 1);
+		return priorityRepository.save(priority);
+	}
+
+
+	public Priority updatePriority(Priority priority) {
 		return priorityRepository.save(priority);
 	}
 

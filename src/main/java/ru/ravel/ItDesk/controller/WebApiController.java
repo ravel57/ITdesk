@@ -347,6 +347,13 @@ public class WebApiController {
 	}
 
 
+	@PatchMapping("/priority")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> updatePriority(@RequestBody Priority priority) {
+		return ResponseEntity.ok().body(priorityService.updatePriority(priority));
+	}
+
+
 	@DeleteMapping("/priority/{priorityId}")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {

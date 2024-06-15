@@ -49,20 +49,25 @@ public class UserService {
 
 	public User newUser(@NotNull FrontendUser frontendUser) {
 		if (userRepository.findAll().size() < maxUsers) {
-			User user = User.builder()
-					.username(frontendUser.getUsername())
-					.firstname(frontendUser.getFirstname())
-					.lastname(frontendUser.getLastname())
-					.authorities(List.of(Role.valueOf(frontendUser.getAuthorities())))
-					.password(passwordEncoder.encode(frontendUser.getPassword()))
-					.isEnabled(true)
-					.isAccountNonLocked(true)
-					.isAccountNonExpired(true)
-					.isCredentialsNonExpired(true)
-					.build();
-			return userRepository.save(user);
+			try {
+				User user = User.builder()
+						.username(frontendUser.getUsername())
+						.firstname(frontendUser.getFirstname())
+						.lastname(frontendUser.getLastname())
+						.authorities(List.of(Role.getByName(frontendUser.getAuthorities())))
+						.password(passwordEncoder.encode(frontendUser.getPassword()))
+						.isEnabled(true)
+						.isAccountNonLocked(true)
+						.isAccountNonExpired(true)
+						.isCredentialsNonExpired(true)
+						.build();
+				return userRepository.save(user);
+			} catch (Exception e) {
+				logger.error(e.getMessage(), e);
+				throw new RuntimeException(e);
+			}
 		} else {
-			logger.error("max users is {}", maxUsers);
+			logger.info("max users is {}", maxUsers);
 			throw new RuntimeException("max users is " + maxUsers);
 		}
 	}

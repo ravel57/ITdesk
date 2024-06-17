@@ -51,7 +51,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/update-task")
+	@PatchMapping("/client/{clientId}/task")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
 		return ResponseEntity.ok().body(clientService.updateTask(clientId, task));
@@ -70,7 +70,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/update-client")
+	@PatchMapping("/client/{clientId}/client")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		return ResponseEntity.ok().body(clientService.updateClient(clientId, client));
@@ -161,7 +161,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-user")
+	@PatchMapping("/user")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateUser(@RequestBody FrontendUser user) {
 		return ResponseEntity.ok().body(userService.updateUser(user));
@@ -203,7 +203,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-tag")
+	@PatchMapping("/tag")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateTag(@RequestBody Tag tag) {
 		return ResponseEntity.ok().body(tagService.updateTag(tag));
@@ -232,7 +232,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-organization")
+	@PatchMapping("/organization")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.updateOrganization(organization));
@@ -268,7 +268,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-telegram-bot")
+	@PatchMapping("/telegram-bot")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateTelegramBot(@RequestBody TgBot telegramBot) {
 		return ResponseEntity.ok().body(telegramService.updateTelegramBot(telegramBot));
@@ -297,7 +297,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-email")
+	@PatchMapping("/email")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateEmailAccount(@RequestBody EmailAccount emailAccount) {
 		return ResponseEntity.ok().body(emailService.updateEmailAccount(emailAccount));
@@ -319,7 +319,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-status")
+	@PatchMapping("/status")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateStatus(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.updateStatus(status));
@@ -362,21 +362,21 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-priority/set-default")
+	@PatchMapping("/priority/set-default")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> prioritySetDefaultSelection(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.prioritySetDefaultSelection(priority));
 	}
 
 
-	@PostMapping("/update-priority/set-high-priority")
+	@PatchMapping("/priority/set-high-priority")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> prioritySetCritical(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.prioritySetCritical(priority));
 	}
 
 
-	@PostMapping("/update-priorities/resort")
+	@PatchMapping("/priorities/resort")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
 		return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
@@ -397,7 +397,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-template")
+	@PatchMapping("/template")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateTemplate(@RequestBody Template template) {
 		return ResponseEntity.ok().body(templateService.updateTemplate(template));
@@ -412,7 +412,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-status/set-default")
+	@PatchMapping("/status/set-default")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> statusSetDefaultSelection(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.statusSetDefaultSelection(status));
@@ -432,21 +432,21 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/update-status/resort")
+	@PatchMapping("/status/resort")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortStatuses(@RequestBody List<Status> statuses) {
 		return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
 	}
 
 
-	@PostMapping("/update-templates/resort")
+	@PatchMapping("/templates/resort")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortTemplates(@RequestBody List<Template> templates) {
 		return ResponseEntity.ok().body(templateService.resortTemplates(templates));
 	}
 
 
-	@PostMapping("/update-tags/resort")
+	@PatchMapping("/tags/resort")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		return ResponseEntity.ok().body(tagService.resortTags(tags));

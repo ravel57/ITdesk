@@ -65,7 +65,7 @@ INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Пришлите код от anydesk', 'эни');
 
 INSERT INTO public.template (id, text, shortcut)
-VALUES (DEFAULT, 'Примите подкюлчение', 'подключ');
+VALUES (DEFAULT, 'Примите подключение', 'подключ');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Сотрудник в пути', 'впути');

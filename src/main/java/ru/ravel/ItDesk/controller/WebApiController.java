@@ -44,7 +44,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/new-task")
+	@PostMapping("/client/{clientId}/task")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) {
 		return ResponseEntity.ok().body(clientService.newTask(clientId, task));
@@ -58,7 +58,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/new-message")
+	@PostMapping("/client/{clientId}/message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
 		boolean isMessageDelivered = clientService.sendMessage(clientId, message);
@@ -115,7 +115,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-filter")
+	@PostMapping("/filter")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> saveTaskFilter(@RequestBody TaskFilter taskFilter) {
 		return ResponseEntity.ok().body(taskFilterService.saveTaskFilter(taskFilter));
@@ -150,7 +150,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-user")
+	@PostMapping("/user")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
 		try {
@@ -196,7 +196,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-tag")
+	@PostMapping("/tag")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newTag(@RequestBody Tag tag) {
 		return ResponseEntity.ok().body(tagService.newTag(tag));
@@ -225,7 +225,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-organization")
+	@PostMapping("/organization")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
 		return ResponseEntity.ok().body(organizationService.newOrganization(organization));
@@ -261,7 +261,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-telegram-bot")
+	@PostMapping("/telegram-bot")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newTelegramBot(@RequestBody TgBot telegramBot) {
 		return ResponseEntity.ok().body(telegramService.newTelegramBot(telegramBot));
@@ -290,7 +290,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-email")
+	@PostMapping("/email")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newEmailAccount(@RequestBody EmailAccount emailAccount) {
 		return ResponseEntity.ok().body(emailService.newEmailAccount(emailAccount));
@@ -312,7 +312,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-status")
+	@PostMapping("/status")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
 		return ResponseEntity.ok().body(statusService.newStatus(status));
@@ -340,7 +340,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-priority")
+	@PostMapping("/priority")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
 		return ResponseEntity.ok().body(priorityService.newPriority(priority));
@@ -390,7 +390,7 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/new-template")
+	@PostMapping("/template")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newTemplate(@RequestBody Template template) {
 		return ResponseEntity.ok().body(templateService.newTemplate(template));

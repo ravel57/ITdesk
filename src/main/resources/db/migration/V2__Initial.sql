@@ -28,29 +28,29 @@ VALUES (DEFAULT, null, 'Инфроструктурное оборудовани�
 INSERT INTO public.tag (id, description, name)
 VALUES (DEFAULT, null, 'VIP');
 
-INSERT INTO public.status (id, name, default_selection)
-VALUES (DEFAULT, 'Новая', true);
+INSERT INTO public.status (id, order_number, name, default_selection)
+VALUES (DEFAULT, 1, 'Новая', true);
 
-INSERT INTO public.status (id, name)
-VALUES (DEFAULT, 'В работе');
+INSERT INTO public.status (id, order_number, name)
+VALUES (DEFAULT, 2, 'В работе');
 
-INSERT INTO public.status (id, name)
-VALUES (DEFAULT, 'На поддержке');
+INSERT INTO public.status (id, order_number, name)
+VALUES (DEFAULT, 3, 'На поддержке');
 
-INSERT INTO public.priority (id, name, critical)
-VALUES (DEFAULT, 'Критичный', true);
+INSERT INTO public.priority (id, order_number, name, critical)
+VALUES (DEFAULT, 1, 'Критичный', true);
 
-INSERT INTO public.priority (id, name)
-VALUES (DEFAULT, 'Высокий');
+INSERT INTO public.priority (id, order_number, name)
+VALUES (DEFAULT, 2, 'Высокий');
 
-INSERT INTO public.priority (id, name, default_selection)
-VALUES (DEFAULT, 'Средний', true);
+INSERT INTO public.priority (id, name, order_number, default_selection)
+VALUES (DEFAULT, 'Средний', 3, true);
 
-INSERT INTO public.priority (id, name)
-VALUES (DEFAULT, 'Низкий');
+INSERT INTO public.priority (id, order_number, name)
+VALUES (DEFAULT, 4, 'Низкий');
 
-INSERT INTO public.priority (id, name)
-VALUES (DEFAULT, 'Приостановленно');
+INSERT INTO public.priority (id, order_number, name)
+VALUES (DEFAULT, 5, 'Приостановленно');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Добрый день!', 'дд');

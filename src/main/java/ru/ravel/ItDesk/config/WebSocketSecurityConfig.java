@@ -4,10 +4,18 @@ import org.jetbrains.annotations.NotNull;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
-import org.springframework.messaging.simp.config.ChannelRegistration;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.config.annotation.web.messaging.MessageSecurityMetadataSourceRegistry;
 import org.springframework.security.config.annotation.web.socket.AbstractSecurityWebSocketMessageBrokerConfigurer;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.messaging.simp.config.ChannelRegistration;
+
+import java.util.Collection;
+
 
 @Configuration
 public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBrokerConfigurer {
@@ -16,8 +24,8 @@ public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBro
 	protected void configureInbound(@NotNull MessageSecurityMetadataSourceRegistry messages) {
 		messages.simpDestMatchers("/app/**").authenticated()
 				.simpSubscribeDestMatchers("/topic/authenticated-users/").hasAnyRole("ADMIN", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients/").hasAnyRole("ADMIN", "OPERATOR");
-//				.anyMessage().denyAll();
+				.simpSubscribeDestMatchers("/topic/clients/").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
+				/*.anyMessage().denyAll()*/;
 	}
 
 	@Override
@@ -25,32 +33,15 @@ public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBro
 		registration.interceptors(new ChannelInterceptor() {
 			@Override
 			public Message<?> preSend(@NotNull Message<?> message, @NotNull MessageChannel channel) {
-				return ChannelInterceptor.super.preSend(message, channel);
-			}
-
-			@Override
-			public void postSend(@NotNull Message<?> message, @NotNull MessageChannel channel, boolean sent) {
-				ChannelInterceptor.super.postSend(message, channel, sent);
-			}
-
-			@Override
-			public void afterSendCompletion(@NotNull Message<?> message, @NotNull MessageChannel channel, boolean sent, Exception ex) {
-				ChannelInterceptor.super.afterSendCompletion(message, channel, sent, ex);
-			}
-
-			@Override
-			public boolean preReceive(@NotNull MessageChannel channel) {
-				return ChannelInterceptor.super.preReceive(channel);
-			}
-
-			@Override
-			public Message<?> postReceive(@NotNull Message<?> message, @NotNull MessageChannel channel) {
-				return ChannelInterceptor.super.postReceive(message, channel);
-			}
-
-			@Override
-			public void afterReceiveCompletion(Message<?> message, @NotNull MessageChannel channel, Exception ex) {
-				ChannelInterceptor.super.afterReceiveCompletion(message, channel, ex);
+				StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+				if (accessor != null) {
+					String destination = accessor.getDestination();
+					Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+					if (destination != null && authentication != null) {
+						Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+					}
+				}
+				return message;
 			}
 		});
 	}

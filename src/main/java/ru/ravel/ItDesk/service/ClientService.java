@@ -198,6 +198,12 @@ public class ClientService {
 		return true;
 	}
 
+	public List<Client> getClientsForObserver(User observer) {
+		return getClients().stream()
+				.filter(client -> observer.getAvailableOrganizations().contains(client.getOrganization()))
+				.toList();
+	}
+
 
 	private record UserActionWaiter(
 			Client client,

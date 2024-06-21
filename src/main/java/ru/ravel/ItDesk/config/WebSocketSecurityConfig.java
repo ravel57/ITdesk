@@ -24,7 +24,8 @@ public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBro
 	protected void configureInbound(@NotNull MessageSecurityMetadataSourceRegistry messages) {
 		messages.simpDestMatchers("/app/**").authenticated()
 				.simpSubscribeDestMatchers("/topic/authenticated-users/").hasAnyRole("ADMIN", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients/").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
+				.simpSubscribeDestMatchers("/topic/clients/").hasAnyRole("ADMIN", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/clients-for-observer/").hasAnyRole("OBSERVER")
 				/*.anyMessage().denyAll()*/;
 	}
 

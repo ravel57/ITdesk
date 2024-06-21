@@ -25,4 +25,9 @@ public class WebSocketService {
  		simpMessaging.convertAndSend("/topic/authenticated-users/", users);
 	}
 
+
+	public void sendClientsForObserver(List<Client> clients) {
+ 		simpMessaging.convertAndSend("/topic/clients-for-observer/", clients);
+	}
+
 }

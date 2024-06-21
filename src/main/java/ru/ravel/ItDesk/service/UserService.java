@@ -27,6 +27,7 @@ public class UserService {
 
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
+	private final OrganizationService organizationService;
 
 	Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -56,6 +57,9 @@ public class UserService {
 						.lastname(frontendUser.getLastname())
 						.authorities(List.of(Role.getByName(frontendUser.getAuthorities())))
 						.password(passwordEncoder.encode(frontendUser.getPassword()))
+						.availableOrganizations(frontendUser.getAvailableOrganizations().stream()
+								.map(orgName -> organizationService.getOrganizations().stream()
+										.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
 						.isEnabled(true)
 						.isAccountNonLocked(true)
 						.isAccountNonExpired(true)
@@ -82,6 +86,9 @@ public class UserService {
 				.authorities(List.of(Role.getByName(frontendUser.getAuthorities())))
 				.username(savedUser.getUsername())
 				.password(savedUser.getPassword())
+				.availableOrganizations(frontendUser.getAvailableOrganizations().stream()
+						.map(orgName -> organizationService.getOrganizations().stream()
+								.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
 				.build();
 		return userRepository.save(user);
 	}

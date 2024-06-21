@@ -2,6 +2,8 @@ package ru.ravel.ItDesk.model;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class FrontendUser {
 	private Long id;
@@ -15,4 +17,6 @@ public class FrontendUser {
 	private String password;
 
 	private String authorities;
+
+	private List<String> availableOrganizations;
 }

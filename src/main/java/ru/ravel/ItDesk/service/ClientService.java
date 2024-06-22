@@ -51,7 +51,7 @@ public class ClientService {
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			client.getTasks().forEach(task -> client.getMessages().stream()
-					.filter(message -> task.getLinkedMessageId().equals(message.getId()))
+					.filter(message -> message.getId().equals(task.getLinkedMessageId()))
 					.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> {

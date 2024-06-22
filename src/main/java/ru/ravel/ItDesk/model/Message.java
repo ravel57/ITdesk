@@ -51,6 +51,9 @@ public class Message implements Comparable<Message> {
 
 	private Integer replyMessageMessengerId;
 
+	@Transient
+	private Long linkedTaskId;
+
 	@Override
 	public int compareTo(@NotNull Message o) {
 		return getDate().compareTo(o.getDate());

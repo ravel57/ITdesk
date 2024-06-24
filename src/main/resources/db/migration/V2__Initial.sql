@@ -35,7 +35,7 @@ INSERT INTO public.status (id, order_number, name)
 VALUES (DEFAULT, 2, 'В работе');
 
 INSERT INTO public.status (id, order_number, name)
-VALUES (DEFAULT, 3, 'На поддержке');
+VALUES (DEFAULT, 3, 'Решена');
 
 INSERT INTO public.priority (id, order_number, name, critical)
 VALUES (DEFAULT, 1, 'Критичный', true);

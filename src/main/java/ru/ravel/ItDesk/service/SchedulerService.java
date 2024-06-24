@@ -20,13 +20,11 @@ public class SchedulerService {
 
 	@Scheduled(fixedRate = 500)
 	void updateClientsInfo() {
+		webSocketService.sendClients(clientService.getClients());
+		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
 		try {
-			webSocketService.sendClients(clientService.getClients());
-			webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
 			webSocketService.sendClientsForObserver(clientService.getClientsForObserver(userService.getCurrentUser()));
 		} catch (NullPointerException ignored) {
-		} catch (Exception e) {
-			logger.error(e.getMessage(), e);
 		}
 	}
 

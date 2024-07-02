@@ -70,8 +70,8 @@ class WebSecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**").permitAll()
-						.requestMatchers("/settings").permitAll()
-						.requestMatchers("/settings/profile").permitAll()
+						.requestMatchers("/settings").authenticated()
+						.requestMatchers("/settings/profile").authenticated()
 						.requestMatchers("/settings/**").hasRole("ADMIN")
 						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
 						.requestMatchers("/ws/**").authenticated()

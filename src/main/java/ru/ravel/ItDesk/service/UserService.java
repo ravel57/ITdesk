@@ -5,10 +5,10 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.model.FrontendUser;
 import ru.ravel.ItDesk.model.Role;
@@ -29,10 +29,7 @@ public class UserService {
 	private final PasswordEncoder passwordEncoder;
 	private final OrganizationService organizationService;
 
-	Logger logger = LoggerFactory.getLogger(this.getClass());
-
-	@Value("${max-users}")
-	private int maxUsers;
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	@Getter
 	private final Set<User> usersOnline = new HashSet<>();
@@ -49,7 +46,7 @@ public class UserService {
 
 
 	public User newUser(@NotNull FrontendUser frontendUser) {
-		if (userRepository.findAll().size() < maxUsers) {
+		if (userRepository.findAll().size() < LicenseStarter.maxUsers) {
 			try {
 				User user = User.builder()
 						.username(frontendUser.getUsername())
@@ -71,8 +68,8 @@ public class UserService {
 				throw new RuntimeException(e);
 			}
 		} else {
-			logger.info("max users is {}", maxUsers);
-			throw new RuntimeException("max users is " + maxUsers);
+			logger.info("max users is {}", LicenseStarter.maxUsers);
+			throw new RuntimeException("max users is " + LicenseStarter.maxUsers);
 		}
 	}
 

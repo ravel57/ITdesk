@@ -40,7 +40,8 @@ minio:
   bucket-name: ${MINIO_DEFAULT_BUCKET}
 
 allowed-origin: ${ALLOWED_ORIGIN}
-max-users: ${MAX_USERS}
+instance-name: ${INSTANCE_NAME}
+license-server-url: https://admin.itdesk.site
 
 logging:
   level:

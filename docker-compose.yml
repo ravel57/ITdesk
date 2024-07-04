@@ -29,7 +29,9 @@ services:
       - minio:minio
     ports:
       - '56481:8080'
-      - '56485:8085'
+      - '56491:8081'
+    expose:
+      - 514
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/
       - MINIO_URL=http://minio:9009

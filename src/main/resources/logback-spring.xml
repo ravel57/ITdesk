@@ -5,11 +5,11 @@
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) --- %cyan(%46.46logger) : %msg%n</pattern>
         </encoder>
     </appender>
-
-    <appender name="PROMETHEUS" class="io.prometheus.client.logback.InstrumentedAppender">
-        <prometheusCollector>
-            <name>logback</name>
-        </prometheusCollector>
+    <appender name="SYSLOG" class="ch.qos.logback.classic.net.SyslogAppender">
+        <syslogHost>localhost</syslogHost>
+        <facility>USER</facility>
+        <port>514</port>
+        <suffixPattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) --- %cyan(%46.46logger) : %msg%n</suffixPattern>
     </appender>
     <logger name="org.springframework" level="INFO"/>
     <logger name="ru.ravel.ItDesk" level="INFO"/>
@@ -17,7 +17,6 @@
     <logger name="ru.ravel.ItDesk" level="ERROR"/>
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="PROMETHEUS"/>
-<!--    <appender-ref ref="FLUENT"/>-->
+        <appender-ref ref="SYSLOG" />
     </root>
 </configuration>

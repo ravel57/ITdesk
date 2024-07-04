@@ -50,11 +50,16 @@ dependencies {
 	annotationProcessor 'org.projectlombok:lombok'
 
 //	logs
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'ch.qos.logback:logback-classic'
 	implementation 'io.prometheus:simpleclient'
 	implementation 'io.prometheus:simpleclient_hotspot'
 	implementation 'io.prometheus:simpleclient_logback'
 	implementation 'io.prometheus:simpleclient_httpserver'
+	implementation 'com.google.flogger:flogger:0.8'
+	implementation 'com.google.flogger:flogger-system-backend:0.8'
+	implementation 'com.google.flogger:flogger-slf4j-backend:0.4'
+	implementation 'org.springframework.boot:spring-boot-starter-log4j2:3.3.1'
 
 //	minio
 	implementation 'io.minio:minio:8.5.10'

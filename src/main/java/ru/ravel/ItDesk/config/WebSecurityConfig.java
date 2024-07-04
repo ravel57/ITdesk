@@ -75,6 +75,7 @@ class WebSecurityConfig {
 						.requestMatchers("/settings/**").hasRole("ADMIN")
 						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
 						.requestMatchers("/ws/**").authenticated()
+						.requestMatchers("/actuator/**").permitAll()
 						.anyRequest().authenticated())
 				.sessionManagement(sessionManagement -> sessionManagement
 						.maximumSessions(1)

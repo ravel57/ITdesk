@@ -39,6 +39,11 @@ minio:
   secretKey: minioadmin
   bucket-name: ${MINIO_DEFAULT_BUCKET}
 
+management:
+  server.port: 8081
+  endpoints.web.exposure.include: health,info,metrics,unistat,sessions,loggers,env
+  endpoint.health.show-details: always
+
 allowed-origin: ${ALLOWED_ORIGIN}
 instance-name: ${INSTANCE_NAME}
 license-server-url: https://admin.itdesk.site

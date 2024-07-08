@@ -43,6 +43,9 @@ management:
   server.port: 8081
   endpoints.web.exposure.include: health,info,metrics,unistat,sessions,loggers,env
   endpoint.health.show-details: always
+  security:
+    enabled: false
+    role: ADMIN
 
 allowed-origin: ${ALLOWED_ORIGIN}
 instance-name: ${INSTANCE_NAME}

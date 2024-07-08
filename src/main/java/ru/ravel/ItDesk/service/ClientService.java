@@ -207,6 +207,16 @@ public class ClientService {
 				.toList();
 	}
 
+	public boolean addTaskMessage(Long taskId, Message message) {
+		message.setDate(ZonedDateTime.now());
+		message.setUser(userService.getCurrentUser());
+		messageRepository.save(message);
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		task.getMessages().add(message);
+		taskRepository.save(task);
+		return true;
+	}
+
 
 	private record UserActionWaiter(
 			Client client,

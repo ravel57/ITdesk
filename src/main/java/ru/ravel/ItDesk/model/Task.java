@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 
@@ -49,4 +50,9 @@ public class Task {
 
 	@OneToOne
 	private Sla sla;
+
+	@OneToMany(fetch = FetchType.EAGER, orphanRemoval = true)
+	@JoinColumn(name = "task_id")
+	@Builder.Default
+	private List<Message> messages = new ArrayList<>();
 }

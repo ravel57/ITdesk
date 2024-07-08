@@ -58,6 +58,18 @@ public class WebApiController {
 	}
 
 
+	@PostMapping("/client/{clientId}/task/{taskId}/message")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> addTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody Message message) {
+		boolean isSuccess = clientService.addTaskMessage(taskId, message);
+		if (isSuccess) {
+			return ResponseEntity.ok().build();
+		} else {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+	}
+
+
 	@PostMapping("/client/{clientId}/message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {

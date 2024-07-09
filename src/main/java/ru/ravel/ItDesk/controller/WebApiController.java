@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.dto.MessageTask;
 import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
 import ru.ravel.ItDesk.dto.Password;
+import ru.ravel.ItDesk.dto.UserDto;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
@@ -164,7 +165,7 @@ public class WebApiController {
 
 	@PostMapping("/user")
 	@PreAuthorize("hasAnyRole('ADMIN')")
-	public ResponseEntity<Object> newUser(@RequestBody FrontendUser user) {
+	public ResponseEntity<Object> newUser(@RequestBody UserDto user) {
 		try {
 			return ResponseEntity.ok().body(userService.newUser(user));
 		} catch (Exception e) {
@@ -175,7 +176,7 @@ public class WebApiController {
 
 	@PatchMapping("/user")
 	@PreAuthorize("hasAnyRole('ADMIN')")
-	public ResponseEntity<Object> updateUser(@RequestBody FrontendUser user) {
+	public ResponseEntity<Object> updateUser(@RequestBody UserDto user) {
 		return ResponseEntity.ok().body(userService.updateUser(user));
 	}
 
@@ -198,6 +199,12 @@ public class WebApiController {
 	ResponseEntity<Object> userOffline(@RequestBody User user) {
 		userService.userOffline(user);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+	}
+
+
+	@PostMapping("/user/{userId}/support/new-message")
+	ResponseEntity<Object> userOnline(@PathVariable Long userId, @RequestBody Message message) {
+		return ResponseEntity.ok(userService.sendSupportMessage(userId, message));
 	}
 
 

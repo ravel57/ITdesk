@@ -1,11 +1,11 @@
-package ru.ravel.ItDesk.model;
+package ru.ravel.ItDesk.dto;
 
 import lombok.Data;
 
 import java.util.List;
 
 @Data
-public class FrontendUser {
+public class UserDto {
 	private Long id;
 
 	private String firstname;

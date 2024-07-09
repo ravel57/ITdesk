@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.component;
 
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,8 +8,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import ru.ravel.ItDesk.feign.LicenseFeignClient;
-import ru.ravel.ItDesk.model.ItDeskInstance;
-import ru.ravel.ItDesk.repository.ItDeskInstanceRepository;
+import ru.ravel.ItDesk.model.License;
+import ru.ravel.ItDesk.repository.LicenseRepository;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -19,21 +20,21 @@ import java.util.List;
 public class LicenseStarter implements CommandLineRunner {
 
 	private final LicenseFeignClient licenseFeignClient;
-	private final ItDeskInstanceRepository repository;
+	private final LicenseRepository repository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	@Value("${instance-name}")
 	private String instanceName;
 
-	public static Long maxUsers;
+	public static Long maxUsers;	// FIXME
 
 
 	@Override
 	public void run(String... args) {
 		try {
-			ItDeskInstance instance;
-			List<ItDeskInstance> instances = repository.findAll();
+			License instance;
+			List<License> instances = repository.findAll();
 			if (instances.isEmpty()) {
 				instance = repository.save(licenseFeignClient.register(instanceName));
 			} else {
@@ -44,8 +45,10 @@ public class LicenseStarter implements CommandLineRunner {
 				throw new RuntimeException("license expired");
 			}
 		} catch (RuntimeException e) {
-			logger.error(e.getMessage());
-			System.exit(1);
+			if (((FeignException) e).status() != 302) {	// FIXME
+				logger.error(e.getMessage());
+				System.exit(1);
+			}
 		}
 	}
 }

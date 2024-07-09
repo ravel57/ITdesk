@@ -48,6 +48,7 @@ public class ClientService {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
 			client.getMessages().sort(Message::compareTo);
+			client.getTasks().forEach(task-> task.getMessages().sort(Message::compareTo));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			client.getTasks().forEach(task -> client.getMessages().stream()
@@ -207,7 +208,7 @@ public class ClientService {
 				.toList();
 	}
 
-	public boolean addTaskMessage(Long taskId, Message message) {
+	public boolean addTaskMessage(Long taskId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
 		messageRepository.save(message);

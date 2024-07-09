@@ -10,9 +10,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.Password;
-import ru.ravel.ItDesk.model.FrontendUser;
+import ru.ravel.ItDesk.dto.UserDto;
+import ru.ravel.ItDesk.feign.SupportFeignClient;
+import ru.ravel.ItDesk.model.License;
+import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.User;
+import ru.ravel.ItDesk.repository.LicenseRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
 import java.util.Arrays;
@@ -28,6 +32,8 @@ public class UserService {
 	private final UserRepository userRepository;
 	private final PasswordEncoder passwordEncoder;
 	private final OrganizationService organizationService;
+	private final SupportFeignClient supportFeignClient;
+	private final LicenseRepository licenseRepository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -45,16 +51,16 @@ public class UserService {
 	}
 
 
-	public User newUser(@NotNull FrontendUser frontendUser) {
+	public User newUser(@NotNull UserDto userDto) {
 		if (userRepository.findAll().size() < LicenseStarter.maxUsers) {
 			try {
 				User user = User.builder()
-						.username(frontendUser.getUsername())
-						.firstname(frontendUser.getFirstname())
-						.lastname(frontendUser.getLastname())
-						.authorities(List.of(Role.getByName(frontendUser.getAuthorities())))
-						.password(passwordEncoder.encode(frontendUser.getPassword()))
-						.availableOrganizations(frontendUser.getAvailableOrganizations().stream()
+						.username(userDto.getUsername())
+						.firstname(userDto.getFirstname())
+						.lastname(userDto.getLastname())
+						.authorities(List.of(Role.getByName(userDto.getAuthorities())))
+						.password(passwordEncoder.encode(userDto.getPassword()))
+						.availableOrganizations(userDto.getAvailableOrganizations().stream()
 								.map(orgName -> organizationService.getOrganizations().stream()
 										.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
 						.isEnabled(true)
@@ -74,16 +80,16 @@ public class UserService {
 	}
 
 
-	public User updateUser(@NotNull FrontendUser frontendUser) {
-		User savedUser = userRepository.findById(frontendUser.getId()).orElseThrow();
+	public User updateUser(@NotNull UserDto userDto) {
+		User savedUser = userRepository.findById(userDto.getId()).orElseThrow();
 		User user = User.builder()
-				.id(frontendUser.getId())
-				.firstname(frontendUser.getFirstname())
-				.lastname(frontendUser.getLastname())
-				.authorities(List.of(Role.getByName(frontendUser.getAuthorities())))
+				.id(userDto.getId())
+				.firstname(userDto.getFirstname())
+				.lastname(userDto.getLastname())
+				.authorities(List.of(Role.getByName(userDto.getAuthorities())))
 				.username(savedUser.getUsername())
 				.password(savedUser.getPassword())
-				.availableOrganizations(frontendUser.getAvailableOrganizations().stream()
+				.availableOrganizations(userDto.getAvailableOrganizations().stream()
 						.map(orgName -> organizationService.getOrganizations().stream()
 								.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
 				.build();
@@ -131,4 +137,14 @@ public class UserService {
 			throw new RuntimeException("user is empty");
 		}
 	}
+
+
+	public Message sendSupportMessage(Long userId, Message message) {
+		User user = userRepository.findById(userId).orElseThrow();
+		License license = licenseRepository.findAll().getFirst();
+		supportFeignClient.newMessage(license.getLicense(), message);
+		user.getSupport().getMessages().add(message);
+		return message;
+	}
+
 }

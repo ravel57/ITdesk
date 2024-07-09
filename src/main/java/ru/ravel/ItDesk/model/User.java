@@ -48,14 +48,17 @@ public class User implements UserDetails, Comparable<User> {
 
 	@Builder.Default
 	@JsonIgnore
-	boolean isAccountNonLocked = true;
+	private boolean isAccountNonLocked = true;
 
 	@Builder.Default
 	@JsonIgnore
-	boolean isCredentialsNonExpired = true;
+	private boolean isCredentialsNonExpired = true;
 
 	@Builder.Default
-	boolean isEnabled = true;
+	private boolean isEnabled = true;
+
+	@OneToOne(fetch = FetchType.EAGER)
+	private Support support;
 
 
 	@Override
@@ -63,30 +66,36 @@ public class User implements UserDetails, Comparable<User> {
 		return username;
 	}
 
+
 	@Override
 	public Collection<? extends GrantedAuthority> getAuthorities() {
 		return authorities;
 	}
+
 
 	@Override
 	public String getPassword() {
 		return password;
 	}
 
+
 	@Override
 	public boolean isEnabled() {
 		return isEnabled;
 	}
+
 
 	@Override
 	public boolean isAccountNonExpired() {
 		return isAccountNonExpired;
 	}
 
+
 	@Override
 	public boolean isAccountNonLocked() {
 		return isAccountNonLocked;
 	}
+
 
 	@Override
 	public boolean isCredentialsNonExpired() {

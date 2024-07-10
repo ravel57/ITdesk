@@ -45,10 +45,8 @@ public class LicenseStarter implements CommandLineRunner {
 				throw new RuntimeException("license expired");
 			}
 		} catch (RuntimeException e) {
-			if (((FeignException) e).status() != 302) {	// FIXME
-				logger.error(e.getMessage());
-				System.exit(1);
-			}
+			logger.error(e.getMessage());
+			System.exit(1);
 		}
 	}
 }

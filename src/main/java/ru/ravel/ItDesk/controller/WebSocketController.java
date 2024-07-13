@@ -21,7 +21,7 @@ public class WebSocketController {
 
 
 	@MessageMapping("/mark-read")
-	@SendTo("/topic/mark-read")
+	@SendTo("/topic/mark-read/")
 	public Client markRead(ClientUser clientUser) {
 		return clientService.markRead(clientUser);
 	}

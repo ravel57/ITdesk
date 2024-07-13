@@ -25,18 +25,17 @@ public class Organization implements Comparable<Organization>, Serializable {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@EqualsAndHashCode.Include
-	private Long id;
+	protected Long id;
 
-	private String name;
+	protected String name;
 
 	@ElementCollection(fetch = FetchType.EAGER)
 	@CollectionTable(name = "sla_durations_by_priority", joinColumns = @JoinColumn(name = "organization_id"))
 	@Column(name = "duration")
 	@Convert(converter = DurationConverter.class)
-	private Map<Priority, Duration> slaByPriority = new HashMap<>();
+	protected Map<Priority, Duration> slaByPriority = new HashMap<>();
 
-	@Column(nullable = false, columnDefinition = "int default 0")
-	private Integer orderNumber;
+	protected Integer orderNumber = 1;
 
 	@Override
 	public int compareTo(@NotNull Organization o) {

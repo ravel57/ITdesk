@@ -48,7 +48,7 @@ public class ClientService {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
 			client.getMessages().sort(Message::compareTo);
-			client.getTasks().forEach(task-> task.getMessages().sort(Message::compareTo));
+			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
 			client.getTasks().forEach(task -> client.getMessages().stream()
@@ -88,12 +88,15 @@ public class ClientService {
 
 	private void setSla(@NotNull Client client, Task task) {
 		Organization organization = client.getOrganization();
+		Duration duration;
 		if (organization != null) {
-			Duration duration = organizationService.getSlaByPriority().get(organization).get(task.getPriority());
-			Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
-			slaRepository.save(sla);
-			task.setSla(sla);
+			duration = organizationService.getSlaByPriority().get(organization).get(task.getPriority());
+		} else {
+			duration = DefaultOrganization.getInstance().getSlaByPriority().get(task.getPriority());
 		}
+		Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
+		slaRepository.save(sla);
+		task.setSla(sla);
 	}
 
 

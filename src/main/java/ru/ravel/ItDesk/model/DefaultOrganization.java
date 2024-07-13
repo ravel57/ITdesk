@@ -17,15 +17,13 @@ public class DefaultOrganization extends Organization {
 	@Transient
 	@Getter
 	private static DefaultOrganization instance;
-	private static PriorityRepository priorityRepository;
 
 	@Override
 	public String getName() {
 		return "Стандартный SLA";
 	}
 
-	public static void initializeInstance(@NotNull DefaultOrganizationRepository repository, PriorityRepository priorityRepository) {
-		DefaultOrganization.priorityRepository = priorityRepository;
+	public static void initializeInstance(@NotNull DefaultOrganizationRepository repository) {
 		List<DefaultOrganization> all = repository.findAll();
 		if (!all.isEmpty()) {
 			instance = all.getFirst();

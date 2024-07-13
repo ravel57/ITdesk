@@ -92,7 +92,7 @@ public class ClientService {
 		if (organization != null) {
 			duration = organizationService.getSlaByPriority().get(organization).get(task.getPriority());
 		} else {
-			duration = DefaultOrganization.getInstance().getSlaByPriority().get(task.getPriority());
+			duration = DefaultOrganization.getInstance().getSla().get(task.getPriority());
 		}
 		Sla sla = Sla.builder().startDate(task.getCreatedAt()).duration(duration).build();
 		slaRepository.save(sla);

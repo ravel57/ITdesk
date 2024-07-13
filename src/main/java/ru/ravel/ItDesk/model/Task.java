@@ -40,7 +40,11 @@ public class Task {
 	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Tag> tags;
 
-	private boolean completed;
+	private Boolean completed;
+
+	private Boolean frozen;
+
+	private ZonedDateTime frozenUntil;
 
 	private ZonedDateTime createdAt;
 

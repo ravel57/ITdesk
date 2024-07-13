@@ -32,6 +32,9 @@ spring:
     suffix: .html
     mode: HTML
     cache: false
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
 
 minio:
   url: ${MINIO_URL}

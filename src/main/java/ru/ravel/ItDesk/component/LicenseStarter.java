@@ -48,5 +48,6 @@ public class LicenseStarter implements CommandLineRunner {
 			logger.error(e.getMessage());
 			System.exit(1);
 		}
+		logger.info("license accessed");
 	}
 }

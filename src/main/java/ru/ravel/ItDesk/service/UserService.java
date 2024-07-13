@@ -134,7 +134,7 @@ public class UserService {
 		if (userRepository.findAll().size() > 1) {
 			userRepository.deleteById(userId);
 		} else {
-			throw new RuntimeException("user is empty");
+			throw new RuntimeException("users will be empty");
 		}
 	}
 

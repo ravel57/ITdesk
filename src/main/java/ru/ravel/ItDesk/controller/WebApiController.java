@@ -266,13 +266,6 @@ public class WebApiController {
 	}
 
 
-	@GetMapping("/get-logged-user")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	public ResponseEntity<Object> getLoggedUser() {
-		return ResponseEntity.ok().body(userService.getUsersOnline());
-	}
-
-
 	@GetMapping("/telegram-bots")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTelegramBots() {
@@ -474,13 +467,15 @@ public class WebApiController {
 
 	@GetMapping("/sla")
 	public ResponseEntity<Object> getSlaByPriority() {
-		HashMap<Object, Object> out = new HashMap<>();
+		Map<String, Map<String, Long>> out = new HashMap<>();
 		Map<Organization, Map<Priority, Duration>> slaByPriority = organizationService.getSlaByPriority();
-		for (Organization organization : slaByPriority.keySet()) {
-			Map<String, Duration> collect = slaByPriority.get(organization).entrySet().stream()
-					.collect(Collectors.toMap(e -> e.getKey().getName(), e -> Objects.requireNonNullElse(e.getValue(), Duration.ZERO)));
+		slaByPriority.forEach((organization, priorityMap) -> {	// FIXME ошибка сериализаци Duration в json
+			Map<String, Long> collect = priorityMap.entrySet().stream()
+					.collect(Collectors.toMap(
+							e -> e.getKey().getName(),
+							e -> Objects.requireNonNullElse(e.getValue(), Duration.ZERO).toHours()));
 			out.put(organization.getName(), collect);
-		}
+		});
 		return ResponseEntity.ok().body(out);
 	}
 

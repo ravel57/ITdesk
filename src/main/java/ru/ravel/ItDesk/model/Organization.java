@@ -1,13 +1,9 @@
 package ru.ravel.ItDesk.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import org.jetbrains.annotations.NotNull;
+import ru.ravel.ItDesk.dto.DurationConverter;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -33,14 +29,17 @@ public class Organization implements Comparable<Organization>, Serializable {
 
 	private String name;
 
-	@JdbcTypeCode(SqlTypes.JSON)
-	@Builder.Default
-	//long=PriorityId
-	private Map<Long, Duration> slaByPriority = new HashMap<>();
+	@ElementCollection(fetch = FetchType.EAGER)
+	@CollectionTable(name = "sla_durations_by_priority", joinColumns = @JoinColumn(name = "organization_id"))
+	@Column(name = "duration")
+	@Convert(converter = DurationConverter.class)
+	private Map<Priority, Duration> slaByPriority = new HashMap<>();
 
+	@Column(nullable = false, columnDefinition = "int default 0")
+	private Integer orderNumber;
 
 	@Override
 	public int compareTo(@NotNull Organization o) {
-		return this.name.compareTo(o.name);
+		return orderNumber.compareTo(o.orderNumber);
 	}
 }

@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.http.MediaType;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -28,6 +29,8 @@ import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.EmailAccountRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.*;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -261,6 +264,13 @@ public class EmailService {
 						message.setFileUuid(uuid);
 						message.setFileName(bodyPart.getFileName());
 						message.setFileType(contentType);
+						if(bodyPart.isMimeType(MediaType.IMAGE_PNG_VALUE) || bodyPart.isMimeType(MediaType.IMAGE_JPEG_VALUE)) {
+							File file = minioService.getFile("none", message.getFileUuid());
+							BufferedImage bufferedImage = ImageIO.read(file);
+							message.setFileWidth(bufferedImage.getWidth());
+							message.setFileHeight(bufferedImage.getHeight());
+							boolean delete = file.delete();
+						}
 						logger.debug("Saved attachment to MinIO: {}", bodyPart.getFileName());
 					} catch (Exception e) {
 						logger.error("Error saving attachment: {}", e.getMessage(), e);

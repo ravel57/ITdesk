@@ -96,7 +96,7 @@ public class EmailService {
 	}
 
 
-	public void sendEmail(@NotNull ru.ravel.ItDesk.model.Message message, @NotNull Client client) throws MessagingException {
+	public void sendEmail(@NotNull ru.ravel.ItDesk.model.Message message, @NotNull Client client) throws MessagingException, IOException {
 		EmailAccount emailAccount = client.getEmailAccountSender();
 		JavaMailSender mailSender = smtpSenders.get(emailAccount);
 		MimeMessage mimeMessage = mailSender.createMimeMessage();
@@ -109,6 +109,11 @@ public class EmailService {
 		if (message.getFileUuid() != null) {
 			file = minioService.getFile(message.getFileName(), message.getFileUuid());
 			emailMessage.addAttachment(file.getName(), file);
+			if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
+				BufferedImage bufferedImage = ImageIO.read(file);
+				message.setFileWidth(bufferedImage.getWidth());
+				message.setFileHeight(bufferedImage.getHeight());
+			}
 		}
 		mailSender.send(mimeMessage);
 		if (file != null && !file.delete()) {
@@ -264,7 +269,7 @@ public class EmailService {
 						message.setFileUuid(uuid);
 						message.setFileName(bodyPart.getFileName());
 						message.setFileType(contentType);
-						if(bodyPart.isMimeType(MediaType.IMAGE_PNG_VALUE) || bodyPart.isMimeType(MediaType.IMAGE_JPEG_VALUE)) {
+						if (bodyPart.isMimeType(MediaType.IMAGE_PNG_VALUE) || bodyPart.isMimeType(MediaType.IMAGE_JPEG_VALUE)) {
 							File file = minioService.getFile("none", message.getFileUuid());
 							BufferedImage bufferedImage = ImageIO.read(file);
 							message.setFileWidth(bufferedImage.getWidth());

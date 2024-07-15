@@ -47,6 +47,10 @@ public class Message implements Comparable<Message> {
 
 	private String fileUuid;
 
+	private Integer fileHeight;
+
+	private Integer fileWidth;
+
 	private Long replyMessageId;
 
 	private Integer replyMessageMessengerId;

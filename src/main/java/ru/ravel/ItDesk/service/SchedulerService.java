@@ -26,10 +26,6 @@ public class SchedulerService {
 	private void updateClientsInfo() {
 		webSocketService.sendClients(clientService.getClients());
 		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
-		try {
-			webSocketService.sendClientsForObserver(clientService.getClientsForObserver(userService.getCurrentUser()));
-		} catch (NullPointerException ignored) {
-		}
 	}
 
 

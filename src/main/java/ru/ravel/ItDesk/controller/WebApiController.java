@@ -202,12 +202,6 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/user/{userId}/support/new-message")
-	ResponseEntity<Object> userOnline(@PathVariable Long userId, @RequestBody Message message) {
-		return ResponseEntity.ok(userService.sendSupportMessage(userId, message));
-	}
-
-
 	@GetMapping("/tags")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTags() {
@@ -482,8 +476,8 @@ public class WebApiController {
 
 	@PostMapping("/sla")
 	@PreAuthorize("hasAnyRole('ADMIN')")
-	public ResponseEntity<Object> postSlaByPriority(@RequestBody OrganizationPriorityDuration slaByPriority) {
-		organizationService.setSlaByPriority(slaByPriority);
+	public ResponseEntity<Object> postSla(@RequestBody OrganizationPriorityDuration sla) {
+		organizationService.setSla(sla);
 		return ResponseEntity.ok().build();
 	}
 
@@ -521,6 +515,13 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> resortKnowledgeBase(@RequestBody List<Knowledge> knowledge) {
 		return ResponseEntity.ok().body(knowledgeService.resortKnowledge(knowledge));
+	}
+
+
+	@PostMapping("/user/{userId}/support/new-message")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	ResponseEntity<Object> sendSupportMessage(@PathVariable Long userId, @RequestBody Message message) {
+		return ResponseEntity.ok(userService.sendSupportMessage(userId, message));
 	}
 
 }

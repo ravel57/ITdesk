@@ -50,6 +50,7 @@ public class EmailService {
 
 	private final Map<EmailAccount, Store> imapStores = new ConcurrentHashMap<>();
 	private final Map<EmailAccount, JavaMailSender> smtpSenders = new ConcurrentHashMap<>();
+	private final MinioService minioService;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
@@ -59,12 +60,13 @@ public class EmailService {
 
 	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
 						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository,
-						MinioClient minioClient) {
+						MinioClient minioClient, MinioService minioService) {
 		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
 		this.emailAccountRepository = emailAccountRepository;
 		this.minioClient = minioClient;
+		this.minioService = minioService;
 		emailAccountRepository.findAll().forEach(this::addMailAccount);
 	}
 
@@ -102,22 +104,8 @@ public class EmailService {
 		emailMessage.setText(message.getText());
 		emailMessage.setFrom(emailAccount.getEmailFrom());
 		if (message.getFileUuid() != null) {
-			try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
-				GetObjectResponse getObjectResponse = minioClient.getObject(
-						GetObjectArgs.builder()
-								.bucket(bucketName)
-								.object(message.getFileUuid())
-								.build());
-				byte[] buf = new byte[8192];
-				int bytesRead;
-				while ((bytesRead = getObjectResponse.read(buf)) != -1) {
-					fos.write(buf, 0, bytesRead);
-				}
-				file = new File(message.getFileName());
-				emailMessage.addAttachment(file.getName(), file);
-			} catch (Exception e) {
-				logger.error(e.getMessage(), e);
-			}
+			file = minioService.getFile(message.getFileName(), message.getFileUuid());
+			emailMessage.addAttachment(file.getName(), file);
 		}
 		mailSender.send(mimeMessage);
 		if (file != null && !file.delete()) {

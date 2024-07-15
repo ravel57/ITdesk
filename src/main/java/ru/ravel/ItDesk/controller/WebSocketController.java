@@ -12,6 +12,8 @@ import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.service.ClientService;
 import ru.ravel.ItDesk.service.UserService;
 
+import java.util.List;
+
 @Controller
 @RequiredArgsConstructor
 public class WebSocketController {
@@ -36,6 +38,18 @@ public class WebSocketController {
 	@MessageMapping("/typing")
 	public void typing(@NotNull ClientUserText clientUserText) {
 		clientService.typing(clientUserText);
+	}
+
+
+	// FIXME TODO
+	@MessageMapping("/observer")
+	@SendTo("/topic/clients-for-observer/")
+	public List<Client> getClientsForObserver(String username) {
+		User user = userService.getUsers().stream()
+				.filter(it -> it.getUsername().equals(username))
+				.findFirst()
+				.orElseThrow();
+		return clientService.getClientsForObserver(user);
 	}
 
 }

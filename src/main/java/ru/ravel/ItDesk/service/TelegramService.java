@@ -6,8 +6,6 @@ import com.pengrad.telegrambot.UpdatesListener;
 import com.pengrad.telegrambot.model.PhotoSize;
 import com.pengrad.telegrambot.model.Update;
 import com.pengrad.telegrambot.request.GetFile;
-import io.minio.GetObjectArgs;
-import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +24,9 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TelegramRepository;
 import ru.ravel.ItDesk.telegrammessagebuilder.MessageBuilder;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -48,17 +47,19 @@ public class TelegramService {
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
 	private final MinioClient minioClient;
+	private final MinioService minioService;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
 
 
 	TelegramService(ClientRepository clientRepository, MessageRepository messageRepository,
-					TelegramRepository telegramRepository, MinioClient minioClient) {
+					TelegramRepository telegramRepository, MinioClient minioClient, MinioService minioService) {
 		this.telegramRepository = telegramRepository;
 		this.messageRepository = messageRepository;
 		this.clientRepository = clientRepository;
 		this.minioClient = minioClient;
+		this.minioService = minioService;
 		telegramRepository.findAll().stream()
 				.map(TgBot::getBot)
 				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot)));
@@ -67,43 +68,34 @@ public class TelegramService {
 
 	public void sendMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
 		try {
+			Integer messageId = null;
 			if (message.getReplyMessageId() != null) {
 				Message reply = messageRepository.findById(message.getReplyMessageId()).orElseThrow();
 				message.setReplyMessageMessengerId(reply.getMessengerMessageId());
 			}
 			TelegramBot bot = client.getTgBot().getBot();
 			if (message.getFileUuid() != null) {
-				try (FileOutputStream fos = new FileOutputStream(message.getFileName())) {
-					GetObjectResponse getObjectResponse = minioClient.getObject(
-							GetObjectArgs.builder()
-									.bucket(bucketName)
-									.object(message.getFileUuid())
-									.build());
-					byte[] buf = new byte[8192];
-					int bytesRead;
-					while ((bytesRead = getObjectResponse.read(buf)) != -1) {
-						fos.write(buf, 0, bytesRead);
-					}
-					File file = new File(message.getFileName());
-					Integer messageId = new MessageBuilder(bot)
-							.document()
-							.telegramId(client.getTelegramId())
-							.file(file)
-							.execute();
-					boolean delete = file.delete();
-					if (message.getText().isEmpty()) {
-						message.setMessengerMessageId(messageId);
-						return;
-					}
+				File file = minioService.getFile(message.getFileName(), message.getFileUuid());
+				messageId = new MessageBuilder(bot)
+						.document()
+						.telegramId(client.getTelegramId())
+						.file(file)
+						.execute();
+				if (file != null && !file.delete()) {
+					logger.error("File not deleted {}", file.getAbsolutePath());
 				}
 			}
-			Integer messageId = new MessageBuilder(bot)
-					.send()
-					.telegramId(client.getTelegramId())
-					.text(message.getText())
-					.replyMessage(message.getReplyMessageMessengerId())
-					.execute();
-			message.setMessengerMessageId(messageId);
+			if (message.getText().isEmpty()) {
+				message.setMessengerMessageId(messageId);
+			} else {
+				messageId = new MessageBuilder(bot)
+						.send()
+						.telegramId(client.getTelegramId())
+						.text(message.getText())
+						.replyMessage(message.getReplyMessageMessengerId())
+						.execute();
+				message.setMessengerMessageId(messageId);
+			}
 		} catch (Exception e) {
 			logger.error(e.getMessage());
 			throw new TelegramException(new RuntimeException(e.getMessage()));
@@ -156,7 +148,7 @@ public class TelegramService {
 		public int process(List<Update> updates) {
 			try {
 				updates.forEach(update -> {
-					Client client = clientRepository.findByTelegramId(update.message().from().id());
+					Client client = clientRepository.findByTelegramId(update.message().from().id());    // FIXME Прилетает не из того бота сообщение
 					ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
 					Message message = Message.builder()
 							.text(update.message().text())
@@ -177,7 +169,7 @@ public class TelegramService {
 					if (client != null) {
 						client.getMessages().add(message);
 					} else {
-						TgBot tgBot = telegramRepository.findByToken(bot.getToken()); 	// FIXME
+						TgBot tgBot = telegramRepository.findByToken(bot.getToken());    // FIXME
 						client = Client.builder()
 								.firstname(update.message().from().firstName())
 								.lastname(update.message().from().lastName())
@@ -228,7 +220,7 @@ public class TelegramService {
 			}
 			try {
 				String path = this.bot.getFullFilePath(bot.execute(request).file());
-				HttpURLConnection connection = (HttpURLConnection) new URL(path).openConnection();	//FIXME
+				HttpURLConnection connection = (HttpURLConnection) new URL(path).openConnection();    //FIXME
 				InputStream inputStream = connection.getInputStream();
 				String uuid = UUID.randomUUID().toString();
 				minioClient.putObject(PutObjectArgs.builder()
@@ -243,6 +235,13 @@ public class TelegramService {
 				}
 				message.setFileType(type);
 				message.setFileUuid(uuid);
+				if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) || type.equals(MediaType.IMAGE_PNG_VALUE))) {
+					File file = minioService.getFile("none", message.getFileUuid());
+					BufferedImage bufferedImage = ImageIO.read(file);
+					message.setFileWidth(bufferedImage.getWidth());
+					message.setFileHeight(bufferedImage.getHeight());
+					boolean delete = file.delete();
+				}
 			} catch (Exception e) {
 				logger.error(e.getMessage());
 			}

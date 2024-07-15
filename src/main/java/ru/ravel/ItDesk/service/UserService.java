@@ -12,11 +12,10 @@ import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.dto.UserDto;
 import ru.ravel.ItDesk.feign.SupportFeignClient;
-import ru.ravel.ItDesk.model.License;
-import ru.ravel.ItDesk.model.Message;
-import ru.ravel.ItDesk.model.Role;
-import ru.ravel.ItDesk.model.User;
+import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.LicenseRepository;
+import ru.ravel.ItDesk.repository.MessageRepository;
+import ru.ravel.ItDesk.repository.SupportRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
 import java.util.Arrays;
@@ -34,6 +33,8 @@ public class UserService {
 	private final OrganizationService organizationService;
 	private final SupportFeignClient supportFeignClient;
 	private final LicenseRepository licenseRepository;
+	private final MessageRepository messageRepository;
+	private final SupportRepository supportRepository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -143,7 +144,14 @@ public class UserService {
 		User user = userRepository.findById(userId).orElseThrow();
 		License license = licenseRepository.findAll().getFirst();
 		supportFeignClient.newMessage(license.getLicense(), message);
+		if (user.getSupport() == null) {
+			Support support = new Support();
+			supportRepository.save(support);
+			user.setSupport(support);
+		}
 		user.getSupport().getMessages().add(message);
+		messageRepository.save(message);
+		userRepository.save(user);
 		return message;
 	}
 

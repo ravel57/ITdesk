@@ -60,7 +60,7 @@ public class OrganizationService {
 	}
 
 
-	public void setSlaByPriority(@NotNull OrganizationPriorityDuration organizationPriorityDuration) {
+	public void setSla(@NotNull OrganizationPriorityDuration organizationPriorityDuration) {
 		Organization organization = organizationRepository.findById(organizationPriorityDuration.getOrganization().getId()).orElseThrow();
 		Duration duration = Duration.of(Objects.requireNonNullElse(organizationPriorityDuration.getHours(), 0L), ChronoUnit.HOURS);
 		Priority priority = organizationPriorityDuration.getPriority();

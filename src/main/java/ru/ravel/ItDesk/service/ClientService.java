@@ -208,6 +208,7 @@ public class ClientService {
 	public List<Client> getClientsForObserver(User observer) {
 		return getClients().stream()
 				.filter(client -> observer.getAvailableOrganizations().contains(client.getOrganization()))
+				.peek(client -> client.getTasks().forEach(task -> task.setMessages(Collections.emptyList())))
 				.toList();
 	}
 

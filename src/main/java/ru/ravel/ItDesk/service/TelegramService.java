@@ -81,7 +81,7 @@ public class TelegramService {
 						.telegramId(client.getTelegramId())
 						.file(file)
 						.execute();
-				if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
+				if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals("image/webp")) {
 					BufferedImage bufferedImage = ImageIO.read(file);
 					message.setFileWidth(bufferedImage.getWidth());
 					message.setFileHeight(bufferedImage.getHeight());
@@ -218,7 +218,7 @@ public class TelegramService {
 				} else if (update.message().sticker().isAnimated()) {
 					type = null;    // FIXME
 				} else {
-					type = MediaType.IMAGE_PNG_VALUE;
+					type = "image/webp";
 				}
 			} else {
 				return;
@@ -240,7 +240,7 @@ public class TelegramService {
 				}
 				message.setFileType(type);
 				message.setFileUuid(uuid);
-				if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) || type.equals(MediaType.IMAGE_PNG_VALUE))) {
+				if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) || type.equals("image/webp"))) {
 					File file = minioService.getFile("none", message.getFileUuid());
 					BufferedImage bufferedImage = ImageIO.read(file);
 					message.setFileWidth(bufferedImage.getWidth());

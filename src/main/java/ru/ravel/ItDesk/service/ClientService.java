@@ -229,7 +229,7 @@ public class ClientService {
 				.skip(elementsInCurrentPage)
 				.limit(pageLimit)
 				.toList();
-		return new MessagesList(list, elementsInCurrentPage > 0);
+		return new MessagesList(list, elementsInCurrentPage == 0);
 	}
 
 

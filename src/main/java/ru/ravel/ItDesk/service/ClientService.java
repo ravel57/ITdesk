@@ -43,11 +43,13 @@ public class ClientService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
+	private final Integer pageLimit = 25;
+
 
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
-			client.getMessages().sort(Message::compareTo);
+			client.setMessages(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - pageLimit)).toList());
 			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
@@ -220,6 +222,15 @@ public class ClientService {
 		task.getMessages().add(message);
 		taskRepository.save(task);
 		return true;
+	}
+
+	public List<Message> getPageOfMessages(Long clientId, Integer page) {
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		return client.getMessages().stream()
+				.sorted()
+				.skip(Math.max(0, client.getMessages().size() - pageLimit * page))
+				.limit(pageLimit)
+				.toList();
 	}
 
 

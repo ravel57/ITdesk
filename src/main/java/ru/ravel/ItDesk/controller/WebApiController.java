@@ -109,8 +109,8 @@ public class WebApiController {
 	}
 
 
-	@PreAuthorize("hasAnyRole('ADMIN')")
 	@DeleteMapping("/client/{clientId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteClient(@PathVariable Long clientId) {
 		boolean isDeleted = clientService.deleteClient(clientId);
 		if (isDeleted) {
@@ -118,6 +118,12 @@ public class WebApiController {
 		} else {
 			return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
 		}
+	}
+
+
+	@GetMapping("/client/{clientId}/get-message-page")
+	public ResponseEntity<Object> getPageOfMessages(@PathVariable Long clientId, @RequestParam Integer page) {
+		return ResponseEntity.ok().body(clientService.getPageOfMessages(clientId, page));
 	}
 
 

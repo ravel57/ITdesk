@@ -22,7 +22,7 @@ public class SchedulerService {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
-	@Scheduled(fixedRate = 500)
+	@Scheduled(fixedRate = 25000)
 	private void updateClientsInfo() {
 		webSocketService.sendClients(clientService.getClients());
 		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());

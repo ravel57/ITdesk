@@ -6,10 +6,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import ru.ravel.ItDesk.dto.ClientUser;
-import ru.ravel.ItDesk.dto.ClientUserText;
-import ru.ravel.ItDesk.dto.ExecuteFuture;
-import ru.ravel.ItDesk.dto.MessageTask;
+import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
@@ -224,13 +221,15 @@ public class ClientService {
 		return true;
 	}
 
-	public List<Message> getPageOfMessages(Long clientId, Integer page) {
+	public MessagesList getPageOfMessages(Long clientId, Integer page) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		return client.getMessages().stream()
+		int elementsInCurrentPage = Math.max(0, client.getMessages().size() - pageLimit * page);
+		List<Message> list = client.getMessages().stream()
 				.sorted()
-				.skip(Math.max(0, client.getMessages().size() - pageLimit * page))
+				.skip(elementsInCurrentPage)
 				.limit(pageLimit)
 				.toList();
+		return new MessagesList(list, elementsInCurrentPage > 0);
 	}
 
 

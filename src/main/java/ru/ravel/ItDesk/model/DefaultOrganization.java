@@ -6,7 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import ru.ravel.ItDesk.repository.DefaultOrganizationRepository;
-import ru.ravel.ItDesk.repository.PriorityRepository;
 
 import java.util.List;
 
@@ -25,11 +24,11 @@ public class DefaultOrganization extends Organization {
 
 	public static void initializeInstance(@NotNull DefaultOrganizationRepository repository) {
 		List<DefaultOrganization> all = repository.findAll();
-		if (!all.isEmpty()) {
-			instance = all.getFirst();
-		} else {
+		if (all.isEmpty()) {
 			instance = new DefaultOrganization();
 			repository.save(instance);
+		} else {
+			instance = all.getFirst();
 		}
 	}
 }

@@ -40,8 +40,6 @@ public class ClientService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	private final Integer pageLimit = 25;
-
 
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
@@ -224,6 +222,7 @@ public class ClientService {
 
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
+		int pageLimit = 25;
 		int elementsInCurrentPage = Math.max(0, client.getMessages().size() - pageLimit * page);
 		List<Message> list = client.getMessages().stream()
 				.sorted()

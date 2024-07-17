@@ -249,7 +249,7 @@ public class TelegramService {
 				}
 				message.setFileType(type);
 				message.setFileUuid(uuid);
-				if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) || type.equals("image/webp"))) {
+				if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) /*||type.equals("image/webp")*/)) {
 					File file = minioService.getFile("none", message.getFileUuid());
 					BufferedImage bufferedImage = ImageIO.read(file);
 					message.setFileWidth(bufferedImage.getWidth());

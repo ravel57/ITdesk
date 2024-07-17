@@ -46,12 +46,8 @@ public class ClientService {
 		clients.forEach(client -> {
 			client.setLastMessage(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - 1)).findFirst().orElseThrow());
 			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.isRead()).count());
-			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
-			client.getTasks().forEach(task -> client.getMessages().stream()
-					.filter(message -> message.getId().equals(task.getLinkedMessageId()))
-					.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> {
 					TgBot tgBot = Objects.requireNonNullElse(client.getTgBot(), new TgBot());
@@ -223,13 +219,16 @@ public class ClientService {
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		int pageLimit = 25;
-		int elementsInCurrentPage = Math.max(0, client.getMessages().size() - pageLimit * page);
-		List<Message> list = client.getMessages().stream()
+		int skipFromStart = Math.max(0, client.getMessages().size() - pageLimit * page);
+		List<Message> messages = client.getMessages().stream()
 				.sorted()
-				.skip(elementsInCurrentPage)
-				.limit(pageLimit)
+				.skip(skipFromStart)
+				.limit(skipFromStart != 0 ? pageLimit : client.getMessages().size() - ((long) pageLimit * (page - 1)))
 				.toList();
-		return new PageMessages(list, elementsInCurrentPage == 0);
+		client.getTasks().forEach(task -> messages.stream()
+				.filter(message -> message.getId().equals(task.getLinkedMessageId()))
+				.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
+		return new PageMessages(messages, skipFromStart == 0);
 	}
 
 

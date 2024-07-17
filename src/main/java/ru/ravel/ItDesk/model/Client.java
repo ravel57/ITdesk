@@ -48,9 +48,10 @@ public class Client {
 	@Builder.Default
 	private List<Task> tasks = new ArrayList<>();
 
-	@OneToMany(fetch = FetchType.EAGER, orphanRemoval = true)
+	@OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
 	@JoinColumn(name = "client_id")
 	@Builder.Default
+	@JsonIgnore
 	private List<Message> messages = new ArrayList<>();
 
 	@JsonIgnore

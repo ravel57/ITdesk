@@ -46,7 +46,6 @@ public class ClientService {
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
-			client.setMessages(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - pageLimit)).toList());
 			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));

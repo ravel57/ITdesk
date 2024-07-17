@@ -85,7 +85,7 @@ dependencies {
 	implementation 'org.jsoup:jsoup:1.15.3'
 
 //	webp
-	implementation 'org.sejda.imageio:webp-imageio:0.1.6'
+//	implementation 'org.sejda.imageio:webp-imageio:0.1.6'
 
 //	tests
 	implementation 'org.junit.jupiter:junit-jupiter'

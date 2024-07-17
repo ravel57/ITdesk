@@ -12,7 +12,7 @@ COPY --from=nodejs /usr/src/node/itdesk-front/dist/spa/.   /home/gradle/src/main
 WORKDIR /home/gradle/
 RUN gradle bootJar
 
-FROM alpine/java:21-jdk AS java
+FROM alpine/java:22-jdk AS java
 WORKDIR /home/java/
 COPY --from=gradle /home/gradle/build/libs/*.jar /home/java/ItDesk.jar
 CMD ["java", "-jar", "ItDesk.jar"]

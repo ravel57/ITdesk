@@ -224,6 +224,9 @@ public class ClientService {
 				.sorted()
 				.skip(skipFromStart)
 				.limit(skipFromStart != 0 ? pageLimit : client.getMessages().size() - ((long) pageLimit * (page - 1)))
+				.peek(message -> message.setReplyMessageText(client.getMessages().stream()
+						.filter(m -> m.getId().equals(message.getReplyMessageId()))
+						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
 		client.getTasks().forEach(task -> messages.stream()
 				.filter(message -> message.getId().equals(task.getLinkedMessageId()))

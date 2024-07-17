@@ -53,6 +53,9 @@ public class Message implements Comparable<Message> {
 
 	private Long replyMessageId;
 
+	@Transient
+	private String replyMessageText;
+
 	private Integer replyMessageMessengerId;
 
 	@Transient

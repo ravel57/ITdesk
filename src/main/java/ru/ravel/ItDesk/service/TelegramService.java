@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.MessageFrom;
@@ -48,18 +49,21 @@ public class TelegramService {
 	private final MessageRepository messageRepository;
 	private final MinioClient minioClient;
 	private final MinioService minioService;
+	private final WebSocketService webSocketService;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
 
 
 	TelegramService(ClientRepository clientRepository, MessageRepository messageRepository,
-					TelegramRepository telegramRepository, MinioClient minioClient, MinioService minioService) {
+					TelegramRepository telegramRepository, MinioClient minioClient, MinioService minioService,
+					WebSocketService webSocketService) {
 		this.telegramRepository = telegramRepository;
 		this.messageRepository = messageRepository;
 		this.clientRepository = clientRepository;
 		this.minioClient = minioClient;
 		this.minioService = minioService;
+		this.webSocketService = webSocketService;
 		telegramRepository.findAll().stream()
 				.map(TgBot::getBot)
 				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot)));
@@ -185,6 +189,7 @@ public class TelegramService {
 								.build();
 					}
 					clientRepository.save(client);
+					webSocketService.sendNewMessages(new ClientMessage(client, message));
 				});
 			} catch (Exception e) {
 				logger.error(e.getMessage());

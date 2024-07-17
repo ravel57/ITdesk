@@ -75,6 +75,9 @@ public class Client {
 	private Message lastMessage;
 
 	@Transient
+	private Long unreadMessagesCount;
+
+	@Transient
 	@Builder.Default
 	private Set<User> typingUsers = new ConcurrentSkipListSet<>();
 

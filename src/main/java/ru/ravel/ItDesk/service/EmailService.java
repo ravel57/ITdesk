@@ -22,6 +22,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.EmailAccount;
 import ru.ravel.ItDesk.model.MessageFrom;
@@ -50,10 +51,11 @@ public class EmailService {
 	private final MessageRepository messageRepository;
 	private final EmailAccountRepository emailAccountRepository;
 	private final MinioClient minioClient;
+	private final MinioService minioService;
+	private final WebSocketService webSocketService;
 
 	private final Map<EmailAccount, Store> imapStores = new ConcurrentHashMap<>();
 	private final Map<EmailAccount, JavaMailSender> smtpSenders = new ConcurrentHashMap<>();
-	private final MinioService minioService;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
@@ -63,13 +65,14 @@ public class EmailService {
 
 	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
 						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository,
-						MinioClient minioClient, MinioService minioService) {
+						MinioClient minioClient, MinioService minioService, WebSocketService webSocketService) {
 		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
 		this.emailAccountRepository = emailAccountRepository;
 		this.minioClient = minioClient;
 		this.minioService = minioService;
+		this.webSocketService = webSocketService;
 		emailAccountRepository.findAll().forEach(this::addMailAccount);
 	}
 
@@ -194,6 +197,7 @@ public class EmailService {
 							.build();
 				}
 				clientRepository.save(client);
+				webSocketService.sendNewMessages(new ClientMessage(client, message));
 				emailMessage.setFlag(Flags.Flag.SEEN, true);
 			}
 			emailFolder.close(false);

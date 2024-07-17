@@ -47,6 +47,7 @@ public class ClientService {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
 			client.setLastMessage(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - 1)).findFirst().orElseThrow());
+			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.isRead()).count());
 			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
@@ -221,7 +222,7 @@ public class ClientService {
 		return true;
 	}
 
-	public MessagesList getPageOfMessages(Long clientId, Integer page) {
+	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		int elementsInCurrentPage = Math.max(0, client.getMessages().size() - pageLimit * page);
 		List<Message> list = client.getMessages().stream()
@@ -229,7 +230,7 @@ public class ClientService {
 				.skip(elementsInCurrentPage)
 				.limit(pageLimit)
 				.toList();
-		return new MessagesList(list, elementsInCurrentPage == 0);
+		return new PageMessages(list, elementsInCurrentPage == 0);
 	}
 
 

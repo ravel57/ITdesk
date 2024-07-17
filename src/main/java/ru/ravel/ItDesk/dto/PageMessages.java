@@ -8,7 +8,7 @@ import java.util.List;
 
 @AllArgsConstructor
 @Getter
-public class MessagesList {
+public class PageMessages {
 	private List<Message> messages;
 	private Boolean isEnd;
 }

@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.User;
 
@@ -23,6 +24,11 @@ public class WebSocketService {
 
 	public void getAuthenticatedUsers(Set<User> users) {
  		simpMessaging.convertAndSend("/topic/authenticated-users/", users);
+	}
+
+
+	public void sendNewMessages(ClientMessage clientMessage) {
+		simpMessaging.convertAndSend("/topic/client-messages/", clientMessage);
 	}
 
 }

@@ -218,7 +218,7 @@ public class ClientService {
 
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		int pageLimit = 25;
+		int pageLimit = 100;
 		int skipFromStart = Math.max(0, client.getMessages().size() - pageLimit * page);
 		List<Message> messages = client.getMessages().stream()
 				.sorted()

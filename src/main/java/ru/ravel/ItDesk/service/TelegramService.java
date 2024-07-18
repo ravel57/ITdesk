@@ -85,10 +85,13 @@ public class TelegramService {
 						.telegramId(client.getTelegramId())
 						.file(file)
 						.execute();
-				if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals("image/webp")) {
+				if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE)) {
 					BufferedImage bufferedImage = ImageIO.read(file);
 					message.setFileWidth(bufferedImage.getWidth());
 					message.setFileHeight(bufferedImage.getHeight());
+				} else if (message.getFileType().equals("image/webp")) {
+					message.setFileWidth(512); // FIXME
+					message.setFileHeight(512); //FIXME
 				}
 				if (file != null && !file.delete()) {
 					logger.error("File not deleted {}", file.getAbsolutePath());

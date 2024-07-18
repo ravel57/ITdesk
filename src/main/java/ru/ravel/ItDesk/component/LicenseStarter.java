@@ -27,7 +27,8 @@ public class LicenseStarter implements CommandLineRunner {
 	@Value("${instance-name}")
 	private String instanceName;
 
-	public static Long maxUsers;	// FIXME
+	public static Long maxUsers;			// FIXME
+	public static Boolean isLicenseActive;	// FIXME
 
 
 	@Override
@@ -44,10 +45,11 @@ public class LicenseStarter implements CommandLineRunner {
 			if (ZonedDateTime.now().isAfter(instance.getValidUntil())) {
 				throw new RuntimeException("license expired");
 			}
+			isLicenseActive = true;
+			logger.info("license accessed");
 		} catch (RuntimeException e) {
 			logger.error(e.getMessage());
-			System.exit(1);
+			isLicenseActive = false;
 		}
-		logger.info("license accessed");
 	}
 }

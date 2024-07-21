@@ -116,7 +116,7 @@ public class ClientService {
 	}
 
 
-	public Client markRead(@NotNull ClientUser clientUser) {
+	public Client markReadAndReturnClient(@NotNull ClientUser clientUser) {
 		Client client = clientsRepository.findById(clientUser.getClient().getId()).orElseThrow();
 		ExecuteFuture executeFuture = clientUserMapWatchingExecutorServices.get(clientUser);
 		if (executeFuture != null) {

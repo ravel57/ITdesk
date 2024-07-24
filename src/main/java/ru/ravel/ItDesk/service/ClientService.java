@@ -234,6 +234,13 @@ public class ClientService {
 		return new PageMessages(messages, skipFromStart == 0);
 	}
 
+	public List<Message> getLinkedMessage(@NotNull Task task) {
+		Message message = messageRepository.findById(task.getLinkedMessageId()).orElseThrow();
+		List<Message> messages = messageRepository.findAll();
+		int index = messages.indexOf(message);
+		return messages.stream().skip(index).toList();
+	}
+
 
 	private record UserActionWaiter(
 			Client client,

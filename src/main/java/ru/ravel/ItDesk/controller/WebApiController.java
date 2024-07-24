@@ -122,6 +122,13 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/client/{clientId}/get-linked-message")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getLinkedMessage(@PathVariable Long clientId, @RequestBody Task task) {
+		return ResponseEntity.ok().body(clientService.getLinkedMessage(task));
+	}
+
+
 	@DeleteMapping("/client/{clientId}/delete-message/{messageId}")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteMessage(@PathVariable Long clientId, @PathVariable Long messageId) {

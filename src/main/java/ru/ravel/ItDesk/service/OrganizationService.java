@@ -29,7 +29,7 @@ public class OrganizationService {
 
 	public List<Organization> getOrganizations() {
 		return organizationRepository.findAll().stream()
-				//.filter(organization -> !(organization instanceof DefaultOrganization))
+				.filter(organization -> !(organization instanceof DefaultOrganization))
 				.sorted()
 				.toList();
 	}
@@ -53,7 +53,7 @@ public class OrganizationService {
 	public Map<Organization, Map<Priority, Duration>> getSlaByPriority() {
 		Map<Organization, Map<Priority, Duration>> slaByOrganization = new HashMap<>();
 		organizationRepository.findAll().stream()
-				//.filter(organization -> !(organization instanceof DefaultOrganization))
+				.filter(organization -> !(organization instanceof DefaultOrganization))
 				.forEach(org -> slaByOrganization.put(org, org.getSla()));
 		slaByOrganization.put(DefaultOrganization.getInstance(), DefaultOrganization.getInstance().getSla());
 		return slaByOrganization;
@@ -61,7 +61,12 @@ public class OrganizationService {
 
 
 	public void setSla(@NotNull OrganizationPriorityDuration organizationPriorityDuration) {
-		Organization organization = organizationRepository.findById(organizationPriorityDuration.getOrganization().getId()).orElseThrow();
+		Organization organization;
+		if (organizationPriorityDuration.getOrganization() != null) {
+			organization = organizationRepository.findById(organizationPriorityDuration.getOrganization().getId()).orElseThrow();
+		} else {
+			organization = DefaultOrganization.getInstance();
+		}
 		Duration duration = Duration.of(Objects.requireNonNullElse(organizationPriorityDuration.getHours(), 0L), ChronoUnit.HOURS);
 		Priority priority = organizationPriorityDuration.getPriority();
 		organization.getSla().put(priority, duration);

@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.service;
 
+import com.pengrad.telegrambot.ExceptionHandler;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.TelegramException;
 import com.pengrad.telegrambot.UpdatesListener;
@@ -66,7 +67,7 @@ public class TelegramService {
 		this.webSocketService = webSocketService;
 		telegramRepository.findAll().stream()
 				.map(TgBot::getBot)
-				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot)));
+				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot), exceptionHandler));
 	}
 
 
@@ -121,13 +122,13 @@ public class TelegramService {
 
 
 	public TgBot newTelegramBot(@NotNull TgBot tgBot) {
-		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()));
+		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
 		return telegramRepository.save(tgBot);
 	}
 
 
 	public TgBot updateTelegramBot(@NotNull TgBot tgBot) {
-		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()));
+		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
 		return telegramRepository.save(tgBot);
 	}
 
@@ -150,6 +151,17 @@ public class TelegramService {
 			throw new TelegramException(new RuntimeException("Message not deleted"));
 		}
 	}
+
+
+	private final ExceptionHandler exceptionHandler = e -> {
+		if (e.response() == null) {
+			logger.error(e.getMessage(), e);
+		} else {
+			e.response().errorCode();
+			e.response().description();
+		}
+	};
+
 
 	@RequiredArgsConstructor
 	private class BotUpdatesListener implements UpdatesListener {

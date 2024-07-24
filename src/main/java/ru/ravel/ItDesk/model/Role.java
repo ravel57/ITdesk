@@ -10,9 +10,9 @@ import java.util.Arrays;
 @Getter
 public enum Role implements GrantedAuthority {
 	ADMIN("Администратор"),
-	OPERATOR("Оператор поддержки"),
+	OPERATOR("Оператор поддержки")/*,
 	OBSERVER("Менеджер организации"),
-	CLIENT("Клиент");
+	CLIENT("Клиент")*/;
 
 	private final String name;
 

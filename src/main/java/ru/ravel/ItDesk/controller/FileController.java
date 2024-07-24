@@ -8,15 +8,14 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
 import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 @RestController
@@ -64,13 +63,14 @@ public class FileController {
 	@GetMapping(value = "/documents/{uuid}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
 	public ResponseEntity<Object> documentFile(@PathVariable String uuid) {
 		String filename = messageRepository.findByFileUuid(uuid).orElseThrow().getFileName();
+		String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8);
 		byte[] fileBytes = getFileBytes(uuid);
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-		headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename);
+		headers.setContentDisposition(ContentDisposition.builder("attachment").filename(encodedFilename).build());
+		headers.setContentLength(fileBytes != null ? fileBytes.length : 0);
 		return ResponseEntity.ok()
 				.headers(headers)
-				.contentLength(fileBytes != null ? fileBytes.length : 0)
 				.body(fileBytes);
 	}
 
@@ -95,13 +95,10 @@ public class FileController {
 
 	@Nullable
 	private byte[] getFileBytes(String uuid) {
-		try {
-			InputStream inputStream = minioClient.getObject(GetObjectArgs.builder().bucket(bucketName).object(uuid).build());
-			byte[] imageBytes = inputStream.readAllBytes();
-			inputStream.close();
-			return imageBytes;
+		try (InputStream inputStream = minioClient.getObject(GetObjectArgs.builder().bucket(bucketName).object(uuid).build())) {
+			return inputStream.readAllBytes();
 		} catch (Exception e) {
-			logger.error(e.getMessage());
+			logger.error(e.getMessage(), e);
 			return null;
 		}
 	}

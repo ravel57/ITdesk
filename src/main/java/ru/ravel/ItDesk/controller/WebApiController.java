@@ -122,10 +122,10 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/client/{clientId}/get-linked-message")
+	@GetMapping("/client/{clientId}/linked-message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	public ResponseEntity<Object> getLinkedMessage(@PathVariable Long clientId, @RequestBody Task task) {
-		return ResponseEntity.ok().body(clientService.getLinkedMessage(task));
+	public ResponseEntity<Object> getLinkedMessage(@PathVariable Long clientId, @RequestParam Long linkedMessageId) {
+		return ResponseEntity.ok().body(clientService.getMessagesUntilLinkedMessage(linkedMessageId));
 	}
 
 

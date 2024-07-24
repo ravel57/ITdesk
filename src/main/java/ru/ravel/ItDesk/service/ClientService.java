@@ -234,11 +234,11 @@ public class ClientService {
 		return new PageMessages(messages, skipFromStart == 0);
 	}
 
-	public List<Message> getLinkedMessage(@NotNull Task task) {
-		Message message = messageRepository.findById(task.getLinkedMessageId()).orElseThrow();
+	public List<Message> getMessagesUntilLinkedMessage(Long linkedMessageId) {
+		Message message = messageRepository.findById(linkedMessageId).orElseThrow();
 		List<Message> messages = messageRepository.findAll();
 		int index = messages.indexOf(message);
-		return messages.stream().skip(index).toList();
+		return messages.stream().skip(index).sorted().toList();
 	}
 
 

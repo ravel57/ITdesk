@@ -83,6 +83,7 @@ dependencies {
 //	email
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 	implementation 'org.jsoup:jsoup:1.15.3'
+	implementation 'com.microsoft.ews-java-api:ews-java-api:2.0'
 
 //	webp
 //	implementation 'org.sejda.imageio:webp-imageio:0.1.6'

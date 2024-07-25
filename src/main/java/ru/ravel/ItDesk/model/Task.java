@@ -46,6 +46,8 @@ public class Task {
 
 	private ZonedDateTime frozenUntil;
 
+	private ZonedDateTime frozenFrom;
+
 	private ZonedDateTime createdAt;
 
 	private ZonedDateTime deadline;

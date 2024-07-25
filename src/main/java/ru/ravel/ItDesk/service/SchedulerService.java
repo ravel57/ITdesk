@@ -39,7 +39,7 @@ public class SchedulerService {
 
 
 	@Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
-	private void checkFrozenTasks(){
+	private void checkFrozenTasks() {
 		taskRepository.findAll().stream()
 				.filter(task -> task.getFrozen() != null && task.getFrozen())
 				.filter(task -> ZonedDateTime.now().isAfter(task.getFrozenUntil()))

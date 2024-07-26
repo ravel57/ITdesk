@@ -243,6 +243,15 @@ public class ClientService {
 	}
 
 
+	public List<Message> searchMessages(Long clientId, MessageText messageText) {
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		return client.getMessages().stream()
+				.filter(message -> message.getText() != null)
+				.filter(message -> message.getText().toLowerCase().contains(messageText.getText().toLowerCase()))
+				.toList();
+	}
+
+
 	private record UserActionWaiter(
 			Client client,
 			User user,

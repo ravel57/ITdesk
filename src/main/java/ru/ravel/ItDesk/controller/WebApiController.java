@@ -6,10 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.component.LicenseStarter;
-import ru.ravel.ItDesk.dto.MessageTask;
-import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
-import ru.ravel.ItDesk.dto.Password;
-import ru.ravel.ItDesk.dto.UserDto;
+import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
@@ -161,9 +158,15 @@ public class WebApiController {
 	}
 
 
-	@GetMapping("/client/{clientId}/get-message-page")
+	@GetMapping("/client/{clientId}/messages-page")
 	public ResponseEntity<Object> getPageOfMessages(@PathVariable Long clientId, @RequestParam Integer page) {
 		return ResponseEntity.ok().body(clientService.getPageOfMessages(clientId, page));
+	}
+
+
+	@PostMapping("/client/{clientId}/search-messages")
+	public ResponseEntity<Object> searchMessages(@PathVariable Long clientId, @RequestBody MessageText messageText) {
+		return ResponseEntity.ok().body(clientService.searchMessages(clientId, messageText));
 	}
 
 

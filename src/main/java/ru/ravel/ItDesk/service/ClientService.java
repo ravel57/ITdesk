@@ -237,9 +237,13 @@ public class ClientService {
 	public LinkedMessagePage getMessagesUntilLinkedMessage(Long clientId, Long linkedMessageId) {
 		Message message = messageRepository.findById(linkedMessageId).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		List<Message> messages = client.getMessages().stream().sorted().toList();
+		List<Message> messages = client.getMessages().stream()
+				.sorted()
+				.peek(msg -> msg.setReplyMessageText(client.getMessages().stream()
+						.filter(m -> m.getId().equals(msg.getReplyMessageId()))
+						.findFirst().orElse(Message.builder().text("").build()).getText()))
+				.toList();
 		int index = messages.indexOf(message);
-		int totalPage = ((Double) Math.ceil((double) messages.size() / pageLimit)).intValue();
 		int page = ((Double) Math.ceil((double) (messages.size() - index) / pageLimit)).intValue();
 		int skipFromStart = Math.max(0, messages.size() - pageLimit * page);
 		return new LinkedMessagePage(page, messages.stream().skip(skipFromStart).sorted().toList(), skipFromStart == 0);

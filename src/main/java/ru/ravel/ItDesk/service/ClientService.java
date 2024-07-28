@@ -243,6 +243,9 @@ public class ClientService {
 						.filter(m -> m.getId().equals(msg.getReplyMessageId()))
 						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
+		client.getTasks().forEach(task -> messages.stream()
+				.filter(msg -> msg.getId().equals(task.getLinkedMessageId()))
+				.forEach(msg -> msg.setLinkedTaskId(task.getLinkedMessageId())));
 		int index = messages.indexOf(message);
 		int page = ((Double) Math.ceil((double) (messages.size() - index) / pageLimit)).intValue();
 		int skipFromStart = Math.max(0, messages.size() - pageLimit * page);

@@ -3,8 +3,10 @@ package ru.ravel.ItDesk.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -61,6 +63,11 @@ class WebSecurityConfig {
 		return provider;
 	}
 
+	@Bean
+	public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+		return authenticationConfiguration.getAuthenticationManager();
+	}
+
 
 	@Bean
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -69,7 +76,8 @@ class WebSecurityConfig {
 		return http.cors(AbstractHttpConfigurer::disable)
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
-						.requestMatchers("/js/**", "/css/**").permitAll()
+						.requestMatchers("/js/**", "/css/**", "/icons/**", "/fonts/**").permitAll()
+						.requestMatchers("/login", "/api/v1/login").permitAll()
 						.requestMatchers("/settings").authenticated()
 						.requestMatchers("/settings/profile").authenticated()
 						.requestMatchers("/settings/**").hasRole("ADMIN")
@@ -82,8 +90,12 @@ class WebSecurityConfig {
 						.maxSessionsPreventsLogin(false)
 						.sessionRegistry(sessionRegistry())
 						.expiredUrl("/session-expired"))
-				.formLogin(form -> form.
-						defaultSuccessUrl("/", true))
+				.formLogin(formLogin -> formLogin
+						.loginPage("/login")
+						.loginProcessingUrl("/perform_login")
+						.defaultSuccessUrl("/chats", true)
+						.failureUrl("/login-error")
+						.permitAll())
 				.logout(logout -> logout
 						.logoutSuccessUrl("/logout")
 						.invalidateHttpSession(true)

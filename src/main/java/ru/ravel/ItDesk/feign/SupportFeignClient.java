@@ -12,7 +12,7 @@ import java.util.UUID;
 @FeignClient(name = "support", url = "${license-server-url}")
 public interface SupportFeignClient {
 
-	@PostMapping("api/v1/support/{license}/new-message")
+	@PostMapping("/api/v1/support/{license}/new-message")
 	void newMessage(@PathVariable UUID license, @RequestBody Message message);
 
 }

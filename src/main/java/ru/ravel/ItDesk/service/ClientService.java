@@ -49,6 +49,7 @@ public class ClientService {
 			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.isRead()).count());
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
+			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> {
 					TgBot tgBot = Objects.requireNonNullElse(client.getTgBot(), new TgBot());
@@ -207,6 +208,7 @@ public class ClientService {
 				.toList();
 	}
 
+
 	public boolean addTaskMessage(Long taskId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
@@ -216,6 +218,7 @@ public class ClientService {
 		taskRepository.save(task);
 		return true;
 	}
+
 
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
@@ -233,6 +236,7 @@ public class ClientService {
 				.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
 		return new PageMessages(messages, skipFromStart == 0);
 	}
+
 
 	public LinkedMessagePage getMessagesUntilLinkedMessage(Long clientId, Long linkedMessageId) {
 		Message message = messageRepository.findById(linkedMessageId).orElseThrow();

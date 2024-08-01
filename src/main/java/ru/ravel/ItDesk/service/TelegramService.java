@@ -31,6 +31,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -249,7 +250,7 @@ public class TelegramService {
 			}
 			try {
 				String path = this.bot.getFullFilePath(bot.execute(request).file());
-				HttpURLConnection connection = (HttpURLConnection) new URL(path).openConnection();    //FIXME
+				HttpURLConnection connection = (HttpURLConnection) URL.of(URI.create(path), null).openConnection();
 				InputStream inputStream = connection.getInputStream();
 				String uuid = UUID.randomUUID().toString();
 				minioClient.putObject(PutObjectArgs.builder()

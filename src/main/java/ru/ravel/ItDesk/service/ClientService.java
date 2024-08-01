@@ -262,6 +262,7 @@ public class ClientService {
 		return client.getMessages().stream()
 				.filter(message -> message.getText() != null)
 				.filter(message -> message.getText().toLowerCase().contains(messageText.getText().toLowerCase()))
+				.sorted()
 				.toList();
 	}
 

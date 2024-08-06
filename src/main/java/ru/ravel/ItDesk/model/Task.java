@@ -48,13 +48,16 @@ public class Task {
 
 	private ZonedDateTime frozenFrom;
 
+	@OneToOne(fetch = FetchType.EAGER)
+	private Status previusStatus;
+
 	private ZonedDateTime createdAt;
 
 	private ZonedDateTime deadline;
 
 	private Long linkedMessageId;
 
-	@OneToOne
+	@OneToOne(fetch = FetchType.EAGER)
 	private Sla sla;
 
 	@OneToMany(fetch = FetchType.EAGER, orphanRemoval = true)

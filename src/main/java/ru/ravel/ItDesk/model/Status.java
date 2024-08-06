@@ -15,18 +15,18 @@ public class Status implements Comparable<Status> {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@EqualsAndHashCode.Include
-	private Long id;
+	protected Long id;
 
-	private String name;
+	protected String name;
 
-	private Boolean defaultSelection;
+	protected Boolean defaultSelection;
 
 	@Column(nullable = false, columnDefinition = "int default 0")
-	private Integer orderNumber;
+	protected Integer orderNumber;
 
 
 	@Override
 	public int compareTo(@NotNull Status o) {
-		return orderNumber.compareTo(o.orderNumber);
+		return getOrderNumber().compareTo(o.getOrderNumber());
 	}
 }

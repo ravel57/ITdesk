@@ -8,10 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.repository.ClientRepository;
-import ru.ravel.ItDesk.repository.MessageRepository;
-import ru.ravel.ItDesk.repository.SlaRepository;
-import ru.ravel.ItDesk.repository.TaskRepository;
+import ru.ravel.ItDesk.repository.*;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
@@ -32,6 +29,8 @@ public class ClientService {
 	private final OrganizationService organizationService;
 	private final EmailService emailService;
 	private final SlaRepository slaRepository;
+	private final CompletedStatusRepository completedStatusRepository;
+	private final FrozenStatusRepository frozenStatusRepository;
 
 	private final Map<ClientUserText, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<ClientUser, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -76,8 +75,23 @@ public class ClientService {
 
 
 	public Task updateTask(Long clientId, @NotNull Task task) {
+		Task olderStatus = taskRepository.findById(task.getId()).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		setSla(client, task);
+		if (task.getFrozen() != null && task.getFrozen() || FrozenStatus.getInstance().getId().equals(task.getStatus().getId())) {    //FIXME
+			task.setPreviusStatus(olderStatus.getStatus());
+			task.setStatus(FrozenStatus.getInstance());
+			task.setFrozen(true);
+		} else if (task.getPreviusStatus() != null && !task.getPreviusStatus().equals(FrozenStatus.getInstance())) {
+			task.setStatus(task.getPreviusStatus());
+		}
+		if (task.getCompleted() != null && task.getCompleted() || CompletedStatus.getInstance().getId().equals(task.getStatus().getId())) {    //FIXME
+			task.setPreviusStatus(olderStatus.getStatus());
+			task.setStatus(CompletedStatus.getInstance());
+			task.setCompleted(true);
+		} else if (task.getPreviusStatus() != null && !task.getPreviusStatus().equals(CompletedStatus.getInstance())) {
+			task.setStatus(task.getPreviusStatus());
+		}
 		return taskRepository.save(task);
 	}
 

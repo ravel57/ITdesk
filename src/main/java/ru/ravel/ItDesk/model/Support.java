@@ -18,7 +18,7 @@ public class Support {
 	@EqualsAndHashCode.Include
 	private Long id;
 
-	@OneToMany
+	@OneToMany(fetch = FetchType.EAGER)
 	@Column(nullable = false)
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();

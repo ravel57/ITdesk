@@ -18,10 +18,7 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.SupportRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 
 @Service
@@ -140,19 +137,35 @@ public class UserService {
 	}
 
 
-	public Message sendSupportMessage(Long userId, Message message) {
-		User user = userRepository.findById(userId).orElseThrow();
+	public Message sendSupportMessage(Message message) {
 		License license = licenseRepository.findAll().getFirst();
-		supportFeignClient.newMessage(license.getLicense(), message);
-		if (user.getSupport() == null) {
-			Support support = new Support();
+		List<Support> supports = supportRepository.findAll();
+		Support support;
+		if (supports.isEmpty()) {
+			support = new Support();
 			supportRepository.save(support);
-			user.setSupport(support);
+		} else {
+			support = supports.getFirst();
 		}
-		user.getSupport().getMessages().add(message);
+		supportFeignClient.newMessage(license.getLicense(), message);
+		support.getMessages().add(message);
 		messageRepository.save(message);
-		userRepository.save(user);
 		return message;
 	}
 
+	public void resaveMessage(UUID license, Message message) {
+		if (licenseRepository.findAll().getFirst().getLicense().equals(license)) {
+			messageRepository.save(message);
+			List<Support> supports = supportRepository.findAll();
+			Support support;
+			if (supports.isEmpty()) {
+				support = new Support();
+				supportRepository.save(support);
+			} else {
+				support = supports.getFirst();
+			}
+			support.getMessages().add(message);
+			supportRepository.save(support);
+		}
+	}
 }

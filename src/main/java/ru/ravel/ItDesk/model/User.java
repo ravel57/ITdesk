@@ -57,9 +57,6 @@ public class User implements UserDetails, Comparable<User> {
 	@Builder.Default
 	private boolean isEnabled = true;
 
-	@OneToOne(fetch = FetchType.EAGER)
-	private Support support;
-
 
 	@Override
 	public String getUsername() {

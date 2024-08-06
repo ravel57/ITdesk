@@ -5,6 +5,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.User;
 
 import java.util.List;
@@ -29,6 +30,11 @@ public class WebSocketService {
 
 	public void sendNewMessages(ClientMessage clientMessage) {
 		simpMessaging.convertAndSend("/topic/client-messages/", clientMessage);
+	}
+
+
+	public void supportMessages(List<Message> supportMessages) {
+		simpMessaging.convertAndSend("/topic/support-messages/", supportMessages);
 	}
 
 }

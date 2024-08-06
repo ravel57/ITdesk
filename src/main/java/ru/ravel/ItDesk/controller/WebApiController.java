@@ -11,10 +11,7 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -723,14 +720,17 @@ public class WebApiController {
 	}
 
 
-	@PostMapping("/user/{userId}/support/new-message")
+	@PostMapping("/support/send-message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	ResponseEntity<Object> sendSupportMessage(@PathVariable Long userId, @RequestBody Message message) {
-		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok(userService.sendSupportMessage(userId, message));
-		} else {
-			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-		}
+	ResponseEntity<Object> sendSupportMessage(@RequestBody Message message) {
+		return ResponseEntity.ok(userService.sendSupportMessage(message));
+	}
+
+
+	@PostMapping("/support/resave-message")
+	ResponseEntity<Object> resaveMessage(@RequestBody Message message, @RequestParam UUID license) {
+		userService.resaveMessage(license, message);
+		return ResponseEntity.ok().build();
 	}
 
 }

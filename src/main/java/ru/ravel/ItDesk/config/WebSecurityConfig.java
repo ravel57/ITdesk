@@ -84,6 +84,7 @@ class WebSecurityConfig {
 						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
 						.requestMatchers("/ws/**").authenticated()
 						.requestMatchers("/actuator/**").permitAll()
+						.requestMatchers("/api/v1/support/resave-message").permitAll()
 						.anyRequest().authenticated())
 				.sessionManagement(sessionManagement -> sessionManagement
 						.maximumSessions(1)

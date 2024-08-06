@@ -17,7 +17,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
-public class LicenseStarter implements CommandLineRunner {
+public class LicenseStarter {
 
 	private final LicenseFeignClient licenseFeignClient;
 	private final LicenseRepository repository;
@@ -31,8 +31,7 @@ public class LicenseStarter implements CommandLineRunner {
 	public static Boolean isLicenseActive;	// FIXME
 
 
-	@Override
-	public void run(String... args) {
+	public void run() {
 		try {
 			License instance;
 			List<License> instances = repository.findAll();

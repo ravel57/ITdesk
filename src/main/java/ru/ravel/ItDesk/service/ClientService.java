@@ -78,18 +78,22 @@ public class ClientService {
 		Task olderStatus = taskRepository.findById(task.getId()).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		setSla(client, task);
-		if (task.getFrozen() != null && task.getFrozen()) {    //FIXME
+		if (task.getFrozen() != null && task.getFrozen()) {
 			task.setPreviusStatus(olderStatus.getStatus());
 			task.setStatus(FrozenStatus.getInstance());
 			task.setFrozen(true);
-		} else if (task.getPreviusStatus() != null && FrozenStatus.getInstance().getId().equals(task.getStatus().getId()) && olderStatus.getStatus().equals(FrozenStatus.getInstance())) {
+		} else if (task.getPreviusStatus() != null
+				&& FrozenStatus.getInstance().getId().equals(task.getStatus().getId())     //FIXME
+				&& olderStatus.getStatus().equals(FrozenStatus.getInstance())) {
 			task.setStatus(task.getPreviusStatus());
 		}
 		if (task.getCompleted() != null && task.getCompleted()) {
 			task.setPreviusStatus(olderStatus.getStatus());
 			task.setStatus(CompletedStatus.getInstance());
 			task.setCompleted(true);
-		} else if (task.getPreviusStatus() != null && !task.getPreviusStatus().equals(CompletedStatus.getInstance()) && olderStatus.getStatus().equals(CompletedStatus.getInstance())) {
+		} else if (task.getPreviusStatus() != null
+				&& !task.getPreviusStatus().equals(CompletedStatus.getInstance())
+				&& olderStatus.getStatus().equals(CompletedStatus.getInstance())) {
 			task.setStatus(task.getPreviusStatus());
 		}
 		return taskRepository.save(task);

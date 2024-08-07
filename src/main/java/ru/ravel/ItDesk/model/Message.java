@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.jetbrains.annotations.NotNull;
@@ -13,6 +14,7 @@ import java.time.ZonedDateTime;
 @NoArgsConstructor
 @Builder
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Message implements Comparable<Message> {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -63,6 +65,8 @@ public class Message implements Comparable<Message> {
 
 	@Override
 	public int compareTo(@NotNull Message o) {
+		if (getDate() == null) return -1;
+		if (o.getDate() == null) return 1;
 		return getDate().compareTo(o.getDate());
 	}
 }

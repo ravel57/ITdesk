@@ -3,6 +3,8 @@ package ru.ravel.ItDesk.service;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.model.CompletedStatus;
+import ru.ravel.ItDesk.model.FrozenStatus;
 import ru.ravel.ItDesk.model.Status;
 import ru.ravel.ItDesk.repository.StatusRepository;
 
@@ -26,12 +28,19 @@ public class StatusService {
 	}
 
 
-	public Status updateStatus(Status status) {
+	public Status updateStatus(@NotNull Status status) {
+		if (status.getId().equals(FrozenStatus.getInstance().getId()) || status.getId().equals(CompletedStatus.getInstance().getId())) {
+			throw new RuntimeException();
+		}
 		return statusRepository.save(status);
 	}
 
 
 	public void deleteStatus(Long statusId) {
+		Status status = statusRepository.findById(statusId).orElseThrow();
+		if (status.getId().equals(FrozenStatus.getInstance().getId()) || status.getId().equals(CompletedStatus.getInstance().getId())) {
+			throw new RuntimeException();
+		}
 		statusRepository.deleteById(statusId);
 	}
 

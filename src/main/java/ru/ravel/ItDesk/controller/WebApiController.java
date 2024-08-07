@@ -447,7 +447,11 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateStatus(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(statusService.updateStatus(status));
+			try {
+				return ResponseEntity.ok().body(statusService.updateStatus(status));
+			} catch (Exception e) {
+				return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+			}
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -461,7 +465,7 @@ public class WebApiController {
 			try {
 				statusService.deleteStatus(statusId);
 			} catch (Exception e) {
-				ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+				return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 			}
 			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 		} else {

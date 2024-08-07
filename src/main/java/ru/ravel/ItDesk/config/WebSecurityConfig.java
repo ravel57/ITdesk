@@ -85,6 +85,7 @@ class WebSecurityConfig {
 						.requestMatchers("/ws/**").authenticated()
 						.requestMatchers("/actuator/**").permitAll()
 						.requestMatchers("/api/v1/support/resave-message").permitAll()
+						.requestMatchers("/api/v1/support/reset-password").permitAll()
 						.anyRequest().authenticated())
 				.sessionManagement(sessionManagement -> sessionManagement
 						.maximumSessions(1)

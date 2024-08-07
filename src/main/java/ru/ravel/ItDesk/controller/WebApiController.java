@@ -741,4 +741,10 @@ public class WebApiController {
 		return ResponseEntity.ok().build();
 	}
 
+	@PostMapping("/support/reset-password")
+	ResponseEntity<Object> resetPassword(@RequestBody Username username) {
+		userService.resetPassword(username.getUsername());
+		return  ResponseEntity.ok().build();
+	}
+
 }

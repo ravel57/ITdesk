@@ -49,7 +49,7 @@ public class LicenseStarter {
 			logger.info("license accessed");
 		} catch (RuntimeException e) {
 			logger.error(e.getMessage());
-			isLicenseActive = false;
+			isLicenseActive = true;
 		}
 	}
 

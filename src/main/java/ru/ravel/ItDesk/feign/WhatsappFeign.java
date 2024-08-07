@@ -2,10 +2,7 @@ package ru.ravel.ItDesk.feign;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
-import ru.ravel.ItDesk.whatsapp.MessageResponse;
-import ru.ravel.ItDesk.whatsapp.UpdateBody;
-import ru.ravel.ItDesk.whatsapp.UpdateResponse;
-import ru.ravel.ItDesk.whatsapp.WaRequestMessage;
+import ru.ravel.ItDesk.whatsapp.*;
 
 
 @FeignClient(name = "whatsappFeign", url = "https://whatsgate.ru/api/v1")
@@ -16,6 +13,9 @@ public interface WhatsappFeign {
 
 	@PostMapping("events-get")
 	UpdateResponse getUpdate(@RequestHeader("X-Api-Key") String s, @RequestBody UpdateBody updateBody);
+
+	@PostMapping("/get-media")
+	MediaResponseBody getMedia(@RequestHeader("X-Api-Key") String s, @RequestBody MediaRequestBody mediaRequestBody);
 
 	@PostMapping("/typing")
 	Object postTyping();

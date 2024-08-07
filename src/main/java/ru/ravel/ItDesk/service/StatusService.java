@@ -23,7 +23,7 @@ public class StatusService {
 
 
 	public Status newStatus(@NotNull Status status) {
-		status.setOrderNumber(getStatuses().size() + 1);
+		status.setOrderNumber((int) (statusRepository.count() + 1));
 		return statusRepository.save(status);
 	}
 

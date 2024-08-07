@@ -58,6 +58,7 @@ public class SchedulerService {
 				.filter(task -> ZonedDateTime.now().isAfter(Objects.requireNonNullElse(task.getFrozenUntil(), ZonedDateTime.now())))
 				.peek(task -> task.setFrozen(false))
 				.peek(task -> task.setFrozenUntil(null))
+				.peek(task -> task.setStatus(task.getPreviusStatus()))
 				.forEach(taskRepository::save);
 	}
 

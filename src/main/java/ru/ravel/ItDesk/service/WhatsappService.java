@@ -88,7 +88,7 @@ public class WhatsappService {
 
 
 	@Async
-	@Scheduled(fixedRate = 5, timeUnit = TimeUnit.SECONDS)
+	@Scheduled(fixedRate = 10, timeUnit = TimeUnit.SECONDS)
 	public void checkEmails() {
 		whatsappAccounts.forEach(whatsappAccount -> {
 			try {
@@ -136,7 +136,7 @@ public class WhatsappService {
 					MediaRequestBody mediaRequestBody = new MediaRequestBody(whatsappAccount.getWhatsappId(), eventData.message.mediaKey);
 					Media media = whatsappFeign.getMedia(whatsappAccount.getApiKey(), mediaRequestBody).media;
 					String uuid = UUID.randomUUID().toString();
-					decodeBase64ToMinio(media.data, uuid, media.mimetype, message);
+					decodeBase64ToMinio(media, uuid, message);
 				} catch (Exception e) {
 					logger.error(e.getMessage(), e);
 				}
@@ -165,36 +165,37 @@ public class WhatsappService {
 
 	public void sendMessage(@NotNull Message message, @NotNull Client client) {
 		WhatsappAccount whatsappAccount = client.getWhatsappAccount();
-		WaRequestMessage build = WaRequestMessage.builder()
+		WaRequestMessage requestMessage = WaRequestMessage.builder()
 				.async(false)
 				.recipient(new Recipient(client.getWhatsappRecipient()))
 				.message(new MessageBody(message.getText()))
 				.whatsappID(whatsappAccount.getWhatsappId())
 				.build();
-		whatsappFeign.sendMessage(whatsappAccount.getApiKey(), build);
+		whatsappFeign.sendMessage(whatsappAccount.getApiKey(), requestMessage);
 	}
 
 
-	private void decodeBase64ToMinio(String base64String, String uuid, String type, Message message) {
-		byte[] decodedBytes = Base64.getDecoder().decode(base64String);
+	private void decodeBase64ToMinio(@NotNull Media media, String uuid, Message message) {
+		byte[] decodedBytes = Base64.getDecoder().decode(media.data);
 		try (InputStream inputStream = new ByteArrayInputStream(decodedBytes)) {
 			minioClient.putObject(
 					PutObjectArgs.builder()
 							.bucket(bucketName)
 							.object(uuid)
-							.contentType(type)
+							.contentType(media.mimetype)
 							.stream(inputStream, decodedBytes.length, -1)
 							.build()
 			);
-			message.setFileType(type);
+			message.setFileType(media.mimetype);
 			message.setFileUuid(uuid);
-			if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) /*||type.equals("image/webp")*/)) {
+			message.setFileName(media.filename);
+			if (media.mimetype != null && media.mimetype.equals(MediaType.IMAGE_JPEG_VALUE)) {
 				File file = minioService.getFile("none", message.getFileUuid());
 				BufferedImage bufferedImage = ImageIO.read(file);
 				message.setFileWidth(bufferedImage.getWidth());
 				message.setFileHeight(bufferedImage.getHeight());
 				boolean delete = file.delete();
-			} else if (type != null && type.equals("image/webp")) {
+			} else if (media.mimetype != null && media.mimetype.equals("image/webp")) {
 				message.setFileWidth(512); // FIXME
 				message.setFileHeight(512); //FIXME
 			}

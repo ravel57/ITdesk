@@ -8,4 +8,5 @@ public class Media {
 
 	public int filesize;
 
+	public String filename;
 }

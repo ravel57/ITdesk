@@ -124,6 +124,7 @@ public class UserService {
 	public User changePassword(@NotNull Password password) {
 		User user = getCurrentUser();
 		user.setPassword(passwordEncoder.encode(password.getPassword()));
+		userRepository.save(user);
 		return user;
 	}
 

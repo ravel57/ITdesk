@@ -8,4 +8,6 @@ import ru.ravel.ItDesk.model.Client;
 @Repository
 public interface ClientRepository extends JpaRepository<Client, Long> {
 	Client findByTelegramId(Long telegramId);
+
+	Client findByWhatsappRecipient(String whatsappRecipient);
 }

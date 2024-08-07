@@ -126,7 +126,7 @@ public class EmailService {
 
 
 	@Async
-	@Scheduled(fixedRate = 3, timeUnit = TimeUnit.SECONDS)
+	@Scheduled(fixedRate = 30, timeUnit = TimeUnit.SECONDS)
 	public void checkEmails() {
 		imapStores.forEach((emailAccount, store) -> {
 			try {

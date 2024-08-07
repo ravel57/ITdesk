@@ -36,11 +36,11 @@ public class SchedulerService {
 		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
 	}
 
-	@Scheduled(fixedRate = 1, timeUnit = TimeUnit.MINUTES)
+	@Scheduled(fixedRate = 1, timeUnit = TimeUnit.SECONDS)
 	private void supportMessages() {
 		List<Support> all = supportRepository.findAll();
 		if (!all.isEmpty()) {
-			webSocketService.supportMessages(all.getFirst().getMessages());
+			webSocketService.supportMessages(all.getFirst().getMessages().stream().sorted().toList());
 		}
 	}
 

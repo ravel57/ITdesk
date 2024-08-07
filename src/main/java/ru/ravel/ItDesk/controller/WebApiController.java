@@ -458,7 +458,11 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> deleteStatus(@PathVariable Long statusId) {
 		if (LicenseStarter.isLicenseActive) {
-			statusService.deleteStatus(statusId);
+			try {
+				statusService.deleteStatus(statusId);
+			} catch (Exception e) {
+				ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+			}
 			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -728,7 +732,7 @@ public class WebApiController {
 
 
 	@PostMapping("/support/resave-message")
-	ResponseEntity<Object> resaveMessage(@RequestBody Message message, @RequestParam UUID license) {
+	ResponseEntity<Object> resaveMessage(@RequestBody Message message, @RequestParam String license) {
 		userService.resaveMessage(license, message);
 		return ResponseEntity.ok().build();
 	}

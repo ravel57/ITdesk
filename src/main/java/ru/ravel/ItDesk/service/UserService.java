@@ -153,8 +153,8 @@ public class UserService {
 		return message;
 	}
 
-	public void resaveMessage(UUID license, Message message) {
-		if (licenseRepository.findAll().getFirst().getLicense().equals(license)) {
+	public void resaveMessage(String license, Message message) {
+		if (licenseRepository.findAll().getFirst().getLicense().toString().equals(license)) {
 			messageRepository.save(message);
 			List<Support> supports = supportRepository.findAll();
 			Support support;

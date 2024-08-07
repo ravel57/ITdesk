@@ -168,4 +168,14 @@ public class UserService {
 			supportRepository.save(support);
 		}
 	}
+
+	public void resetPassword(String username) {
+		userRepository.findByUsername(username).ifPresent(user -> {
+					UUID license = licenseRepository.findAll().getFirst().getLicense();
+					String password = supportFeignClient.resetPassword(license, username);
+					user.setPassword(passwordEncoder.encode(password));
+					userRepository.save(user);
+				}
+		);
+	}
 }

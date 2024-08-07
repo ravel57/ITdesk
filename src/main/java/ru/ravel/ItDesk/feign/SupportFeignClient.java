@@ -15,4 +15,7 @@ public interface SupportFeignClient {
 	@PostMapping("/api/v1/support/{license}/new-message")
 	void newMessage(@PathVariable UUID license, @RequestBody Message message);
 
+	@PostMapping("/api/v1/support/{license}/reset-password")
+	String resetPassword(@PathVariable UUID license, @RequestBody String emailToReset);
+
 }

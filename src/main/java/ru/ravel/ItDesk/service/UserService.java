@@ -174,6 +174,7 @@ public class UserService {
 					UUID license = licenseRepository.findAll().getFirst().getLicense();
 					String password = supportFeignClient.resetPassword(license, username);
 					user.setPassword(passwordEncoder.encode(password));
+					userRepository.save(user);
 				}
 		);
 	}

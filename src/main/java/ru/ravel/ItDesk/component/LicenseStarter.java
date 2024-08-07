@@ -13,6 +13,7 @@ import ru.ravel.ItDesk.repository.LicenseRepository;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Objects;
 
 
 @Component
@@ -41,7 +42,7 @@ public class LicenseStarter {
 				instance = licenseFeignClient.license(instances.getFirst().getLicense().toString());
 			}
 			maxUsers = instance.getUsersCount();
-			if (ZonedDateTime.now().isAfter(instance.getValidUntil())) {
+			if (ZonedDateTime.now().isAfter(Objects.requireNonNullElse(instance.getValidUntil(), ZonedDateTime.now()))) {
 				throw new RuntimeException("license expired");
 			}
 			isLicenseActive = true;

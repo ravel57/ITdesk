@@ -18,13 +18,11 @@ import ru.ravel.ItDesk.model.WhatsappAccount;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.WhatsappAccountRepository;
-import ru.ravel.ItDesk.whatsapp.*;
+import ru.ravel.ItDesk.whatsappdto.*;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.InputStream;
+import java.io.*;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -89,7 +87,7 @@ public class WhatsappService {
 
 	@Async
 	@Scheduled(fixedRate = 10, timeUnit = TimeUnit.SECONDS)
-	public void checkEmails() {
+	public void checkMessages() {
 		whatsappAccounts.forEach(whatsappAccount -> {
 			try {
 				getMessages(whatsappAccount);
@@ -163,12 +161,46 @@ public class WhatsappService {
 	}
 
 
-	public void sendMessage(@NotNull Message message, @NotNull Client client) {
+	public void sendMessage(@NotNull Message message, @NotNull Client client) throws IOException {
+		MessageBody messageBody;
+		if (message.getFileType()!=null && message.getFileType().startsWith("image")) {
+			messageBody = MessageBody.builder()
+					.type(Type.image)
+					.body(message.getText())
+					.media(Media.builder()
+							.mimetype(message.getFileType())
+							.filename(message.getFileName())
+							.build())
+					.build();
+		} else if (message.getFileUuid() != null) {
+			messageBody = MessageBody.builder()
+					.type(Type.doc)
+					.body(message.getText())
+					.media(Media.builder()
+							.mimetype(message.getFileType())
+							.filename(message.getFileName())
+							.build())
+					.build();
+		} else {
+			messageBody = MessageBody.builder().body(message.getText()).build();
+		}
+		if (message.getFileUuid() != null) {
+			File file = minioService.getFile(message.getFileName(), message.getFileUuid());
+			messageBody.media.data = encodeFileToBase64(file);
+			if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
+				BufferedImage bufferedImage = ImageIO.read(file);
+				message.setFileWidth(bufferedImage.getWidth());
+				message.setFileHeight(bufferedImage.getHeight());
+			}
+			if (!file.delete()) {
+				logger.error("File not deleted {}", file.getAbsolutePath());
+			}
+		}
 		WhatsappAccount whatsappAccount = client.getWhatsappAccount();
 		WaRequestMessage requestMessage = WaRequestMessage.builder()
 				.async(false)
 				.recipient(new Recipient(client.getWhatsappRecipient()))
-				.message(new MessageBody(message.getText()))
+				.message(messageBody)
 				.whatsappID(whatsappAccount.getWhatsappId())
 				.build();
 		whatsappFeign.sendMessage(whatsappAccount.getApiKey(), requestMessage);
@@ -202,6 +234,17 @@ public class WhatsappService {
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);
 		}
+	}
+
+
+	public static String encodeFileToBase64(File file) throws IOException {
+		byte[] fileBytes;
+		try (FileInputStream fileInputStream = new FileInputStream(file)) {
+			fileBytes = new byte[(int) file.length()];
+			fileInputStream.read(fileBytes);
+		}
+		String base64String = Base64.getEncoder().encodeToString(fileBytes);
+		return base64String;
 	}
 
 }

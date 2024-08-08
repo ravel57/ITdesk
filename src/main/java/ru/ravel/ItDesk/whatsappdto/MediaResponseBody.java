@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.whatsapp;
+package ru.ravel.ItDesk.whatsappdto;
 
 public class MediaResponseBody {
 

@@ -1,9 +1,6 @@
-package ru.ravel.ItDesk.whatsapp;
+package ru.ravel.ItDesk.whatsappdto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
-public class WaResponseMessage {
-
+public class MessageResult {
 	public String _id;
 
 	public String id;

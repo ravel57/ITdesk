@@ -2,7 +2,7 @@ package ru.ravel.ItDesk.feign;
 
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
-import ru.ravel.ItDesk.whatsapp.*;
+import ru.ravel.ItDesk.whatsappdto.*;
 
 
 @FeignClient(name = "whatsappFeign", url = "https://whatsgate.ru/api/v1")

@@ -1,6 +1,7 @@
-package ru.ravel.ItDesk.whatsapp;
+package ru.ravel.ItDesk.whatsappdto;
 
-public class MessageResult {
+public class WaResponseMessage {
+
 	public String _id;
 
 	public String id;

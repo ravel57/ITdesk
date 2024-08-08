@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.whatsapp;
+package ru.ravel.ItDesk.whatsappdto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -8,15 +8,18 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class WaRequestMessage {
+public class UpdateBody {
 
 	@JsonProperty("WhatsappID")
 	public String whatsappID;
 
-	public boolean async = false;
+	public String date;
 
-	public Recipient recipient;
+	public Action action;
 
-	public MessageBody message;
+	@JsonProperty("page_cnt")
+	public Integer pageCnt;
+
+	public Integer page;
 
 }

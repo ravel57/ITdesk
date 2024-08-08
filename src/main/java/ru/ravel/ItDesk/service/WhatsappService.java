@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.feign.WhatsappFeign;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
@@ -43,6 +44,7 @@ public class WhatsappService {
 	private final MinioService minioService;
 
 	private final List<WhatsappAccount> whatsappAccounts = Collections.synchronizedList(new ArrayList<>());
+	private final WebSocketService webSocketService;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
@@ -52,14 +54,16 @@ public class WhatsappService {
 
 	public WhatsappService(WhatsappFeign whatsappFeign, WhatsappAccountRepository whatsappAccountRepository,
 						   ClientRepository clientRepository, MinioClient minioClient,
-						   MessageRepository messageRepository, MinioService minioService) {
+						   MessageRepository messageRepository, MinioService minioService,
+						   WebSocketService webSocketService) {
 		this.whatsappFeign = whatsappFeign;
 		this.whatsappAccountRepository = whatsappAccountRepository;
 		this.clientRepository = clientRepository;
 		this.minioClient = minioClient;
 		this.messageRepository = messageRepository;
 		this.minioService = minioService;
-		whatsappAccounts.addAll(getWhatsappAccounts());
+		this.webSocketService = webSocketService;
+		this.whatsappAccounts.addAll(getWhatsappAccounts());
 	}
 
 
@@ -157,6 +161,7 @@ public class WhatsappService {
 			} catch (Exception e) {
 				clientRepository.save(client);
 			}
+			webSocketService.sendNewMessages(new ClientMessage(client, message));
 		});
 	}
 

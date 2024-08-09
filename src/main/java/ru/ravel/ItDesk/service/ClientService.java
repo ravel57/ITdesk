@@ -85,7 +85,9 @@ public class ClientService {
 		setSla(client, task);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		if (task.getFrozen() != null && task.getFrozen()) {
-			task.setPreviusStatus(olderStatus.getStatus());
+			if (!olderStatus.getStatus().equals(frozenStatus)) {
+				task.setPreviusStatus(olderStatus.getStatus());
+			}
 			task.setStatus(frozenStatus);
 			task.setFrozen(true);
 		} else if (task.getPreviusStatus() != null
@@ -95,7 +97,9 @@ public class ClientService {
 		}
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		if (task.getCompleted() != null && task.getCompleted()) {
-			task.setPreviusStatus(olderStatus.getStatus());
+			if (!olderStatus.getStatus().equals(completedStatus)) {
+				task.setPreviusStatus(olderStatus.getStatus());
+			}
 			task.setStatus(completedStatus);
 			task.setCompleted(true);
 		} else if (task.getPreviusStatus() != null

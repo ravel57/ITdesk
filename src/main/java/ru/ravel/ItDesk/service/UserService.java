@@ -19,6 +19,7 @@ import ru.ravel.ItDesk.repository.SupportRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 
 @Service
@@ -51,25 +52,31 @@ public class UserService {
 
 	public User newUser(@NotNull UserDto userDto) {
 		if (userRepository.findAll().size() < LicenseStarter.maxUsers) {
-			try {
-				User user = User.builder()
-						.username(userDto.getUsername())
-						.firstname(userDto.getFirstname())
-						.lastname(userDto.getLastname())
-						.authorities(List.of(Role.getByName(userDto.getAuthorities())))
-						.password(passwordEncoder.encode(userDto.getPassword()))
-						.availableOrganizations(userDto.getAvailableOrganizations().stream()
-								.map(orgName -> organizationService.getOrganizations().stream()
-										.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
-						.isEnabled(true)
-						.isAccountNonLocked(true)
-						.isAccountNonExpired(true)
-						.isCredentialsNonExpired(true)
-						.build();
-				return userRepository.save(user);
-			} catch (Exception e) {
-				logger.error(e.getMessage(), e);
-				throw new RuntimeException(e);
+			Pattern pattern = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+			if (pattern.matcher(userDto.getUsername()).matches()) {
+				try {
+					User user = User.builder()
+							.username(userDto.getUsername())
+							.firstname(userDto.getFirstname())
+							.lastname(userDto.getLastname())
+							.authorities(List.of(Role.getByName(userDto.getAuthorities())))
+							.password(passwordEncoder.encode(userDto.getPassword()))
+							.availableOrganizations(userDto.getAvailableOrganizations().stream()
+									.map(orgName -> organizationService.getOrganizations().stream()
+											.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
+							.isEnabled(true)
+							.isAccountNonLocked(true)
+							.isAccountNonExpired(true)
+							.isCredentialsNonExpired(true)
+							.build();
+					return userRepository.save(user);
+
+				} catch (Exception e) {
+					logger.error(e.getMessage(), e);
+					throw new RuntimeException(e);
+				}
+			} else {
+				throw new RuntimeException("not email");
 			}
 		} else {
 			logger.info("max users is {}", LicenseStarter.maxUsers);
@@ -124,6 +131,7 @@ public class UserService {
 	public User changePassword(@NotNull Password password) {
 		User user = getCurrentUser();
 		user.setPassword(passwordEncoder.encode(password.getPassword()));
+		userRepository.save(user);
 		return user;
 	}
 
@@ -171,11 +179,10 @@ public class UserService {
 
 	public void resetPassword(String username) {
 		userRepository.findByUsername(username).ifPresent(user -> {
-					UUID license = licenseRepository.findAll().getFirst().getLicense();
-					String password = supportFeignClient.resetPassword(license, username);
-					user.setPassword(passwordEncoder.encode(password));
-					userRepository.save(user);
-				}
-		);
+			UUID license = licenseRepository.findAll().getFirst().getLicense();
+			String password = supportFeignClient.resetPassword(license, username);
+			user.setPassword(passwordEncoder.encode(password));
+			userRepository.save(user);
+		});
 	}
 }

@@ -37,7 +37,7 @@ public class Client {
 
 	private Long telegramId;
 
-	private Long whatsappId;
+	private String whatsappRecipient;
 
 	private String phoneNumber;
 
@@ -65,6 +65,12 @@ public class Client {
 	@OnDelete(action = OnDeleteAction.CASCADE)
 	@JoinColumn(name = "email_account_id")
 	private EmailAccount emailAccountSender;
+
+	@JsonIgnore
+	@ManyToOne(fetch = FetchType.EAGER)
+	@OnDelete(action = OnDeleteAction.CASCADE)
+	@JoinColumn(name = "whatsapp_account_id")
+	private WhatsappAccount whatsappAccount;
 
 	@Transient
 	private String sourceChannel;

@@ -31,6 +31,7 @@ public class WebApiController {
 	private final TemplateService templateService;
 	private final EmailService emailService;
 	private final KnowledgeService knowledgeService;
+	private final WhatsappService whatsappService;
 
 
 	@GetMapping("/clients")
@@ -432,6 +433,47 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/whatsapp")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getWhatsappAccounts() {
+		return ResponseEntity.ok().body(whatsappService.getWhatsappAccounts());
+	}
+
+
+	@PostMapping("/whatsapp")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> newWhatsappAccount(@RequestBody WhatsappAccount whatsappAccount) {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(whatsappService.newWhatsappAccount(whatsappAccount));
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/whatsapp")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> updateWhatsappAccount(@RequestBody WhatsappAccount whatsappAccount) {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(whatsappService.updateWhatsappAccount(whatsappAccount));
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@DeleteMapping("/whatsapp/{accountId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> deleteWhatsappAccount(@PathVariable Long accountId) {
+		if (LicenseStarter.isLicenseActive) {
+			whatsappService.deleteWhatsappAccount(accountId);
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
 	@PostMapping("/status")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
@@ -741,10 +783,11 @@ public class WebApiController {
 		return ResponseEntity.ok().build();
 	}
 
+
 	@PostMapping("/support/reset-password")
 	ResponseEntity<Object> resetPassword(@RequestBody Username username) {
 		userService.resetPassword(username.getUsername());
-		return  ResponseEntity.ok().build();
+		return ResponseEntity.ok().build();
 	}
 
 }

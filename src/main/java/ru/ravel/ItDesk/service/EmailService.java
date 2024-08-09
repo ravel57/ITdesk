@@ -196,7 +196,11 @@ public class EmailService {
 							.emailAccountSender(emailAccount)
 							.build();
 				}
-				clientRepository.save(client);
+				try {
+					clientRepository.save(client);
+				} catch (Exception e) {
+					clientRepository.save(client);
+				}
 				webSocketService.sendNewMessages(new ClientMessage(client, message));
 				emailMessage.setFlag(Flags.Flag.SEEN, true);
 			}

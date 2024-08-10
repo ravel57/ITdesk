@@ -84,8 +84,9 @@ public class ClientService {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		setSla(client, task);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
+		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		if (task.getFrozen() != null && task.getFrozen()) {
-			if (!olderStatus.getStatus().equals(frozenStatus)) {
+			if (!olderStatus.getStatus().equals(frozenStatus) && !olderStatus.getStatus().equals(completedStatus)) {
 				task.setPreviusStatus(olderStatus.getStatus());
 			}
 			task.setStatus(frozenStatus);
@@ -95,16 +96,22 @@ public class ClientService {
 				&& olderStatus.getStatus().equals(frozenStatus)) {
 			task.setStatus(task.getPreviusStatus());
 		}
-		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		if (task.getCompleted() != null && task.getCompleted()) {
-			if (!olderStatus.getStatus().equals(completedStatus)) {
+			if (!olderStatus.getStatus().equals(completedStatus) && !olderStatus.getStatus().equals(frozenStatus)) {
 				task.setPreviusStatus(olderStatus.getStatus());
+			}
+			if (Boolean.TRUE.equals(task.getFrozen())) {
+				task.setFrozen(false);
 			}
 			task.setStatus(completedStatus);
 			task.setCompleted(true);
 		} else if (task.getPreviusStatus() != null
+				&& Boolean.FALSE.equals(task.getFrozen())
 				&& !task.getPreviusStatus().equals(completedStatus)
 				&& olderStatus.getStatus().equals(completedStatus)) {
+			task.setStatus(task.getPreviusStatus());
+		} else if (olderStatus.getStatus().equals(completedStatus) && task.getStatus().getId().equals(completedStatus.getId())) {
+			task.setCompleted(false);
 			task.setStatus(task.getPreviusStatus());
 		}
 		return taskRepository.save(task);

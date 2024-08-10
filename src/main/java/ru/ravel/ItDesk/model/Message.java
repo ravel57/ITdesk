@@ -6,6 +6,7 @@ import lombok.*;
 import org.jetbrains.annotations.NotNull;
 
 import java.time.ZonedDateTime;
+import java.util.UUID;
 
 
 @Entity
@@ -54,6 +55,8 @@ public class Message implements Comparable<Message> {
 	private Integer fileWidth;
 
 	private Long replyMessageId;
+
+	private UUID replyUuid;
 
 	@Transient
 	private String replyMessageText;

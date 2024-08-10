@@ -48,7 +48,7 @@ public class Task {
 
 	private ZonedDateTime frozenFrom;
 
-	@OneToOne(fetch = FetchType.EAGER)
+	@ManyToOne(fetch = FetchType.EAGER)
 	private Status previusStatus;
 
 	private ZonedDateTime createdAt;

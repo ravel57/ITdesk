@@ -60,7 +60,7 @@ public class Task {
 	@OneToOne(fetch = FetchType.EAGER)
 	private Sla sla;
 
-	@OneToMany(fetch = FetchType.EAGER, orphanRemoval = true)
+	@OneToMany(fetch = FetchType.EAGER/*, orphanRemoval = true*/)
 	@JoinColumn(name = "task_id")
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();

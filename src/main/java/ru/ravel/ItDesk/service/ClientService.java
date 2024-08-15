@@ -72,7 +72,9 @@ public class ClientService {
 	public Task newTask(Long clientId, @NotNull Task task) {
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		setSla(client, task);
-		messageRepository.saveAll(task.getMessages());
+		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
+			messageRepository.saveAll(task.getMessages());
+		}
 		taskRepository.save(task);
 		client.getTasks().add(task);
 		clientsRepository.save(client);

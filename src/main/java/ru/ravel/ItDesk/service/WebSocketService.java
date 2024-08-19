@@ -5,6 +5,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.GlobalNotification;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.User;
 
@@ -35,6 +36,11 @@ public class WebSocketService {
 
 	public void supportMessages(List<Message> supportMessages) {
 		simpMessaging.convertAndSend("/topic/support-messages/", supportMessages);
+	}
+
+
+	public void globalNotification(GlobalNotification globalNotification) {
+		simpMessaging.convertAndSend("/topic/global-notifications/", globalNotification);
 	}
 
 }

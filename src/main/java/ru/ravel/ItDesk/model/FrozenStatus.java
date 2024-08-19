@@ -1,9 +1,10 @@
 package ru.ravel.ItDesk.model;
 
+import jakarta.persistence.DiscriminatorValue;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Transient;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.jetbrains.annotations.NotNull;
 import ru.ravel.ItDesk.repository.FrozenStatusRepository;
 
 import java.util.List;
@@ -11,13 +12,15 @@ import java.util.List;
 @Entity
 @Data
 @EqualsAndHashCode(callSuper = true)
+@DiscriminatorValue("FrozenStatus")
 public class FrozenStatus extends Status {
 
+	@Transient
 	private static FrozenStatus instance;
+	@Transient
 	private static FrozenStatusRepository repository;
 
 	protected String name = "Заморожена";
-	protected Integer orderNumber = -1;
 
 	protected FrozenStatus() {
 	}
@@ -35,17 +38,13 @@ public class FrozenStatus extends Status {
 	}
 
 
-	public static void initializeInstance(FrozenStatusRepository repository) {
-		FrozenStatus.repository = repository;
+	public void save() {
+		repository.save(instance);
 	}
 
 
-	@Override
-	public int compareTo(@NotNull Status o) {
-		if (o.getOrderNumber() == null) {
-			return 1;
-		}
-		return getOrderNumber().compareTo(o.getOrderNumber());
+	public static void initializeInstance(FrozenStatusRepository repository) {
+		FrozenStatus.repository = repository;
 	}
 
 }

@@ -28,19 +28,19 @@ VALUES (DEFAULT, null, 'Инфроструктурное оборудовани�
 INSERT INTO public.tag (id, description, name)
 VALUES (DEFAULT, null, 'VIP');
 
-INSERT INTO public.status (id, order_number, name, default_selection, dtype)
+INSERT INTO public.status (id, order_number, name, default_selection, type)
 VALUES (DEFAULT, 1, 'Новая', true, 'Status');
 
-INSERT INTO public.status (id, order_number, name, dtype)
+INSERT INTO public.status (id, order_number, name, type)
 VALUES (DEFAULT, 2, 'В работе', 'Status');
 
-INSERT INTO public.status (id, order_number, name, dtype)
+INSERT INTO public.status (id, order_number, name, type)
 VALUES (DEFAULT, 3, 'Решена', 'Status');
 
-INSERT INTO public.status (id, order_number, name, dtype)
+INSERT INTO public.status (id, order_number, name, type)
 VALUES (DEFAULT, 999, 'Заморожена', 'FrozenStatus');
 
-INSERT INTO public.status (id, order_number, name, dtype)
+INSERT INTO public.status (id, order_number, name, type)
 VALUES (DEFAULT, 1000, 'Закрыта', 'CompletedStatus');
 
 INSERT INTO public.priority (id, order_number, name, critical)

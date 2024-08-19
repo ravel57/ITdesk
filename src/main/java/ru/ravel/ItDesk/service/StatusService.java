@@ -61,7 +61,23 @@ public class StatusService {
 			statuses.get(i).setOrderNumber(i);
 		}
 		List<Status> list = statuses.stream().sorted().toList();
-		statusRepository.saveAll(list);
+		CompletedStatus completedStatus = CompletedStatus.getInstance();
+		FrozenStatus frozenStatus = FrozenStatus.getInstance();
+		list.stream().filter(status -> status.getName().equals(completedStatus.getName()))
+				.findFirst()
+				.ifPresent(status -> {
+					completedStatus.setOrderNumber(status.getOrderNumber());
+					completedStatus.save();
+				});
+		list.stream().filter(status -> status.getName().equals(frozenStatus.getName()))
+				.findFirst()
+				.ifPresent(status -> {
+					frozenStatus.setOrderNumber(status.getOrderNumber());
+					frozenStatus.save();
+				});
+		statusRepository.saveAll(list.stream()
+				.filter(status -> !status.getName().equals(completedStatus.getName()) && !status.getName().equals(frozenStatus.getName()))
+				.toList());
 		return list;
 	}
 

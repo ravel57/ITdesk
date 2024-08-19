@@ -6,6 +6,8 @@ import org.jetbrains.annotations.NotNull;
 
 
 @Entity
+@Inheritance(strategy = InheritanceType.SINGLE_TABLE)
+@DiscriminatorColumn(name = "type", discriminatorType = DiscriminatorType.STRING)
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -27,6 +29,9 @@ public class Status implements Comparable<Status> {
 
 	@Override
 	public int compareTo(@NotNull Status o) {
+		if (o.getOrderNumber() == null) {
+			return 1;
+		}
 		return getOrderNumber().compareTo(o.getOrderNumber());
 	}
 }

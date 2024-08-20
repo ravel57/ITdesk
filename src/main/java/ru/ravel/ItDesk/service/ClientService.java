@@ -29,8 +29,8 @@ public class ClientService {
 	private final OrganizationService organizationService;
 	private final EmailService emailService;
 	private final SlaRepository slaRepository;
-	private final CompletedStatusRepository completedStatusRepository;
-	private final FrozenStatusRepository frozenStatusRepository;
+	private final WhatsappService whatsappService;
+	private final WebSocketService webSocketService;
 
 	private final Map<ClientUserText, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<ClientUser, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -39,7 +39,6 @@ public class ClientService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final Integer pageLimit = 100;
-	private final WhatsappService whatsappService;
 
 
 	public List<Client> getClients() {
@@ -138,6 +137,7 @@ public class ClientService {
 	public boolean sendMessage(Long clientId, @NotNull Message message) {
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
+		message.setSent(true);
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!message.isComment()) {
@@ -152,6 +152,7 @@ public class ClientService {
 				return false;
 			}
 		}
+		webSocketService.sendNewMessages(new ClientMessage(client, message));
 		client.getMessages().add(message);
 		clientsRepository.save(client);
 		return true;
@@ -227,9 +228,7 @@ public class ClientService {
 					return false;
 				}
 			}
-			case WHATSAPP -> {
-			}
-			case EMAIL -> {
+			case WHATSAPP, EMAIL -> {
 			}
 		}
 		message.setDeleted(true);

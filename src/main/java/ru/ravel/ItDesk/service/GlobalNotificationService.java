@@ -17,8 +17,8 @@ public class GlobalNotificationService {
 
 	@Scheduled(fixedRate = 5, timeUnit = TimeUnit.SECONDS)
 	public void notifyLicenseExpireSoon() {
-		if (LicenseStarter.isLicenseExpireSoon) {
-			webSocketService.globalNotification(new GlobalNotification("LicenseExpireSoon", "LicenseExpireSoon"));
+		if (LicenseStarter.isLicenseExpireSoon != null && LicenseStarter.isLicenseExpireSoon) {
+			webSocketService.globalNotification(new GlobalNotification("Лицензия скоро закончится"));
 		}
 	}
 

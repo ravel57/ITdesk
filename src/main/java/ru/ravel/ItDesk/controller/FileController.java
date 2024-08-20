@@ -16,6 +16,9 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -33,20 +36,24 @@ public class FileController {
 
 
 	@PostMapping("/upload")
-	public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
-		String uuid = UUID.randomUUID().toString();
+	public ResponseEntity<Object> uploadFiles(@RequestParam("files") List<MultipartFile> files) {
+		List<String> uuids = new ArrayList<>();
 		try {
-			minioClient.putObject(
-					PutObjectArgs.builder()
-							.bucket(bucketName)
-							.object(uuid)
-							.stream(file.getInputStream(), file.getSize(), -1)
-							.contentType(file.getContentType())
-							.build()
-			);
-			return ResponseEntity.ok().body(uuid);
+			for (MultipartFile file : files) {
+				String uuid = UUID.randomUUID().toString();
+				minioClient.putObject(
+						PutObjectArgs.builder()
+								.bucket(bucketName)
+								.object(uuid)
+								.stream(file.getInputStream(), file.getSize(), -1)
+								.contentType(file.getContentType())
+								.build()
+				);
+				uuids.add(uuid);
+			}
+			return ResponseEntity.ok().body(uuids);
 		} catch (Exception e) {
-			return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(Collections.singletonList(e.getMessage()));
 		}
 	}
 

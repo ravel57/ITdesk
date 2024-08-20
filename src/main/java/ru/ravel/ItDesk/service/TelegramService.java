@@ -92,24 +92,22 @@ public class TelegramService {
 					message.setFileWidth(bufferedImage.getWidth());
 					message.setFileHeight(bufferedImage.getHeight());
 				} else if (message.getFileType().equals("image/webp")) {
-					message.setFileWidth(512); // FIXME
-					message.setFileHeight(512); //FIXME
+					message.setFileWidth(512);    // FIXME
+					message.setFileHeight(512);   // FIXME
 				}
 				if (file != null && !file.delete()) {
 					logger.error("File not deleted {}", file.getAbsolutePath());
 				}
 			}
-			if (message.getText().isEmpty()) {
-				message.setMessengerMessageId(messageId);
-			} else {
+			if (message.getText() != null && !message.getText().isEmpty()) {
 				messageId = new MessageBuilder(bot)
 						.send()
 						.telegramId(client.getTelegramId())
 						.text(message.getText())
 						.replyMessage(message.getReplyMessageMessengerId())
 						.execute();
-				message.setMessengerMessageId(messageId);
 			}
+			message.setMessengerMessageId(messageId);
 		} catch (Exception e) {
 			logger.error(e.getMessage());
 			throw new TelegramException(new RuntimeException(e.getMessage()));

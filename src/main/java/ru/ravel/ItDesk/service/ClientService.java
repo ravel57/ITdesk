@@ -307,6 +307,15 @@ public class ClientService {
 				.toList();
 	}
 
+	public List<Message> searchTaskMessage(Long taskId, MessageText messageText) {
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		return task.getMessages().stream()
+				.filter(message -> message.getText() != null)
+				.filter(message -> message.getText().toLowerCase().contains(messageText.getText().toLowerCase()))
+				.sorted()
+				.toList();
+	}
+
 
 	private record UserActionWaiter(
 			Client client,

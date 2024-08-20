@@ -79,6 +79,13 @@ public class WebApiController {
 	}
 
 
+	@PostMapping("/client/{clientId}/task/{taskId}/search-messages")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> searchTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody MessageText messageText) {
+		return ResponseEntity.ok().body(clientService.searchTaskMessage(taskId, messageText));
+	}
+
+
 	@PostMapping("/client/{clientId}/message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {

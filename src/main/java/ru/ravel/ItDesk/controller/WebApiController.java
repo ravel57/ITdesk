@@ -11,7 +11,10 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.service.*;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @RestController
@@ -32,6 +35,7 @@ public class WebApiController {
 	private final EmailService emailService;
 	private final KnowledgeService knowledgeService;
 	private final WhatsappService whatsappService;
+	private final ExportService exportService;
 
 
 	@GetMapping("/clients")
@@ -264,13 +268,13 @@ public class WebApiController {
 
 
 	@PostMapping("/user-online")
-	ResponseEntity<Object> userOnline() {
+	public ResponseEntity<Object> userOnline() {
 		return ResponseEntity.ok(userService.userOnline());
 	}
 
 
 	@PostMapping("/user-offline")
-	ResponseEntity<Object> userOffline(@RequestBody User user) {
+	public ResponseEntity<Object> userOffline(@RequestBody User user) {
 		userService.userOffline(user);
 		return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 	}
@@ -779,22 +783,28 @@ public class WebApiController {
 
 	@PostMapping("/support/send-message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	ResponseEntity<Object> sendSupportMessage(@RequestBody Message message) {
+	public ResponseEntity<Object> sendSupportMessage(@RequestBody Message message) {
 		return ResponseEntity.ok(userService.sendSupportMessage(message));
 	}
 
 
 	@PostMapping("/support/resave-message")
-	ResponseEntity<Object> resaveMessage(@RequestBody Message message, @RequestParam String license) {
+	public ResponseEntity<Object> resaveMessage(@RequestBody Message message, @RequestParam String license) {
 		userService.resaveMessage(license, message);
 		return ResponseEntity.ok().build();
 	}
 
 
 	@PostMapping("/support/reset-password")
-	ResponseEntity<Object> resetPassword(@RequestBody Username username) {
+	public ResponseEntity<Object> resetPassword(@RequestBody Username username) {
 		userService.resetPassword(username.getUsername());
 		return ResponseEntity.ok().build();
+	}
+
+	@PostMapping("/export/to-excel")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<byte[]> exportToExcel() {
+		return exportService.exportToExcel();
 	}
 
 }

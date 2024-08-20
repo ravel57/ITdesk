@@ -55,6 +55,8 @@ public class Task {
 
 	private ZonedDateTime deadline;
 
+	private ZonedDateTime lastActivity;
+
 	private Long linkedMessageId;
 
 	@OneToOne(fetch = FetchType.EAGER)

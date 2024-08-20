@@ -74,6 +74,7 @@ public class ClientService {
 		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
 			messageRepository.saveAll(task.getMessages());
 		}
+		task.setLastActivity(ZonedDateTime.now());
 		taskRepository.save(task);
 		client.getTasks().add(task);
 		clientsRepository.save(client);
@@ -116,6 +117,7 @@ public class ClientService {
 			task.setCompleted(false);
 			task.setStatus(task.getPreviusStatus());
 		}
+		task.setLastActivity(ZonedDateTime.now());
 		return taskRepository.save(task);
 	}
 

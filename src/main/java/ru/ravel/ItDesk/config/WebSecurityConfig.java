@@ -17,7 +17,9 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import ru.ravel.ItDesk.component.JsonUsernamePasswordAuthenticationFilter;
 import ru.ravel.ItDesk.service.AuthService;
 import ru.ravel.ItDesk.service.UserService;
 
@@ -31,37 +33,38 @@ class WebSecurityConfig {
 	private final UserService userService;
 
 
-	WebSecurityConfig(AuthService authService, @Lazy UserService userService) {
+	public WebSecurityConfig(AuthService authService, @Lazy UserService userService) {
 		this.authService = authService;
 		this.userService = userService;
 	}
 
 
 	@Bean
-	UserDetailsService userDetailsService() {
+	public UserDetailsService userDetailsService() {
 		return authService;
 	}
 
 
 	@Bean
-	PasswordEncoder passwordEncoder() {
+	public PasswordEncoder passwordEncoder() {
 		return new BCryptPasswordEncoder(12);
 	}
 
 
 	@Bean
-	SessionRegistry sessionRegistry() {
+	public SessionRegistry sessionRegistry() {
 		return new SessionRegistryImpl();
 	}
 
 
 	@Bean
-	AuthenticationProvider authenticationProvider() {
+	public AuthenticationProvider authenticationProvider() {
 		DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
 		provider.setUserDetailsService(userDetailsService());
 		provider.setPasswordEncoder(passwordEncoder());
 		return provider;
 	}
+
 
 	@Bean
 	public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
@@ -73,11 +76,13 @@ class WebSecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
 		requestCache.setMatchingRequestParameterName(null);
+		JsonUsernamePasswordAuthenticationFilter jsonAuthFilter = new JsonUsernamePasswordAuthenticationFilter(authenticationManager(http.getSharedObject(AuthenticationConfiguration.class)));
+		jsonAuthFilter.setFilterProcessesUrl("/api/auth/login");
 		return http.cors(AbstractHttpConfigurer::disable)
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers("/js/**", "/css/**", "/icons/**", "/fonts/**").permitAll()
-						.requestMatchers("/login", "/api/v1/login").permitAll()
+						.requestMatchers("/login").permitAll()
 						.requestMatchers("/settings").authenticated()
 						.requestMatchers("/settings/profile").authenticated()
 						.requestMatchers("/settings/**").hasRole("ADMIN")
@@ -92,12 +97,7 @@ class WebSecurityConfig {
 						.maxSessionsPreventsLogin(false)
 						.sessionRegistry(sessionRegistry())
 						.expiredUrl("/session-expired"))
-				.formLogin(formLogin -> formLogin
-						.loginPage("/login")
-						.loginProcessingUrl("/perform_login")
-						.defaultSuccessUrl("/chats", true)
-						.failureUrl("/login-error")
-						.permitAll())
+				.addFilterAt(jsonAuthFilter, UsernamePasswordAuthenticationFilter.class)
 				.logout(logout -> logout
 						.logoutSuccessUrl("/logout")
 						.invalidateHttpSession(true)
@@ -105,6 +105,7 @@ class WebSecurityConfig {
 //						.logoutSuccessHandler((request, response, authentication) -> userService.userOffline()) // FIXME
 						.permitAll())
 				.requestCache(cache -> cache.requestCache(requestCache))
+				.authenticationProvider(authenticationProvider())
 				.build();
 	}
 }

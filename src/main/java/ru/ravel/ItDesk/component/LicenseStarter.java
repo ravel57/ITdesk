@@ -31,6 +31,7 @@ public class LicenseStarter {
 	public static Long maxUsers;			// FIXME
 	public static Boolean isLicenseActive;	// FIXME
 	public static Boolean isLicenseExpireSoon;	// FIXME
+	public static Boolean isLicenseExpired;	// FIXME
 
 
 	public void run() {
@@ -48,6 +49,7 @@ public class LicenseStarter {
 			}
 			isLicenseActive = true;
 			isLicenseExpireSoon = ZonedDateTime.now().plusDays(7).isAfter(instance.getValidUntil());
+			isLicenseExpired = ZonedDateTime.now().isAfter(instance.getValidUntil());
 			logger.info("license accessed");
 		} catch (RuntimeException e) {
 			logger.error(e.getMessage());

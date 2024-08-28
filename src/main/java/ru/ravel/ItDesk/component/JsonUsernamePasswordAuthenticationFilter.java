@@ -30,7 +30,6 @@ public class JsonUsernamePasswordAuthenticationFilter extends UsernamePasswordAu
 			Map<String, String> authRequest = objectMapper.readValue(request.getInputStream(), Map.class);
 			String username = authRequest.get("username");
 			String password = authRequest.get("password");
-
 			UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(username, password);
 			setDetails(request, authToken);
 			return this.getAuthenticationManager().authenticate(authToken);

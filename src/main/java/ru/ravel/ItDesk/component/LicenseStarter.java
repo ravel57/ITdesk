@@ -45,11 +45,11 @@ public class LicenseStarter {
 			}
 			maxUsers = instance.getUsersCount();
 			if (ZonedDateTime.now().isAfter(Objects.requireNonNullElse(instance.getValidUntil(), ZonedDateTime.now()))) {
+				isLicenseExpired = true;
 				throw new RuntimeException("license expired");
 			}
 			isLicenseActive = true;
 			isLicenseExpireSoon = ZonedDateTime.now().plusDays(7).isAfter(instance.getValidUntil());
-			isLicenseExpired = ZonedDateTime.now().isAfter(instance.getValidUntil());
 			logger.info("license accessed");
 		} catch (RuntimeException e) {
 			logger.error(e.getMessage());

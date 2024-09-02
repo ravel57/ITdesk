@@ -28,10 +28,10 @@ public class LicenseStarter {
 	@Value("${instance-name}")
 	private String instanceName;
 
-	public static Long maxUsers;			// FIXME
-	public static Boolean isLicenseActive;	// FIXME
-	public static Boolean isLicenseExpireSoon;	// FIXME
-	public static Boolean isLicenseExpired;	// FIXME
+	public static Long maxUsers;               // FIXME
+	public static Boolean isLicenseActive;     // FIXME
+	public static Boolean isLicenseExpireSoon; // FIXME
+	public static Boolean isLicenseExpired;    // FIXME
 
 
 	public void run() {

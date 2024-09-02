@@ -801,7 +801,7 @@ public class WebApiController {
 		return ResponseEntity.ok().build();
 	}
 
-	@PostMapping("/export/to-excel")
+	@GetMapping("/export/to-excel")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<byte[]> exportToExcel() {
 		return exportService.exportToExcel();

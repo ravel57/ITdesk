@@ -32,6 +32,7 @@ public class LicenseStarter {
 	public static Boolean isLicenseActive;     // FIXME
 	public static Boolean isLicenseExpireSoon; // FIXME
 	public static Boolean isLicenseExpired;    // FIXME
+	public static ZonedDateTime licenseUntil;  // FIXME
 
 
 	public void run() {
@@ -50,6 +51,7 @@ public class LicenseStarter {
 			}
 			isLicenseActive = true;
 			isLicenseExpireSoon = ZonedDateTime.now().plusDays(7).isAfter(instance.getValidUntil());
+			licenseUntil = instance.getValidUntil();
 			logger.info("license accessed");
 		} catch (RuntimeException e) {
 			logger.error(e.getMessage());

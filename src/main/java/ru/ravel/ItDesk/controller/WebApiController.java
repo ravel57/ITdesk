@@ -807,4 +807,16 @@ public class WebApiController {
 		return exportService.exportToExcel();
 	}
 
+	@GetMapping("/license/validUntil")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getLicenseValidUntil() {
+		return ResponseEntity.ok().body(LicenseStarter.licenseUntil);
+	}
+
+	@GetMapping("/license/maxUsers")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getLicenseMaxUsers() {
+		return ResponseEntity.ok().body(LicenseStarter.maxUsers);
+	}
+
 }

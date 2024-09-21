@@ -48,20 +48,21 @@ public class SendMessageBuilder extends MessageBuilder {
 
 	/**
 	 * callbackData = "back"
+	 *
 	 * @param text button text
 	 * @return SendMessageBuilder
 	 */
-	public 	SendMessageBuilder addBackButton(String text) {
+	public SendMessageBuilder addBackButton(String text) {
 		this.buttons.add(new InlineKeyboardButton(text).callbackData("back"));
 		return this;
 	}
 
-	public 	SendMessageBuilder parseMode(ParseMode parseMode) {
+	public SendMessageBuilder parseMode(ParseMode parseMode) {
 		this.parseMode = parseMode;
 		return this;
 	}
 
-	public 	SendMessageBuilder replyMessage(Integer replyMessageId) {
+	public SendMessageBuilder replyMessage(Integer replyMessageId) {
 		this.replyMessageId = replyMessageId;
 		return this;
 	}
@@ -77,12 +78,14 @@ public class SendMessageBuilder extends MessageBuilder {
 			for (InlineKeyboardButton button : buttons) {
 				row.add(button);
 				if (row.size() == keyboardOffset) {
-					inlineKeyboard.addRow((InlineKeyboardButton) row);
+					InlineKeyboardButton[] buttonArray = row.toArray(new InlineKeyboardButton[0]);
+					inlineKeyboard.addRow(buttonArray);
 					row = new ArrayList<>();
 				}
 			}
 			if (!row.isEmpty()) {
-				inlineKeyboard.addRow((InlineKeyboardButton) row );
+				InlineKeyboardButton[] buttonArray = row.toArray(new InlineKeyboardButton[0]);
+				inlineKeyboard.addRow(buttonArray);
 			}
 			message.replyMarkup(inlineKeyboard);
 		}

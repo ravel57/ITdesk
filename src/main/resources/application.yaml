@@ -40,7 +40,7 @@ minio:
   url: ${MINIO_URL}
   accessKey: minioadmin
   secretKey: minioadmin
-  bucket-name: ${MINIO_DEFAULT_BUCKET}
+  bucket-name: ${MINIO_DEFAULT_BUCKET:main}
 
 management:
   server.port: 8081

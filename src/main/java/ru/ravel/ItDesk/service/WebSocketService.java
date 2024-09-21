@@ -34,6 +34,11 @@ public class WebSocketService {
 	}
 
 
+	public void editedMessage(ClientMessage clientMessage) {
+		simpMessaging.convertAndSend("/topic/client-message-edited/", clientMessage);
+	}
+
+
 	public void supportMessages(List<Message> supportMessages) {
 		simpMessaging.convertAndSend("/topic/support-messages/", supportMessages);
 	}

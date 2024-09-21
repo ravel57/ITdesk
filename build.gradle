@@ -1,6 +1,6 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.3.1'
+	id 'org.springframework.boot' version '3.3.3'
 	id 'io.spring.dependency-management' version '1.1.5'
 }
 
@@ -78,7 +78,7 @@ dependencies {
 	implementation 'org.webjars:stomp-websocket:2.3.3'
 
 //	telegram
-	implementation 'com.github.pengrad:java-telegram-bot-api:7.2.0'
+	implementation 'com.github.pengrad:java-telegram-bot-api:7.9.1'
 
 //	email
 	implementation 'org.springframework.boot:spring-boot-starter-mail'

@@ -77,12 +77,14 @@ public class EditMessageBuilder extends MessageBuilder {
 			for (InlineKeyboardButton button : buttons) {
 				row.add(button);
 				if (row.size() == keyboardOffset) {
-					inlineKeyboard.addRow((InlineKeyboardButton) row);
+					InlineKeyboardButton[] buttonArray = row.toArray(new InlineKeyboardButton[0]);
+					inlineKeyboard.addRow(buttonArray);
 					row = new ArrayList<>();
 				}
 			}
 			if (!row.isEmpty()) {
-				inlineKeyboard.addRow((InlineKeyboardButton) row);
+				InlineKeyboardButton[] buttonArray = row.toArray(new InlineKeyboardButton[0]);
+				inlineKeyboard.addRow(buttonArray);
 			}
 			message.replyMarkup(inlineKeyboard);
 		}

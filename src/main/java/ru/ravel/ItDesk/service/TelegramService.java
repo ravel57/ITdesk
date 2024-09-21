@@ -36,10 +36,7 @@ import java.net.URL;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 
 @Service
@@ -171,43 +168,61 @@ public class TelegramService {
 		public int process(List<Update> updates) {
 			try {
 				updates.forEach(update -> {
-					Client client = clientRepository.findByTelegramId(update.message().from().id());    // FIXME Прилетает не из того бота сообщение
-					ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
-					Message message = Message.builder()
-							.text(update.message().text())
-							.date(zonedDateTime)
-							.isSent(false)
-							.isComment(false)
-							.isRead(false)
-							.messengerMessageId(update.message().messageId())
-							.build();
-					if (update.message().replyToMessage() != null) {
-						Integer reply = update.message().replyToMessage().messageId();
-						message.setReplyMessageMessengerId(reply);
-						Message messengerMessage = messageRepository.findByMessengerMessageId(reply).orElseThrow();
-						message.setReplyMessageId(messengerMessage.getId());
-					}
-					saveAttachments(update, message);
-					messageRepository.save(message);
-					if (client != null) {
-						client.getMessages().add(message);
-					} else {
-						TgBot tgBot = telegramRepository.findByToken(bot.getToken());    // FIXME
-						client = Client.builder()
-								.firstname(update.message().from().firstName())
-								.lastname(update.message().from().lastName())
-								.telegramId(update.message().from().id())
-								.messages(List.of(message))
-								.messageFrom(MessageFrom.TELEGRAM)
-								.tgBot(tgBot)
+					if (update.message() != null) {
+						Client client = clientRepository.findByTelegramId(update.message().from().id());    // FIXME Прилетает не из того бота сообщение
+						ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
+						Message message = Message.builder()
+								.text(update.message().text())
+								.date(zonedDateTime)
+								.isSent(false)
+								.isComment(false)
+								.isRead(false)
+								.messengerMessageId(update.message().messageId())
 								.build();
+						if (update.message().replyToMessage() != null) {
+							Integer reply = update.message().replyToMessage().messageId();
+							message.setReplyMessageMessengerId(reply);
+							Message messengerMessage = messageRepository.findByMessengerMessageId(reply).orElseThrow();
+							message.setReplyMessageId(messengerMessage.getId());
+						}
+						saveAttachments(update, message);
+						messageRepository.save(message);
+						if (client != null) {
+							client.getMessages().add(message);
+						} else {
+							TgBot tgBot = telegramRepository.findByToken(bot.getToken());    // FIXME
+							client = Client.builder()
+									.firstname(update.message().from().firstName())
+									.lastname(update.message().from().lastName())
+									.telegramId(update.message().from().id())
+									.messages(List.of(message))
+									.messageFrom(MessageFrom.TELEGRAM)
+									.tgBot(tgBot)
+									.build();
+						}
+						try {
+							clientRepository.save(client);
+						} catch (Exception e) {
+							clientRepository.save(client);
+						}
+						webSocketService.sendNewMessages(new ClientMessage(client, message));
+					} else if (update.editedMessage() != null) {
+						Client client = clientRepository.findByTelegramId(update.editedMessage().from().id());    // FIXME Прилетает не из того бота сообщение
+						Message message = messageRepository.findByMessengerMessageId(update.editedMessage().messageId()).orElseThrow();
+						message.setText(update.editedMessage().text());
+						messageRepository.save(message);
+						client.getMessages().stream()
+								.filter(msg -> msg.getId().equals(message.getId()))
+								.findFirst()
+								.orElseThrow()
+								.setText(update.editedMessage().text());
+						try {
+							clientRepository.save(client);
+						} catch (Exception e) {
+							clientRepository.save(client);
+						}
+						webSocketService.editedMessage(new ClientMessage(client, message));
 					}
-					try {
-						clientRepository.save(client);
-					} catch (Exception e) {
-						clientRepository.save(client);
-					}
-					webSocketService.sendNewMessages(new ClientMessage(client, message));
 				});
 			} catch (Exception e) {
 				logger.error(e.getMessage());

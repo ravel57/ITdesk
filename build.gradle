@@ -9,7 +9,7 @@ ext {
 }
 
 group = 'ru.ravel'
-version = '0.1'
+version = '0.2'
 
 java {
 	sourceCompatibility = '21'
@@ -107,4 +107,8 @@ dependencyManagement {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+springBoot {
+	buildInfo()
 }

@@ -34,4 +34,7 @@ public class License {
 	@Builder.Default
 	private UUID license = UUID.randomUUID();
 
+	@Transient
+	private String version;
+
 }

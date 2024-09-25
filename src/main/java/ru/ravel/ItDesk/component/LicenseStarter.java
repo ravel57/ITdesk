@@ -1,11 +1,10 @@
 package ru.ravel.ItDesk.component;
 
-import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.stereotype.Component;
 import ru.ravel.ItDesk.feign.LicenseFeignClient;
 import ru.ravel.ItDesk.model.License;
@@ -22,6 +21,7 @@ public class LicenseStarter {
 
 	private final LicenseFeignClient licenseFeignClient;
 	private final LicenseRepository repository;
+	private final BuildProperties buildProperties;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -40,10 +40,13 @@ public class LicenseStarter {
 			License instance;
 			List<License> instances = repository.findAll();
 			if (instances.isEmpty()) {
-				instance = repository.save(licenseFeignClient.register(instanceName));
+				instance = licenseFeignClient.register(instanceName);
+				repository.save(instance);
 			} else {
-				instance = licenseFeignClient.license(instances.getFirst().getLicense().toString());
+				instance = licenseFeignClient.license(instances.getFirst().getLicense());
 			}
+			instance.setVersion(buildProperties.getVersion());
+			licenseFeignClient.sendVersion(instance.getLicense(), buildProperties.getVersion());
 			maxUsers = instance.getUsersCount();
 			if (ZonedDateTime.now().isAfter(Objects.requireNonNullElse(instance.getValidUntil(), ZonedDateTime.now()))) {
 				isLicenseExpired = true;

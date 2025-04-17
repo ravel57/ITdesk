@@ -67,6 +67,8 @@ services:
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
+    ports:
+      - '9090:9090'
     networks:
       monitoring:
         aliases:
@@ -95,6 +97,8 @@ services:
       - loki-cache:/data/cache
       - loki-compactor:/data/compactor
       - loki-wal:/loki/wal
+    ports:
+      - "3100:3100"
     networks:
       monitoring:
         aliases:
@@ -110,20 +114,20 @@ networks:
 
 volumes:
   postgres-data:
-    name: "${INSTANCE_NAME}_postgres-data"
+    name: "itdesk_${INSTANCE_NAME}_postgres-data"
   minio-data:
-    name: "${INSTANCE_NAME}_minio-data"
+    name: "itdesk_${INSTANCE_NAME}_minio-data"
   grafana-data:
-    name: "${INSTANCE_NAME}_grafana-data"
+    name: "itdesk_${INSTANCE_NAME}_grafana-data"
   prometheus-data:
-    name: "${INSTANCE_NAME}_prometheus-data"
+    name: "itdesk_${INSTANCE_NAME}_prometheus-data"
   loki-index:
-    name: "${INSTANCE_NAME}_loki-index"
+    name: "itdesk_${INSTANCE_NAME}_loki-index"
   loki-chunks:
-    name: "${INSTANCE_NAME}_loki-chunks"
+    name: "itdesk_${INSTANCE_NAME}_loki-chunks"
   loki-cache:
-    name: "${INSTANCE_NAME}_loki-cache"
+    name: "itdesk_${INSTANCE_NAME}_loki-cache"
   loki-compactor:
-    name: "${INSTANCE_NAME}_loki-compactor"
+    name: "itdesk_${INSTANCE_NAME}_loki-compactor"
   loki-wal:
-    name: "${INSTANCE_NAME}_loki-wal"
+    name: "itdesk_${INSTANCE_NAME}_loki-wal"

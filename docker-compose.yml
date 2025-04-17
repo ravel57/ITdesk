@@ -98,7 +98,6 @@ services:
     restart: unless-stopped
     command:
       - '-config.file=/etc/loki/config.yaml'
-      - '-validation.allow-structured-metadata=false'
     volumes:
       - ./config/loki/config.yaml:/etc/loki/config.yaml:ro
       - loki-index:/data/index

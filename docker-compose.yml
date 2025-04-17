@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   postgres:
     image: postgres:14.1-alpine
@@ -14,6 +12,7 @@ services:
       - '55432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+
   minio:
     image: bitnami/minio:latest
     restart: unless-stopped
@@ -26,6 +25,7 @@ services:
     command: minio server --address :9009 /bitnami/minio/data
     volumes:
       - minio-data:/bitnami/minio/data
+
   webapp:
     build: '.'
     restart: unless-stopped
@@ -42,6 +42,7 @@ services:
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
+
   grafana:
     build: './config/grafana'
     restart: unless-stopped
@@ -58,6 +59,7 @@ services:
       monitoring:
         aliases:
           - grafana
+
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
@@ -68,6 +70,7 @@ services:
       monitoring:
         aliases:
           - prometheus
+
   promtail:
     image: grafana/promtail:latest
     restart: unless-stopped
@@ -79,17 +82,18 @@ services:
       monitoring:
         aliases:
           - promtail
+
   loki:
     image: grafana/loki:latest
     restart: unless-stopped
     command: -config.file=/etc/loki/config.yaml
     volumes:
       - ./config/loki/config.yaml:/etc/loki/config.yaml
-      - loki-data/index:/data/index
-      - loki-data/chunks:/data/chunks
-      - loki-data/cache:/data/cache
-      - loki-data/compactor:/data/compactor
-      - loki-data/wal:/loki/wal
+      - loki-index:/data/index
+      - loki-chunks:/data/chunks
+      - loki-cache:/data/cache
+      - loki-compactor:/data/compactor
+      - loki-wal:/loki/wal
     networks:
       monitoring:
         aliases:
@@ -105,12 +109,20 @@ networks:
 
 volumes:
   postgres-data:
-    driver: ${INSTANCE_NAME}_postgres-data
+    name: "${INSTANCE_NAME}_postgres-data"
   minio-data:
-    driver: ${INSTANCE_NAME}_minio-data
+    name: "${INSTANCE_NAME}_minio-data"
   grafana-data:
-    driver: ${INSTANCE_NAME}_grafana-data
+    name: "${INSTANCE_NAME}_grafana-data"
   prometheus-data:
-    driver: ${INSTANCE_NAME}_prometheus-data
-  loki-data:
-    driver: ${INSTANCE_NAME}_loki-data
+    name: "${INSTANCE_NAME}_prometheus-data"
+  loki-index:
+    name: "${INSTANCE_NAME}_loki-index"
+  loki-chunks:
+    name: "${INSTANCE_NAME}_loki-chunks"
+  loki-cache:
+    name: "${INSTANCE_NAME}_loki-cache"
+  loki-compactor:
+    name: "${INSTANCE_NAME}_loki-compactor"
+  loki-wal:
+    name: "${INSTANCE_NAME}_loki-wal"

@@ -43,7 +43,9 @@ minio:
   bucket-name: ${MINIO_DEFAULT_BUCKET:main}
 
 management:
-  server.port: 8081
+  server:
+    port: 8081
+    address: 0.0.0.0
   endpoints.web.exposure.include: health,prometheus,info,metrics,unistat,sessions,loggers,env
   endpoint.health.show-details: always
   security:

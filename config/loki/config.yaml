@@ -1,33 +1,12 @@
-auth_enabled: false
-
-server:
-  http_listen_port: 3100
-  grpc_listen_port: 9095
-
 common:
   path_prefix: /loki
-
-ingester:
-  wal:
-    enabled: true
-    dir: /loki/wal
-  max_chunk_age: 1h
-  chunk_idle_period: 5m
-  chunk_retain_period: 30s
-  chunk_target_size: 1048576
-  lifecycler:
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-    final_sleep: 0s
 
 schema_config:
   configs:
     - from: 2022-01-01
       store: boltdb-shipper
       object_store: filesystem
-      schema: v12
+      schema: v13
       index:
         prefix: index_
         period: 24h
@@ -36,18 +15,9 @@ storage_config:
   boltdb_shipper:
     active_index_directory: /data/index
     cache_location: /data/cache
+    shared_store: filesystem
   filesystem:
     directory: /data/chunks
 
 compactor:
   working_directory: /data/compactor
-  shared_store: filesystem
-
-limits_config:
-  allow_structured_metadata: false
-  reject_old_samples: true
-  reject_old_samples_max_age: 168h
-
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 168h

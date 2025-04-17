@@ -55,6 +55,7 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
     networks:
       monitoring:
         aliases:

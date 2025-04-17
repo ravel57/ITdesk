@@ -88,6 +88,8 @@ services:
       - ./config/promtail/config.yaml:/etc/promtail/config.yaml
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     command: -config.file=/etc/promtail/config.yaml
+    expose:
+      - 9080
     networks:
       monitoring:
         aliases:

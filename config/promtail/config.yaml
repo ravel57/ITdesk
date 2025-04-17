@@ -1,6 +1,7 @@
 server:
   http_listen_port: 9080
-  grpc_listen_port: 0
+  grpc_listen_port: 38321
+  log_level: info
 
 positions:
   filename: /tmp/positions.yaml
@@ -13,10 +14,26 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  - job_name: docker_containers
+  - job_name: docker
     static_configs:
       - targets:
           - localhost
         labels:
           job: docker
-          __path__: /var/lib/docker/containers/*/*-json.log
+          service_name: docker
+          __path__: /var/lib/docker/containers/*/*.log
+    pipeline_stages:
+      - docker: {}
+
+    relabel_configs:
+      - source_labels: [__path__]
+        regex: '/var/lib/docker/containers/([^/]+)/.*'
+        target_label: container_id
+      - source_labels: [__path__]
+        regex: '.*/([a-zA-Z0-9_.-]+)-json.log'
+        target_label: container_name
+      - source_labels: [container_name]
+        regex: 'itdesk-webapp-1'
+        target_label: app
+        replacement: itdesk
+

@@ -1,8 +1,12 @@
-# ./config/loki/retention-config.yaml
 auth_enabled: false
 
 server:
   http_listen_port: 3100
+
+limits_config:
+  ingestion_rate_mb: 0
+  ingestion_burst_size_mb: 0
+  tenant_limits_enabled: false
 
 common:
   path_prefix: /loki
@@ -14,12 +18,6 @@ common:
   ring:
     kvstore:
       store: inmemory
-
-limits_config:
-  ingestion_rate_mb: 10
-  ingestion_burst_size_mb: 20
-  tenant_limits_enabled: false
-  allow_structured_metadata: false
 
 schema_config:
   configs:

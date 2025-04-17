@@ -5,6 +5,10 @@ server:
 positions:
   filename: /tmp/positions.yaml
 
+client:
+  backoff_config:
+    max_period: 1m
+
 clients:
   - url: http://loki:3100/loki/api/v1/push
 

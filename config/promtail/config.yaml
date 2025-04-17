@@ -22,7 +22,7 @@ scrape_configs:
         regex: true
         action: keep
       - source_labels: [__meta_docker_container_label_promtail]
-        regex: ""
+        regex: .*
         action: drop
       - source_labels: [__meta_docker_container_logpath]
         target_label: __path__

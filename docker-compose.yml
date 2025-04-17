@@ -67,8 +67,8 @@ services:
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
-    ports:
-      - '9090:9090'
+    expose:
+      - 9090
     networks:
       monitoring:
         aliases:
@@ -97,8 +97,8 @@ services:
       - loki-cache:/data/cache
       - loki-compactor:/data/compactor
       - loki-wal:/loki/wal
-    ports:
-      - "3100:3100"
+    expose:
+      - 3100
     networks:
       monitoring:
         aliases:

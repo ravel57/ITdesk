@@ -43,6 +43,9 @@ services:
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
+    networks:
+      - default
+      - monitoring
 
   grafana:
     build: './config/grafana'

@@ -6,7 +6,6 @@ server:
 limits_config:
   ingestion_rate_mb: 0
   ingestion_burst_size_mb: 0
-  tenant_limits_enabled: false
 
 common:
   path_prefix: /loki

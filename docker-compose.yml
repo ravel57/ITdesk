@@ -12,6 +12,8 @@ services:
       - '55432:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    networks:
+      - default
 
   minio:
     image: bitnami/minio:latest
@@ -25,6 +27,8 @@ services:
     command: minio server --address :9009 /bitnami/minio/data
     volumes:
       - minio-data:/bitnami/minio/data
+    networks:
+      - default
 
   webapp:
     build: '.'
@@ -52,6 +56,8 @@ services:
     restart: unless-stopped
     ports:
       - '3000:3000'
+    expose:
+      - 3000
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
@@ -63,9 +69,7 @@ services:
     depends_on:
       - loki
     networks:
-      monitoring:
-        aliases:
-          - grafana
+      - monitoring
 
   prometheus:
     image: prom/prometheus:latest
@@ -79,9 +83,7 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--log.level=debug'
     networks:
-      monitoring:
-        aliases:
-          - prometheus
+      - monitoring
 
   promtail:
     image: grafana/promtail:latest
@@ -93,9 +95,7 @@ services:
     expose:
       - 9080
     networks:
-      monitoring:
-        aliases:
-          - promtail
+      - monitoring
 
   loki:
     image: grafana/loki:latest
@@ -116,9 +116,7 @@ services:
       - promtail
     user: root
     networks:
-      monitoring:
-        aliases:
-          - loki
+      - monitoring
 
 networks:
   default:

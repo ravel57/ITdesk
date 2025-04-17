@@ -1,8 +1,9 @@
 version: "3"
+
 services:
   postgres:
     image: postgres:14.1-alpine
-    restart: always
+    restart: unless-stopped
     hostname: postgres
     environment:
       - POSTGRES_USER=postgres
@@ -11,9 +12,11 @@ services:
       - 5432
     ports:
       - '55432:5432'
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
   minio:
     image: bitnami/minio:latest
-    restart: always
+    restart: unless-stopped
     hostname: minio
     expose:
       - 9009
@@ -21,26 +24,86 @@ services:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
     command: minio server --address :9009 /bitnami/minio/data
+    volumes:
+      - ./miniodata:/bitnami/minio/data
   webapp:
-    build: .
-    restart: always
+    build: '.'
+    restart: unless-stopped
     links:
       - postgres:postgres
       - minio:minio
     ports:
       - '56481:8080'
-      - '56491:8081'
+#      - '56491:8081'
     expose:
-      - 514
+      - 56481
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/
       - MINIO_URL=http://minio:9009
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=test
+  grafana:
+    build: './config/grafana'
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - ./grafana:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      monitoring:
+        aliases:
+          - grafana
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+#    ports:
+#      - '9090:9090'
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus:/prometheus
+    networks:
+      monitoring:
+        aliases:
+          - prometheus
+  promtail:
+    image: grafana/promtail:2.9.2
+    restart: unless-stopped
+    volumes:
+      - ./config/promtail/config.yaml:/etc/promtail/config.yaml
+      - /host_mnt/c/ProgramData/Docker/containers:/var/lib/docker/containers:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      monitoring:
+        aliases:
+          - promtail
+  loki:
+    image: grafana/loki:2.9.2
+    restart: unless-stopped
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - ./config/loki/config.yaml:/etc/loki/config.yaml
+      - ./loki/index:/data/index
+      - ./loki/chunks:/data/chunks
+      - ./loki/cache:/data/cache
+      - ./loki/compactor:/data/compactor
+#    ports:
+#      - "3100:3100"
+    networks:
+      monitoring:
+        aliases:
+          - loki
 
 networks:
   default:
     driver: bridge
     driver_opts:
       com.docker.network.driver.mtu: 1450
+  monitoring:
+    driver: bridge

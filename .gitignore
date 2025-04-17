@@ -40,3 +40,8 @@ out/
 
 src/main/resources/static/*
 
+/grafana/
+/loki/
+/miniodata/
+/pgdata/
+/prometheus/

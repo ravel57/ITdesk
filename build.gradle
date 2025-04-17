@@ -60,6 +60,7 @@ dependencies {
 	implementation 'com.google.flogger:flogger-system-backend:0.8'
 	implementation 'com.google.flogger:flogger-slf4j-backend:0.4'
 	implementation 'org.springframework.boot:spring-boot-starter-log4j2:3.3.1'
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 
 //	minio
 	implementation 'io.minio:minio:8.5.10'

@@ -21,10 +21,10 @@ scrape_configs:
         labels:
           job: docker
           service_name: docker
+          container_name: itdesk-webapp-1
           __path__: /var/lib/docker/containers/*/*.log
     pipeline_stages:
       - docker: {}
-
     relabel_configs:
       - source_labels: [__path__]
         regex: '/var/lib/docker/containers/([^/]+)/.*'
@@ -36,4 +36,3 @@ scrape_configs:
         regex: 'itdesk-webapp-1'
         target_label: app
         replacement: itdesk
-

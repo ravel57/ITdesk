@@ -13,7 +13,7 @@ services:
     ports:
       - '55432:5432'
     volumes:
-      - ${INSTANCE_NAME}_postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
   minio:
     image: bitnami/minio:latest
     restart: unless-stopped
@@ -25,7 +25,7 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
     command: minio server --address :9009 /bitnami/minio/data
     volumes:
-      - ${INSTANCE_NAME}_minio-data:/bitnami/minio/data
+      - minio-data:/bitnami/minio/data
   webapp:
     build: '.'
     restart: unless-stopped
@@ -52,7 +52,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
     volumes:
-      - ${INSTANCE_NAME}_grafana-data:/var/lib/grafana
+      - grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
     networks:
       monitoring:
@@ -63,7 +63,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ${INSTANCE_NAME}_prometheus-data:/prometheus
+      - prometheus-data:/prometheus
     networks:
       monitoring:
         aliases:
@@ -85,11 +85,11 @@ services:
     command: -config.file=/etc/loki/config.yaml
     volumes:
       - ./config/loki/config.yaml:/etc/loki/config.yaml
-      - ${INSTANCE_NAME}_loki-data/index:/data/index
-      - ${INSTANCE_NAME}_loki-data/chunks:/data/chunks
-      - ${INSTANCE_NAME}_loki-data/cache:/data/cache
-      - ${INSTANCE_NAME}_loki-data/compactor:/data/compactor
-      - ${INSTANCE_NAME}_loki-data/wal:/loki/wal
+      - loki-data/index:/data/index
+      - loki-data/chunks:/data/chunks
+      - loki-data/cache:/data/cache
+      - loki-data/compactor:/data/compactor
+      - loki-data/wal:/loki/wal
     networks:
       monitoring:
         aliases:
@@ -104,13 +104,13 @@ networks:
     driver: bridge
 
 volumes:
-  ${INSTANCE_NAME}_postgres-data:
-    driver: local
-  ${INSTANCE_NAME}_minio-data:
-    driver: local
-  ${INSTANCE_NAME}_grafana-data:
-    driver: local
-  ${INSTANCE_NAME}_prometheus-data:
-    driver: local
-  ${INSTANCE_NAME}_loki-data:
-    driver: local
+  postgres-data:
+    driver: ${INSTANCE_NAME}_postgres-data
+  minio-data:
+    driver: ${INSTANCE_NAME}_minio-data
+  grafana-data:
+    driver: ${INSTANCE_NAME}_grafana-data
+  prometheus-data:
+    driver: ${INSTANCE_NAME}_prometheus-data
+  loki-data:
+    driver: ${INSTANCE_NAME}_loki-data

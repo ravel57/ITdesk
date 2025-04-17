@@ -45,3 +45,4 @@ src/main/resources/static/*
 /miniodata/
 /pgdata/
 /prometheus/
+/.env

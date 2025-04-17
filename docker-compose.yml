@@ -13,7 +13,7 @@ services:
     ports:
       - '55432:5432'
     volumes:
-      - ./pgdata:/var/lib/postgresql/data
+      - ${INSTANCE_NAME}_postgres-data:/var/lib/postgresql/data
   minio:
     image: bitnami/minio:latest
     restart: unless-stopped
@@ -25,7 +25,7 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
     command: minio server --address :9009 /bitnami/minio/data
     volumes:
-      - ./miniodata:/bitnami/minio/data
+      - ${INSTANCE_NAME}_minio-data:/bitnami/minio/data
   webapp:
     build: '.'
     restart: unless-stopped
@@ -41,7 +41,7 @@ services:
       - MINIO_URL=http://minio:9009
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
-      - INSTANCE_NAME=test
+      - INSTANCE_NAME=${INSTANCE_NAME}
   grafana:
     build: './config/grafana'
     restart: unless-stopped
@@ -52,7 +52,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
     volumes:
-      - ./grafana:/var/lib/grafana
+      - ${INSTANCE_NAME}_grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
     networks:
       monitoring:
@@ -63,7 +63,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus:/prometheus
+      - ${INSTANCE_NAME}_prometheus-data:/prometheus
     networks:
       monitoring:
         aliases:
@@ -73,7 +73,6 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/promtail/config.yaml:/etc/promtail/config.yaml
-      - /host_mnt/c/ProgramData/Docker/containers:/var/lib/docker/containers:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     command: -config.file=/etc/promtail/config.yaml
     networks:
@@ -86,11 +85,11 @@ services:
     command: -config.file=/etc/loki/config.yaml
     volumes:
       - ./config/loki/config.yaml:/etc/loki/config.yaml
-      - ./loki/index:/data/index
-      - ./loki/chunks:/data/chunks
-      - ./loki/cache:/data/cache
-      - ./loki/compactor:/data/compactor
-      - ./loki/wal:/loki/wal
+      - ${INSTANCE_NAME}_loki-data/index:/data/index
+      - ${INSTANCE_NAME}_loki-data/chunks:/data/chunks
+      - ${INSTANCE_NAME}_loki-data/cache:/data/cache
+      - ${INSTANCE_NAME}_loki-data/compactor:/data/compactor
+      - ${INSTANCE_NAME}_loki-data/wal:/loki/wal
     networks:
       monitoring:
         aliases:
@@ -103,3 +102,15 @@ networks:
       com.docker.network.driver.mtu: 1450
   monitoring:
     driver: bridge
+
+volumes:
+  ${INSTANCE_NAME}_postgres-data:
+    driver: local
+  ${INSTANCE_NAME}_minio-data:
+    driver: local
+  ${INSTANCE_NAME}_grafana-data:
+    driver: local
+  ${INSTANCE_NAME}_prometheus-data:
+    driver: local
+  ${INSTANCE_NAME}_loki-data:
+    driver: local

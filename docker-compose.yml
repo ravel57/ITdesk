@@ -119,6 +119,8 @@ networks:
       com.docker.network.driver.mtu: 1450
   monitoring:
     driver: bridge
+    name: itdesk_monitoring
+    external: false
 
 volumes:
   postgres-data:

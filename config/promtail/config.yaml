@@ -14,7 +14,6 @@ client:
 
 scrape_configs:
   - job_name: docker
-    static_configs: []
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
@@ -22,6 +21,9 @@ scrape_configs:
       - source_labels: [__meta_docker_container_label_promtail]
         regex: true
         action: keep
+      - source_labels: [__meta_docker_container_label_promtail]
+        regex: ""
+        action: drop
       - source_labels: [__meta_docker_container_logpath]
         target_label: __path__
       - source_labels: [__meta_docker_container_name]

@@ -106,6 +106,7 @@ services:
       - loki-wal:/loki/wal
     expose:
       - 3100
+    user: root
     networks:
       monitoring:
         aliases:

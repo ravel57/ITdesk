@@ -21,9 +21,6 @@ scrape_configs:
       - source_labels: [__meta_docker_container_label_promtail]
         regex: true
         action: keep
-      - source_labels: [__meta_docker_container_label_promtail]
-        regex: .*
-        action: drop
       - source_labels: [__meta_docker_container_logpath]
         target_label: __path__
       - source_labels: [__meta_docker_container_name]

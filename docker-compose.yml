@@ -60,6 +60,8 @@ services:
       - grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - loki
     networks:
       monitoring:
         aliases:
@@ -110,6 +112,8 @@ services:
     expose:
       - 3100
       - 9095
+    depends_on:
+      - promtail
     user: root
     networks:
       monitoring:

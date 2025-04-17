@@ -49,6 +49,8 @@ services:
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
+    volumes:
+      - webapp-logs:/var/log
     networks:
       - default
       - monitoring
@@ -93,6 +95,7 @@ services:
     volumes:
       - ./config/promtail/config.yaml:/etc/promtail/config.yaml
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - webapp-logs:/webapp-logs:ro
     command: -config.file=/etc/promtail/config.yaml
     expose:
       - 9080
@@ -135,6 +138,8 @@ volumes:
     name: "itdesk_${INSTANCE_NAME}_postgres-data"
   minio-data:
     name: "itdesk_${INSTANCE_NAME}_minio-data"
+  webapp-logs:
+    name: "itdesk_${INSTANCE_NAME}_webapp-logs"
   grafana-data:
     name: "itdesk_${INSTANCE_NAME}_grafana-data"
   prometheus-data:

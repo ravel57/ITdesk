@@ -14,7 +14,7 @@
     <appender name="JSON-FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>/var/log/app-json.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/var/log/app-json.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>/var/log/itdesk-json.%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>7</maxHistory>
         </rollingPolicy>
         <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>

@@ -34,7 +34,6 @@ services:
       - minio:minio
     ports:
       - '56481:8080'
-#      - '56491:8081'
     expose:
       - 56481
     environment:
@@ -62,8 +61,6 @@ services:
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
-#    ports:
-#      - '9090:9090'
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus:/prometheus
@@ -72,7 +69,7 @@ services:
         aliases:
           - prometheus
   promtail:
-    image: grafana/promtail:2.9.2
+    image: grafana/promtail:latest
     restart: unless-stopped
     volumes:
       - ./config/promtail/config.yaml:/etc/promtail/config.yaml
@@ -84,7 +81,7 @@ services:
         aliases:
           - promtail
   loki:
-    image: grafana/loki:2.9.2
+    image: grafana/loki:latest
     restart: unless-stopped
     command: -config.file=/etc/loki/config.yaml
     volumes:
@@ -93,8 +90,7 @@ services:
       - ./loki/chunks:/data/chunks
       - ./loki/cache:/data/cache
       - ./loki/compactor:/data/compactor
-#    ports:
-#      - "3100:3100"
+      - ./loki/wal:/loki/wal
     networks:
       monitoring:
         aliases:

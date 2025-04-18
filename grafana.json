@@ -184,9 +184,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": "red",
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -225,7 +223,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "red"
               },
               {
                 "color": "red",
@@ -291,9 +289,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": "orange",
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -332,7 +328,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "orange"
               },
               {
                 "color": "red",
@@ -398,9 +394,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": "yellow",
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -439,7 +433,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "yellow"
               },
               {
                 "color": "red",
@@ -505,9 +499,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": "blue",
           "custom": {
             "axisBorderShow": false,
             "axisCenteredZero": false,
@@ -546,7 +538,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "blue"
               },
               {
                 "color": "red",
@@ -1552,12 +1544,12 @@
     ]
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Spring Boot Monitoring Dashboard",
   "uid": "dej8ecglkosu8a",
-  "version": 24
+  "version": 31
 }

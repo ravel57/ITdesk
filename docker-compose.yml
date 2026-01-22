@@ -16,7 +16,7 @@ services:
       - default
 
   minio:
-    image: bitnami/minio:latest
+    image: bitnami/minio:2025.7.23
     restart: unless-stopped
     hostname: minio
     expose:

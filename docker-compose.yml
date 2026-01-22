@@ -31,6 +31,9 @@ services:
       - default
 
   webapp:
+    depends_on:
+      - postgres
+      - minio
     build: '.'
     restart: unless-stopped
     links:
@@ -132,25 +135,3 @@ networks:
     driver: bridge
     name: itdesk_monitoring
     external: false
-
-#volumes:
-#  postgres-data:
-#    name: "itdesk_${INSTANCE_NAME}_postgres-data"
-#  minio-data:
-#    name: "itdesk_${INSTANCE_NAME}_minio-data"
-#  webapp-logs:
-#    name: "itdesk_${INSTANCE_NAME}_webapp-logs"
-#  grafana-data:
-#    name: "itdesk_${INSTANCE_NAME}_grafana-data"
-#  prometheus-data:
-#    name: "itdesk_${INSTANCE_NAME}_prometheus-data"
-#  loki-index:
-#    name: "itdesk_${INSTANCE_NAME}_loki-index"
-#  loki-chunks:
-#    name: "itdesk_${INSTANCE_NAME}_loki-chunks"
-#  loki-cache:
-#    name: "itdesk_${INSTANCE_NAME}_loki-cache"
-#  loki-compactor:
-#    name: "itdesk_${INSTANCE_NAME}_loki-compactor"
-#  loki-wal:
-#    name: "itdesk_${INSTANCE_NAME}_loki-wal"

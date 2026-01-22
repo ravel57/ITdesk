@@ -1,4 +1,4 @@
-FROM node:20-alpine3.19 AS nodejs
+FROM node:22-alpine AS nodejs
 RUN apk add --no-cache git
 WORKDIR /usr/src/node
 RUN git clone https://github.com/ravel57/itdesk-front

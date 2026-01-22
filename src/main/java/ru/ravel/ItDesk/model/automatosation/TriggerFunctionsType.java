@@ -4,17 +4,17 @@ import lombok.Getter;
 
 @Getter
 public enum TriggerFunctionsType {
-	STARTS_WITH("starts_with"),
-	ENDS_WITH("ends_with"),
-	ANY_OF("any_of"),
-	NONE_OF("none_of"),
-	ALL_OF("all_of"),
-	IS_NULL("is_null"),
-	NOT_NULL("not_null"),
-	IS_EMPTY("is_empty"),
-	NOT_EMPTY("not_empty"),
-	IS_TRUE("is_true"),
-	IS_FALSE("is_false"),
+	STARTS_WITH("startsWith"),
+	ENDS_WITH("endsWith"),
+	ANY_OF("anyOf"),
+	NONE_OF("noneOf"),
+	ALL_OF("allOf"),
+	IS_NULL("isNull"),
+	NOT_NULL("notNull"),
+	IS_EMPTY("isEmpty"),
+	NOT_EMPTY("notEmpty"),
+	IS_TRUE("isTrue"),
+	IS_FALSE("isFalse"),
 	;
 
 	private final String operator;

@@ -10,9 +10,12 @@ import java.util.List;
 
 @Repository
 public interface ClientRepository extends JpaRepository<Client, Long> {
+
 	Client findByTelegramId(Long telegramId);
 
 	Client findByWhatsappRecipient(String whatsappRecipient);
 
 	List<Client> findByOrganizationId(Long organizationId);
+
+	List<Client> findAllByTgBotId(Long tgBotId);
 }

@@ -9,6 +9,7 @@ import com.pengrad.telegrambot.model.Update;
 import com.pengrad.telegrambot.request.GetFile;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
@@ -132,7 +133,13 @@ public class TelegramService {
 	}
 
 
+	@Transactional
 	public void deleteTelegramBot(Long tgBotId) {
+		List<Client> clients = clientRepository.findAllByTgBotId(tgBotId);
+		for (Client c : clients) {
+			c.setTgBot(null);
+		}
+		clientRepository.saveAll(clients);
 		telegramRepository.deleteById(tgBotId);
 	}
 

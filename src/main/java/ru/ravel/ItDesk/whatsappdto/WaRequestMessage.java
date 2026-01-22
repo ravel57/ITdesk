@@ -13,6 +13,7 @@ public class WaRequestMessage {
 	@JsonProperty("WhatsappID")
 	public String whatsappID;
 
+	@Builder.Default
 	public boolean async = false;
 
 	public Recipient recipient;

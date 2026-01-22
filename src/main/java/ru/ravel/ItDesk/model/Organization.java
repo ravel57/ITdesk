@@ -14,9 +14,9 @@ import java.util.Map;
 
 @Entity
 @Data
+@Builder
 @AllArgsConstructor
 @NoArgsConstructor
-@Builder
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Organization implements Comparable<Organization>, Serializable {
 	@Serial
@@ -33,8 +33,10 @@ public class Organization implements Comparable<Organization>, Serializable {
 	@CollectionTable(name = "sla_durations", joinColumns = @JoinColumn(name = "organization_id"))
 	@Column(name = "duration")
 	@Convert(converter = DurationConverter.class)
+	@Builder.Default
 	protected Map<Priority, Duration> sla = new HashMap<>();
 
+	@Builder.Default
 	protected Integer orderNumber = 1;
 
 	@Override

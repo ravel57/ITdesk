@@ -78,6 +78,3 @@ VALUES (DEFAULT, 'Сотрудник в пути', 'впути');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Уже решаем', 'решаем');
-
-INSERT INTO public.template (id, text, shortcut)
-VALUES (DEFAULT, 'Не наша зона ответственности', 'немы');

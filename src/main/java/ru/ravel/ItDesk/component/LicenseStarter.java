@@ -25,7 +25,7 @@ public class LicenseStarter {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
-	@Value("${instance-name}")
+	@Value("${app.instance-name}")
 	private String instanceName;
 
 	public static Long maxUsers;               // FIXME

@@ -1,0 +1,13 @@
+package ru.ravel.ItDesk.service
+
+import lombok.RequiredArgsConstructor
+import org.springframework.stereotype.Service
+
+
+@Service
+@RequiredArgsConstructor
+class LlmService {
+
+	private final
+
+}

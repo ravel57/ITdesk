@@ -9,10 +9,11 @@ ext {
 }
 
 group = 'ru.ravel'
-version = '0.2'
+version = '0.3'
 
 java {
-	sourceCompatibility = '21'
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
 }
 
 repositories {
@@ -27,18 +28,24 @@ configurations {
 
 dependencies {
 //	core
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation "org.springframework.security:spring-security-messaging"
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+
+//	db
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation "org.springframework.boot:spring-boot-starter-jdbc"
+	implementation 'org.flywaydb:flyway-core'
+	runtimeOnly 'org.postgresql:postgresql'
+	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+
+//	session
 	implementation 'org.springframework.session:spring-session-core'
 	implementation 'org.springframework.session:spring-session-jdbc'
 
-//	db
-	runtimeOnly 'org.postgresql:postgresql'
-	implementation 'org.flywaydb:flyway-core'
-	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+//  redis
+//	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+//	implementation 'org.springframework.session:spring-session-data-redis'
 
 //	FeignClient
 	implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'

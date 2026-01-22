@@ -40,6 +40,9 @@ public class ClientService {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final Integer pageLimit = 100;
 
+	@Value("${app.is-demo:false}")
+	private boolean isDemo;
+
 
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
@@ -259,6 +262,20 @@ public class ClientService {
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		task.getMessages().add(message);
 		taskRepository.save(task);
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Pattern pattern = Pattern.compile("@\\[(.+?)]");
+		Matcher matcher = pattern.matcher(message.getText());
+		if (client.getUnreadPingMessages() == null) {
+			client.setUnreadPingMessages(new HashMap<>());
+		}
+		List<User> users = userService.getUsers();
+		while (matcher.find()) {
+			String fullName = matcher.group(1);
+			users.stream()
+					.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
+					.findFirst()
+					.ifPresent(u -> client.getUnreadPingTasksMessages().put(u.getId(), true));
+		}
 		return true;
 	}
 

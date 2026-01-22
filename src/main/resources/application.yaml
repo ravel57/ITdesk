@@ -35,9 +35,20 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    database: ${REDIS_DB:0}
+    timeout: 60000   # мс (60 секунд)
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+        max-wait: -1ms
 
 minio:
-  url: ${MINIO_URL}
+  url: ${MINIO_URL:http://localhost:9001}
   accessKey: minioadmin
   secretKey: minioadmin
   bucket-name: ${MINIO_DEFAULT_BUCKET:main}
@@ -57,9 +68,11 @@ management:
 
 
 
-allowed-origin: ${ALLOWED_ORIGIN}
-instance-name: ${INSTANCE_NAME}
-license-server-url: https://admin.uldesk.ru
+app:
+  allowed-origin: ${ALLOWED_ORIGIN}
+  instance-name: ${INSTANCE_NAME}
+  license-server-url: https://admin.uldesk.ru
+  is-demo: ${IS_DEMO:false}
 
 logging:
   level:

@@ -1,0 +1,22 @@
+package ru.ravel.ItDesk.model;
+
+public enum ConditionValueType {
+	STRING,
+	NUMBER,
+	BOOLEAN,
+	DATETIME,
+	DATE,
+	DURATION_MS,
+	DURATION_MINUETS,
+	DURATION_HOURS,
+	DURATION_DAYS,
+
+//	ENUM,
+	LIST_STRING,
+	LIST_NUMBER,
+
+	USER_ID,
+	GROUP_ID,
+	CLIENT_ID,
+	TICKET_ID,
+}

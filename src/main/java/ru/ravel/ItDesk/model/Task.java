@@ -66,4 +66,9 @@ public class Task {
 	@JoinColumn(name = "task_id")
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Builder.Default
+	// Long = User.id; Boolean = isPinged
+	private Map<Long, Boolean> unreadPingTasksMessages = new HashMap<>();
 }

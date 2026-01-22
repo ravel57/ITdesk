@@ -774,7 +774,9 @@
       "pluginVersion": "11.6.0",
       "targets": [
         {
+          "editorMode": "code",
           "expr": "sum(jvm_memory_used_bytes{application=\"$application\", instance=\"$instance\", area=\"nonheap\", namespace=\"$Namespace\"}) * 100 / sum(jvm_memory_max_bytes{application=\"$application\", instance=\"$instance\", area=\"nonheap\", namespace=\"$Namespace\"})",
+          "range": true,
           "refId": "NH"
         }
       ],
@@ -1479,6 +1481,7 @@
     }
   ],
   "preload": false,
+  "refresh": "5s",
   "schemaVersion": 41,
   "tags": [
     "spring-boot",
@@ -1528,12 +1531,12 @@
     ]
   },
   "time": {
-    "from": "now-30m",
+    "from": "now-12h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "Spring Boot Monitoring Dashboard",
   "uid": "dej8ecglkosu8a",
-  "version": 7
+  "version": 9
 }

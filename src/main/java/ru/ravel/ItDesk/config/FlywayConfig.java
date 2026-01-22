@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import javax.sql.DataSource;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Configuration
 public class FlywayConfig {
@@ -24,19 +25,26 @@ public class FlywayConfig {
 	@Value("${spring.flyway.locations}")
 	private String locations;
 
+	@Value("${spring.datasource.driver-class-name}")
+	private String driver;
+
+	@Value("${spring.flyway.clean-disabled:true}")
+	private boolean cleanDisabled;
+
 	@Bean
 	public Flyway flyway(DataSource dataSource) {
 		return Flyway.configure()
 				.dataSource(dataSource)
 				.locations(locations)
 				.baselineOnMigrate(true)
+				.cleanDisabled(cleanDisabled)
 				.load();
 	}
 
 	@Bean
 	public DataSource dataSource() {
 		DriverManagerDataSource dataSource = new DriverManagerDataSource();
-		dataSource.setDriverClassName("org.postgresql.Driver");
+		dataSource.setDriverClassName(this.driver);
 		dataSource.setUrl(url);
 		dataSource.setUsername(username);
 		dataSource.setPassword(password);

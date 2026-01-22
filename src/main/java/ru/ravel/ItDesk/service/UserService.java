@@ -161,6 +161,7 @@ public class UserService {
 		return message;
 	}
 
+
 	public void resaveMessage(String license, Message message) {
 		if (licenseRepository.findAll().getFirst().getLicense().toString().equals(license)) {
 			messageRepository.save(message);

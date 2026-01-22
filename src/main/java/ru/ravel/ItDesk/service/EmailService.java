@@ -1,7 +1,5 @@
 package ru.ravel.ItDesk.service;
 
-import io.minio.GetObjectArgs;
-import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import jakarta.mail.*;
@@ -26,6 +24,7 @@ import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.EmailAccount;
 import ru.ravel.ItDesk.model.MessageFrom;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.EmailAccountRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
@@ -53,6 +52,7 @@ public class EmailService {
 	private final MinioClient minioClient;
 	private final MinioService minioService;
 	private final WebSocketService webSocketService;
+	private final EventPublisher eventPublisher;
 
 	private final Map<EmailAccount, Store> imapStores = new ConcurrentHashMap<>();
 	private final Map<EmailAccount, JavaMailSender> smtpSenders = new ConcurrentHashMap<>();
@@ -65,7 +65,8 @@ public class EmailService {
 
 	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
 						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository,
-						MinioClient minioClient, MinioService minioService, WebSocketService webSocketService) {
+						MinioClient minioClient, MinioService minioService, WebSocketService webSocketService,
+						EventPublisher eventPublisher) {
 		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
@@ -74,6 +75,7 @@ public class EmailService {
 		this.minioService = minioService;
 		this.webSocketService = webSocketService;
 		emailAccountRepository.findAll().forEach(this::addMailAccount);
+		this.eventPublisher = eventPublisher;
 	}
 
 
@@ -195,6 +197,7 @@ public class EmailService {
 							.messages(List.of(message))
 							.emailAccountSender(emailAccount)
 							.build();
+					eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
 				}
 				try {
 					clientRepository.save(client);

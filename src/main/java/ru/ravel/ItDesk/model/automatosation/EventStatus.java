@@ -1,6 +1,6 @@
 package ru.ravel.ItDesk.model.automatosation;
 
-public enum OutboxStatus {
+public enum EventStatus {
 	NEW,
 	PROCESSING,
 	DONE,

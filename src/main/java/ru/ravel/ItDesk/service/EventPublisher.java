@@ -14,7 +14,7 @@ import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
-public class AutomationOutboxPublisher {
+public class EventPublisher {
 
 	private final AutomationOutboxRepository outboxRepository;
 	private final ObjectMapper objectMapper;
@@ -25,7 +25,7 @@ public class AutomationOutboxPublisher {
 		Event event = new Event();
 		event.setTriggerType(triggerType);
 		event.setPayload(payload);
-		event.setStatus(OutboxStatus.NEW);
+		event.setStatus(EventStatus.NEW);
 		event.setRetries(0);
 		event.setAvailableAt(Instant.now());
 		event.setLastError(null);
@@ -39,7 +39,7 @@ public class AutomationOutboxPublisher {
 		Event e = new Event();
 		e.setTriggerType(triggerType);
 		e.setPayload(payload);
-		e.setStatus(OutboxStatus.NEW);
+		e.setStatus(EventStatus.NEW);
 		e.setRetries(0);
 		e.setAvailableAt(availableAt);
 		e.setLastError(null);

@@ -39,6 +39,10 @@ public class Organization implements Comparable<Organization>, Serializable {
 
 	@Override
 	public int compareTo(@NotNull Organization o) {
-		return orderNumber.compareTo(o.orderNumber);
+		if (this.orderNumber != null && o.orderNumber != null) {
+			return orderNumber.compareTo(o.orderNumber);
+		} else  {
+			return 0;
+		}
 	}
 }

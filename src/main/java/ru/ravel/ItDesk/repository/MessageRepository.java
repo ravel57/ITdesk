@@ -9,6 +9,11 @@ import java.util.Optional;
 
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
+
 	Optional<Message> findByFileUuid(String fileUuid);
+
 	Optional<Message> findByMessengerMessageId(Integer messengerMessageId);
+
+//	long countByClientId(Long clientId);
+
 }

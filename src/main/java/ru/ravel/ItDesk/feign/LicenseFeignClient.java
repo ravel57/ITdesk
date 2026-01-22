@@ -11,7 +11,7 @@ import ru.ravel.ItDesk.model.License;
 import java.util.UUID;
 
 
-@FeignClient(name = "license", url = "${license-server-url}")
+@FeignClient(name = "license", url = "${app.license-server-url}")
 public interface LicenseFeignClient {
 
 	@PostMapping(value = "/api/v1/register")

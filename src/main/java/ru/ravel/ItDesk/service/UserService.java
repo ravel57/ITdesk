@@ -13,10 +13,7 @@ import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.dto.UserDto;
 import ru.ravel.ItDesk.feign.SupportFeignClient;
 import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.repository.LicenseRepository;
-import ru.ravel.ItDesk.repository.MessageRepository;
-import ru.ravel.ItDesk.repository.SupportRepository;
-import ru.ravel.ItDesk.repository.UserRepository;
+import ru.ravel.ItDesk.repository.*;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -38,10 +35,13 @@ public class UserService {
 
 	@Getter
 	private final Set<User> usersOnline = new HashSet<>();
+	private final TaskRepository taskRepository;
 
 
 	public List<User> getUsers() {
-		return userRepository.findAll();
+		List<User> users = userRepository.findAll();
+		users.remove(SystemUser.getInstance());
+		return users;
 	}
 
 
@@ -51,7 +51,7 @@ public class UserService {
 
 
 	public User newUser(@NotNull UserDto userDto) {
-		if (userRepository.findAll().size() < LicenseStarter.maxUsers) {
+		if (getUsers().size() < LicenseStarter.maxUsers) {
 			Pattern pattern = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
 			if (pattern.matcher(userDto.getUsername()).matches()) {
 				try {
@@ -137,7 +137,13 @@ public class UserService {
 
 
 	public void deleteUser(Long userId) {
-		if (userRepository.findAll().size() > 1) {
+		if (getUsers().size() > 1) {
+			messageRepository.findAll().stream()
+					.filter(m -> m.getUser() != null && m.getUser().getId().equals(userId))
+					.forEach(m -> m.setUser(null));
+			taskRepository.findAll().stream()
+					.filter(t -> t.getExecutor() != null)
+					.forEach(t -> t.setExecutor(null));
 			userRepository.deleteById(userId);
 		} else {
 			throw new RuntimeException("users will be empty");

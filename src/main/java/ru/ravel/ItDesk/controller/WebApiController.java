@@ -8,8 +8,11 @@ import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.service.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +39,10 @@ public class WebApiController {
 	private final KnowledgeService knowledgeService;
 	private final WhatsappService whatsappService;
 	private final ExportService exportService;
+	private final LlmService llmService;
+//	private final AutomatizationService automatizationService;
+//	private final AutomationQueueService automationQueueService;
+	private final AutomationTriggerService automationTriggerService;
 
 
 	@GetMapping("/clients")
@@ -67,6 +74,13 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/client-files/{clientId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getClientFiles(@PathVariable Long clientId) {
+		return ResponseEntity.ok().body(clientService.getClientFiles(clientId));
+	}
+
+
 	@PostMapping("/client/{clientId}/task/{taskId}/message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> addTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody Message message) {
@@ -77,6 +91,18 @@ public class WebApiController {
 			} else {
 				return ResponseEntity.status(HttpStatus.CONFLICT).build();
 			}
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PostMapping("/client/{clientId}/task/{taskId}/mark-message-read")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> markMessageRead(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody UserId userId) {
+		if (LicenseStarter.isLicenseActive) {
+			clientService.markMessageRead(taskId, userId);
+			return ResponseEntity.ok().build();
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -704,13 +730,17 @@ public class WebApiController {
 
 	@GetMapping("/sla")
 	public ResponseEntity<Object> getSlaByPriority() {
-		Map<String, Map<String, Long>> out = new HashMap<>();
+		Map<String, Map<String, Float>> out = new HashMap<>();
 		Map<Organization, Map<Priority, Duration>> slaByPriority = organizationService.getSlaByPriority();
 		slaByPriority.forEach((organization, priorityMap) -> {    // FIXME ошибка сериализаци Duration в json
-			Map<String, Long> collect = priorityMap.entrySet().stream()
+			Map<String, Float> collect = priorityMap.entrySet().stream()
 					.collect(Collectors.toMap(
 							e -> e.getKey().getName(),
-							e -> Objects.requireNonNullElse(e.getValue(), Duration.ZERO).toHours()));
+							e -> BigDecimal.valueOf(Objects.requireNonNullElse(e.getValue(), Duration.ZERO).toMinutes())
+									.setScale(2, RoundingMode.HALF_UP)
+									.divide(BigDecimal.valueOf(60), RoundingMode.HALF_UP)
+									.floatValue()
+					));
 			out.put(organization.getName(), collect);
 		});
 		return ResponseEntity.ok().body(out);
@@ -781,6 +811,81 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/triggers")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getAllTriggers() {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(automationTriggerService.list());
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PostMapping("/trigger")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> newTrigger(@RequestBody AutomationTriggerDto dto) {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(automationTriggerService.create(dto));
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/trigger")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> updateTrigger(@RequestBody AutomationTriggerDto dto) {
+		if (LicenseStarter.isLicenseActive) {
+			try {
+				return ResponseEntity.ok().body(automationTriggerService.update(dto));
+			} catch (Exception e) {
+				return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+			}
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@DeleteMapping("/trigger/{triggerId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> deleteTrigger(@PathVariable Long triggerId) {
+		if (LicenseStarter.isLicenseActive) {
+			try {
+				automationTriggerService.delete(triggerId);
+			} catch (Exception e) {
+				return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+			}
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/triggers/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> resortTriggers(@RequestBody List<AutomationTriggerDto> triggers) {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(automationTriggerService.resort(triggers));
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@GetMapping("/trigger-types")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getTriggerTypes() {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(TriggerType.values());
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
 	@PostMapping("/support/send-message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> sendSupportMessage(@RequestBody Message message) {
@@ -801,22 +906,24 @@ public class WebApiController {
 		return ResponseEntity.ok().build();
 	}
 
+
 	@GetMapping("/export/to-excel")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<byte[]> exportToExcel() {
 		return exportService.exportToExcel();
 	}
 
-	@GetMapping("/license/validUntil")
+
+	@GetMapping("/license-info")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getLicenseValidUntil() {
-		return ResponseEntity.ok().body(LicenseStarter.licenseUntil);
+		return ResponseEntity.ok().body(new LicenseInfo(LicenseStarter.maxUsers, LicenseStarter.licenseUntil));
 	}
 
-	@GetMapping("/license/maxUsers")
-	@PreAuthorize("hasAnyRole('ADMIN')")
-	public ResponseEntity<Object> getLicenseMaxUsers() {
-		return ResponseEntity.ok().body(LicenseStarter.maxUsers);
+
+	@GetMapping("/llm-query")
+	public ResponseEntity<Object> getLlmQuery(@RequestParam String query) {
+		return ResponseEntity.ok().body(llmService.askLlm(query));
 	}
 
 }

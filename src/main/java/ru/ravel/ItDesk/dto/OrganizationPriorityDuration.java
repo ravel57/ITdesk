@@ -8,5 +8,5 @@ import ru.ravel.ItDesk.model.Priority;
 public class OrganizationPriorityDuration {
 	private Organization organization;
 	private Priority priority;
-	private Long hours;
+	private Float hours;
 }

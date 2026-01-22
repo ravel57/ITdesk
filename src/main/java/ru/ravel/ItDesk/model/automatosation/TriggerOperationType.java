@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.model;
+package ru.ravel.ItDesk.model.automatosation;
 
 import lombok.Getter;
 
@@ -11,8 +11,8 @@ public enum TriggerOperationType {
 	LT("<"),
 	LTE("<="),
 	IN("in"),
-	AND("&"),
-	OR("|"),
+	AND("&&"),
+	OR("||"),
 	;
 
 	private final String operator;

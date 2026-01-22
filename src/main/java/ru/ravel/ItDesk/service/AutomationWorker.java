@@ -1,55 +1,49 @@
-package ru.ravel.ItDesk.component;
+package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import ru.ravel.ItDesk.model.automatosation.AutomationOutboxEvent;
-import ru.ravel.ItDesk.model.automatosation.OutboxStatus;
-import ru.ravel.ItDesk.repository.AutomationOutboxDao;
-import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
-import ru.ravel.ItDesk.service.AutomationEngine;
+import ru.ravel.ItDesk.repository.EventDao;
 
-import java.time.Instant;
 import java.util.List;
-import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AutomationWorker {
 
-	private final AutomationOutboxDao outboxDao;
-	private final AutomationOutboxRepository repo;
-	private final AutomationEngine automationEngine; // твой движок условий/действий
+	private final EventDao outboxDao;
+	private final AutomationItemProcessor automationItemProcessor;
+
+	private static final long LOG_INTERVAL_MS = 5 * 60 * 1000L;
+	private static final AtomicLong nextAllowedLogAtMs = new AtomicLong(0);
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
 	@Scheduled(fixedDelayString = "${automation.worker.delay-ms:200}")
 	public void poll() {
-		List<UUID> ids = outboxDao.fetchAndMarkProcessing(50);
-		for (UUID id : ids) {
-			processOne(id);
+		List<Long> ids = outboxDao.fetchAndMarkProcessing(50);
+		for (Long id : ids) {
+			try {
+				automationItemProcessor.processOneTx(id);
+			} catch (Throwable e) {
+				logThrottled(e);
+			}
 		}
 	}
 
 
-	@Transactional(propagation = Propagation.REQUIRES_NEW)
-	public void processOne(UUID id) {
-		AutomationOutboxEvent e = repo.findById(id).orElseThrow();
-		try {
-			automationEngine.handleEvent(e); // проверка правил и выполнение действий
-			e.setStatus(OutboxStatus.DONE);
-			e.setLastError(null);
-			repo.save(e);
-		} catch (Exception ex) {
-			int retries = e.getRetries();
-			long backoffSec = Math.min(60, 1L << Math.min(retries, 10)); // 1,2,4...<=60
-			e.setRetries(retries + 1);
-			e.setStatus(OutboxStatus.NEW);
-			e.setAvailableAt(Instant.now().plusSeconds(backoffSec));
-			e.setLastError(ex.getMessage());
-			repo.save(e);
+	private void logThrottled(Throwable e) {
+		long now = System.currentTimeMillis();
+		long prev = nextAllowedLogAtMs.getAndUpdate(cur -> (now >= cur) ? now + LOG_INTERVAL_MS : cur);
+
+		if (now >= prev) {
+			logger.error("[AUTOMATION_WORKER_THROTTLED] {}", e.getMessage(), e);
 		}
 	}
 }

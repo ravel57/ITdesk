@@ -2,10 +2,14 @@ package ru.ravel.ItDesk.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 
 @Entity
@@ -23,7 +27,8 @@ public class Task {
 	private String name;
 
 	@Column(length = 1024)
-	private String description;
+	@Builder.Default
+	private String description = "";
 
 	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn
@@ -40,9 +45,11 @@ public class Task {
 	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Tag> tags;
 
-	private Boolean completed;
+	@Builder.Default
+	private Boolean completed = false;
 
-	private Boolean frozen;
+	@Builder.Default
+	private Boolean frozen = false;
 
 	private ZonedDateTime frozenUntil;
 
@@ -51,7 +58,8 @@ public class Task {
 	@ManyToOne(fetch = FetchType.EAGER)
 	private Status previusStatus;
 
-	private ZonedDateTime createdAt;
+	@Builder.Default
+	private ZonedDateTime createdAt =  ZonedDateTime.now();
 
 	private ZonedDateTime deadline;
 

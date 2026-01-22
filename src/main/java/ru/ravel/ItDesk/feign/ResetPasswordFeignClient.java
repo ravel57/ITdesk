@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.UUID;
 
-@FeignClient(name = "resetPassword", url = "${license-server-url}")
+@FeignClient(name = "resetPassword", url = "${app.license-server-url}")
 public interface ResetPasswordFeignClient {
 
 	@PostMapping("/api/v1/reset-password")

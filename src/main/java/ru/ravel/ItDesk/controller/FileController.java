@@ -76,9 +76,7 @@ public class FileController {
 		headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
 		headers.setContentDisposition(ContentDisposition.builder("attachment").filename(encodedFilename).build());
 		headers.setContentLength(fileBytes != null ? fileBytes.length : 0);
-		return ResponseEntity.ok()
-				.headers(headers)
-				.body(fileBytes);
+		return ResponseEntity.ok().headers(headers).body(fileBytes);
 	}
 
 

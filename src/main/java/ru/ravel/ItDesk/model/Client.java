@@ -86,7 +86,7 @@ public class Client {
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Builder.Default
 	// Long = User.id; Boolean = isPinged
-	private Map<Long, Boolean> unreadPingMessages = new HashMap<>();;
+	private Map<Long, Boolean> unreadPingMessages = new HashMap<>();
 
 	@Transient
 	@Builder.Default

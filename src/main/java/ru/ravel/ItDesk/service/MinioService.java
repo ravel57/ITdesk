@@ -21,7 +21,7 @@ public class MinioService {
 
 
 	public File getFile(String fileName, String fileUuid) {
-		try (FileOutputStream fos = new FileOutputStream(fileName)) {
+		try (FileOutputStream fos = new FileOutputStream(safeFilename(fileName))) {
 			GetObjectResponse getObjectResponse = minioClient.getObject(
 					GetObjectArgs.builder()
 							.bucket(bucketName)
@@ -32,10 +32,16 @@ public class MinioService {
 			while ((bytesRead = getObjectResponse.read(buf)) != -1) {
 				fos.write(buf, 0, bytesRead);
 			}
-			return new File(fileName);
+			return new File(safeFilename(fileName));
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
+	}
+
+
+	private static String safeFilename(String name) {
+		if (name == null || name.isBlank()) return "file";
+		return name.replaceAll("[\\\\/:*?\"<>|]", "_");
 	}
 
 }

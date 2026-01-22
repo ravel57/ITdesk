@@ -28,8 +28,8 @@ public class FlywayConfig {
 	@Value("${spring.datasource.driver-class-name}")
 	private String driver;
 
-	@Value("${spring.flyway.clean-disabled:true}")
-	private boolean cleanDisabled;
+	@Value("${app.is-demo}")
+	private boolean isDemo;
 
 	@Bean
 	public Flyway flyway(DataSource dataSource) {
@@ -37,7 +37,7 @@ public class FlywayConfig {
 				.dataSource(dataSource)
 				.locations(locations)
 				.baselineOnMigrate(true)
-				.cleanDisabled(cleanDisabled)
+				.cleanDisabled(!isDemo)
 				.load();
 	}
 

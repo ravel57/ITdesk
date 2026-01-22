@@ -1,4 +1,13 @@
 package ru.ravel.ItDesk.dto;
 
-public class File {
+import lombok.AllArgsConstructor;
+import lombok.Data;
+
+
+@Data
+@AllArgsConstructor
+public class FileDto {
+	private String uuid;
+	private String name;
+	private String type;
 }

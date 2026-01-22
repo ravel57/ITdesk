@@ -16,6 +16,7 @@ import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.model.WhatsappAccount;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.WhatsappAccountRepository;
@@ -45,6 +46,7 @@ public class WhatsappService {
 
 	private final List<WhatsappAccount> whatsappAccounts = Collections.synchronizedList(new ArrayList<>());
 	private final WebSocketService webSocketService;
+	private final EventPublisher eventPublisher;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
@@ -55,7 +57,7 @@ public class WhatsappService {
 	public WhatsappService(WhatsappFeign whatsappFeign, WhatsappAccountRepository whatsappAccountRepository,
 						   ClientRepository clientRepository, MinioClient minioClient,
 						   MessageRepository messageRepository, MinioService minioService,
-						   WebSocketService webSocketService) {
+						   WebSocketService webSocketService, EventPublisher eventPublisher) {
 		this.whatsappFeign = whatsappFeign;
 		this.whatsappAccountRepository = whatsappAccountRepository;
 		this.clientRepository = clientRepository;
@@ -64,6 +66,7 @@ public class WhatsappService {
 		this.minioService = minioService;
 		this.webSocketService = webSocketService;
 		this.whatsappAccounts.addAll(getWhatsappAccounts());
+		this.eventPublisher = eventPublisher;
 	}
 
 
@@ -153,6 +156,7 @@ public class WhatsappService {
 						.messageFrom(MessageFrom.WHATSAPP)
 						.whatsappAccount(whatsappAccount)
 						.build();
+				eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
 			} else {
 				client.getMessages().add(message);
 			}

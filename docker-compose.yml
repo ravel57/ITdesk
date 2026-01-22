@@ -11,7 +11,7 @@ services:
     ports:
       - '55432:5432'
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-data:/var/lib/postgresql/data
     networks:
       - default
 
@@ -26,7 +26,7 @@ services:
       - MINIO_ROOT_PASSWORD=minioadmin
     command: minio server --address :9009 /bitnami/minio/data
     volumes:
-      - minio-data:/bitnami/minio/data
+      - ./minio-data:/bitnami/minio/data
     networks:
       - default
 
@@ -50,7 +50,7 @@ services:
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
     volumes:
-      - webapp-logs:/var/log
+      - ./webapp-logs:/var/log
     networks:
       - default
       - monitoring
@@ -67,7 +67,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
     volumes:
-      - grafana-data:/var/lib/grafana
+      - ./grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
@@ -80,7 +80,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - ./prometheus-data:/prometheus
     expose:
       - 9090
     command:
@@ -95,7 +95,7 @@ services:
     volumes:
       - ./config/promtail/config.yaml:/etc/promtail/config.yaml
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - webapp-logs:/webapp-logs:ro
+      - ./webapp-logs:/webapp-logs:ro
     command: -config.file=/etc/promtail/config.yaml
     expose:
       - 9080
@@ -109,11 +109,11 @@ services:
       - '-config.file=/etc/loki/config.yaml'
     volumes:
       - ./config/loki/config.yaml:/etc/loki/config.yaml:ro
-      - loki-index:/data/index
-      - loki-chunks:/data/chunks
-      - loki-cache:/data/cache
-      - loki-compactor:/data/compactor
-      - loki-wal:/loki/wal
+      - ./loki-index:/data/index
+      - ./loki-chunks:/data/chunks
+      - ./loki-cache:/data/cache
+      - ./loki-compactor:/data/compactor
+      - ./loki-wal:/loki/wal
     expose:
       - 3100
       - 9095
@@ -133,24 +133,24 @@ networks:
     name: itdesk_monitoring
     external: false
 
-volumes:
-  postgres-data:
-    name: "itdesk_${INSTANCE_NAME}_postgres-data"
-  minio-data:
-    name: "itdesk_${INSTANCE_NAME}_minio-data"
-  webapp-logs:
-    name: "itdesk_${INSTANCE_NAME}_webapp-logs"
-  grafana-data:
-    name: "itdesk_${INSTANCE_NAME}_grafana-data"
-  prometheus-data:
-    name: "itdesk_${INSTANCE_NAME}_prometheus-data"
-  loki-index:
-    name: "itdesk_${INSTANCE_NAME}_loki-index"
-  loki-chunks:
-    name: "itdesk_${INSTANCE_NAME}_loki-chunks"
-  loki-cache:
-    name: "itdesk_${INSTANCE_NAME}_loki-cache"
-  loki-compactor:
-    name: "itdesk_${INSTANCE_NAME}_loki-compactor"
-  loki-wal:
-    name: "itdesk_${INSTANCE_NAME}_loki-wal"
+#volumes:
+#  postgres-data:
+#    name: "itdesk_${INSTANCE_NAME}_postgres-data"
+#  minio-data:
+#    name: "itdesk_${INSTANCE_NAME}_minio-data"
+#  webapp-logs:
+#    name: "itdesk_${INSTANCE_NAME}_webapp-logs"
+#  grafana-data:
+#    name: "itdesk_${INSTANCE_NAME}_grafana-data"
+#  prometheus-data:
+#    name: "itdesk_${INSTANCE_NAME}_prometheus-data"
+#  loki-index:
+#    name: "itdesk_${INSTANCE_NAME}_loki-index"
+#  loki-chunks:
+#    name: "itdesk_${INSTANCE_NAME}_loki-chunks"
+#  loki-cache:
+#    name: "itdesk_${INSTANCE_NAME}_loki-cache"
+#  loki-compactor:
+#    name: "itdesk_${INSTANCE_NAME}_loki-compactor"
+#  loki-wal:
+#    name: "itdesk_${INSTANCE_NAME}_loki-wal"

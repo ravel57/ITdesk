@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.model.automatosation;
+package ru.ravel.ItDesk.model;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;

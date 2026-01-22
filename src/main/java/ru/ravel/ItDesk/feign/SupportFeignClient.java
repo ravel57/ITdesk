@@ -9,7 +9,7 @@ import ru.ravel.ItDesk.model.Message;
 import java.util.UUID;
 
 
-@FeignClient(name = "support", url = "${license-server-url}")
+@FeignClient(name = "support", url = "${app.license-server-url}")
 public interface SupportFeignClient {
 
 	@PostMapping("/api/v1/support/{license}/new-message")

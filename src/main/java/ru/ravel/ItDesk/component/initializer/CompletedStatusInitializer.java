@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.component;
+package ru.ravel.ItDesk.component.initializer;
 
 import jakarta.annotation.PostConstruct;
 import lombok.AllArgsConstructor;

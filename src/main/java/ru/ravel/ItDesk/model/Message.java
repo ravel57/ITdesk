@@ -25,7 +25,8 @@ public class Message implements Comparable<Message> {
 	@Column(length = 32768)
 	private String text;
 
-	private ZonedDateTime date;
+	@Builder.Default
+	private ZonedDateTime date = ZonedDateTime.now();
 
 	@ManyToOne(fetch = FetchType.EAGER)
 	private User user;

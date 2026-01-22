@@ -1,8 +1,9 @@
-INSERT INTO public.t_user (id, firstname, lastname, is_account_non_expired, is_account_non_locked, is_credentials_non_expired, is_enabled, password, username)
-VALUES (DEFAULT, 'admin', 'admin', true, true, true, true, '$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.', 'admin');
+INSERT INTO public.user_t (id, firstname, lastname, is_account_non_expired, is_account_non_locked, is_credentials_non_expired, is_enabled, password, username, type)
+VALUES (DEFAULT, 'system', 'user', false, false, false, false, '', 'Система (ULDESK)', 'SystemUser'),
+(DEFAULT, 'admin', 'admin', true, true, true, true, '$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.', 'admin', 'User');
 
 INSERT INTO public.user_authorities (user_id, authorities)
-VALUES (1, 0);
+VALUES (2, 'ADMIN');
 
 INSERT INTO public.tag (id, description, name)
 VALUES (DEFAULT, null, 'ЭЦП');
@@ -38,6 +39,9 @@ INSERT INTO public.status (id, order_number, name, type)
 VALUES (DEFAULT, 3, 'Решена', 'Status');
 
 INSERT INTO public.status (id, order_number, name, type)
+VALUES (DEFAULT, 4, 'Клиент не отвечает', 'Status');
+
+INSERT INTO public.status (id, order_number, name, type)
 VALUES (DEFAULT, 999, 'Заморожена', 'FrozenStatus');
 
 INSERT INTO public.status (id, order_number, name, type)
@@ -49,8 +53,8 @@ VALUES (DEFAULT, 1, 'Критичный', true);
 INSERT INTO public.priority (id, order_number, name)
 VALUES (DEFAULT, 2, 'Высокий');
 
-INSERT INTO public.priority (id, name, order_number, default_selection)
-VALUES (DEFAULT, 'Средний', 3, true);
+INSERT INTO public.priority (id, order_number, name, default_selection)
+VALUES (DEFAULT, 3, 'Средний', true);
 
 INSERT INTO public.priority (id, order_number, name)
 VALUES (DEFAULT, 4, 'Низкий');
@@ -78,3 +82,7 @@ VALUES (DEFAULT, 'Сотрудник в пути', 'впути');
 
 INSERT INTO public.template (id, text, shortcut)
 VALUES (DEFAULT, 'Уже решаем', 'решаем');
+
+INSERT INTO automation_trigger(action, automation_rule_status, description, expression, name, order_number, trigger_type)
+VALUES ('client.sendMessage(''Здравствуйте! Это автоответ. Вам напишет первый освободившийся оператор.'')', 'ENABLED', '', 'true', 'Приветственное сообщение', 0, 'CLIENT_CREATED'),
+('task.create(message.text)', 'ENABLED', '', 'client.openTasks.size() = 0 && client.incomeMessages.size() > 1', 'Авто-новая заявка', 2, 'MESSAGE_INCOMING');

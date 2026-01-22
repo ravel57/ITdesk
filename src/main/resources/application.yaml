@@ -1,6 +1,12 @@
 server:
   port: 8080
-  servlet.session.timeout: 4320
+  servlet:
+    session:
+      timeout: 4320
+      cookie:
+        http-only: true
+        secure: true
+        max-age: -1
   tomcat.max-swallow-size: 512MB
 
 spring:
@@ -35,20 +41,20 @@ spring:
   jackson:
     serialization:
       write-dates-as-timestamps: false
-  redis:
-    host: ${REDIS_HOST:localhost}
-    port: ${REDIS_PORT:6379}
-    database: ${REDIS_DB:0}
-    timeout: 60000   # мс (60 секунд)
-    lettuce:
-      pool:
-        max-active: 8
-        max-idle: 8
-        min-idle: 0
-        max-wait: -1ms
+#  redis:
+#    host: ${REDIS_HOST:localhost}
+#    port: ${REDIS_PORT:6379}
+#    database: ${REDIS_DB:0}
+#    timeout: 60000   # мс (60 секунд)
+#    lettuce:
+#      pool:
+#        max-active: 8
+#        max-idle: 8
+#        min-idle: 0
+#        max-wait: -1ms
 
 minio:
-  url: ${MINIO_URL:http://localhost:9001}
+  url: ${MINIO_URL:http://localhost:9000}
   accessKey: minioadmin
   secretKey: minioadmin
   bucket-name: ${MINIO_DEFAULT_BUCKET:main}
@@ -67,12 +73,15 @@ management:
     distribution.percentiles-histogram."[http.server.requests]": true
 
 
-
 app:
-  allowed-origin: ${ALLOWED_ORIGIN}
+  allowed-origin: ${ALLOWED_ORIGIN:http://localhost:8080}
   instance-name: ${INSTANCE_NAME}
   license-server-url: https://admin.uldesk.ru
   is-demo: ${IS_DEMO:false}
+  llm-url: ${LLM_URL:''}
+  automation:
+    worker-delay-ms: 200
+
 
 logging:
   level:

@@ -5,9 +5,11 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
 
 import java.time.Duration;
@@ -15,6 +17,8 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 @Service
@@ -31,6 +35,8 @@ public class ClientService {
 	private final SlaRepository slaRepository;
 	private final WhatsappService whatsappService;
 	private final WebSocketService webSocketService;
+	private final EventPublisher eventPublisher;
+	private final UserRepository userRepository;
 
 	private final Map<ClientUserText, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<ClientUser, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -81,47 +87,66 @@ public class ClientService {
 		taskRepository.save(task);
 		client.getTasks().add(task);
 		clientsRepository.save(client);
+		eventPublisher.publish(TriggerType.TASK_CREATED, Map.of("task", task, "client", client));
 		return task;
 	}
 
 
 	public Task updateTask(Long clientId, @NotNull Task task) {
-		Task olderStatus = taskRepository.findById(task.getId()).orElseThrow();
+		Task olderTask = taskRepository.findById(task.getId()).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		setSla(client, task);
+		setSla(client, olderTask);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
-		if (task.getFrozen() != null && task.getFrozen()) {
-			if (!olderStatus.getStatus().equals(frozenStatus) && !olderStatus.getStatus().equals(completedStatus)) {
-				task.setPreviusStatus(olderStatus.getStatus());
-			}
-			task.setStatus(frozenStatus);
-			task.setFrozen(true);
-		} else if (task.getPreviusStatus() != null
-				&& frozenStatus.getId().equals(task.getStatus().getId())     //FIXME
-				&& olderStatus.getStatus().equals(frozenStatus)) {
-			task.setStatus(task.getPreviusStatus());
+		olderTask.setName(task.getName());
+		olderTask.setDescription(task.getDescription());
+		olderTask.setPriority(task.getPriority());
+		olderTask.setStatus(task.getStatus());
+		olderTask.setDeadline(task.getDeadline());
+		olderTask.setExecutor(task.getExecutor());
+		olderTask.setTags(task.getTags());
+		olderTask.setLinkedMessageId(task.getLinkedMessageId());
+		olderTask.setFrozen(task.getFrozen());
+		olderTask.setCompleted(task.getCompleted());
+		if (task.getPreviusStatus() != null) {
+			olderTask.setPreviusStatus(task.getPreviusStatus());
+		} else {
+			olderTask.setPreviusStatus(completedStatus);
 		}
-		if (task.getCompleted() != null && task.getCompleted()) {
-			if (!olderStatus.getStatus().equals(completedStatus) && !olderStatus.getStatus().equals(frozenStatus)) {
-				task.setPreviusStatus(olderStatus.getStatus());
+		olderTask.setSla(task.getSla());
+		if (olderTask.getFrozen() != null && olderTask.getFrozen()) {
+			if (!olderTask.getStatus().equals(frozenStatus) && !olderTask.getStatus().equals(completedStatus)) {
+				olderTask.setPreviusStatus(olderTask.getStatus());
 			}
-			if (Boolean.TRUE.equals(task.getFrozen())) {
-				task.setFrozen(false);
-			}
-			task.setStatus(completedStatus);
-			task.setCompleted(true);
-		} else if (task.getPreviusStatus() != null
-				&& Boolean.FALSE.equals(task.getFrozen())
-				&& !task.getPreviusStatus().equals(completedStatus)
-				&& olderStatus.getStatus().equals(completedStatus)) {
-			task.setStatus(task.getPreviusStatus());
-		} else if (olderStatus.getStatus().equals(completedStatus) && task.getStatus().getId().equals(completedStatus.getId())) {
-			task.setCompleted(false);
-			task.setStatus(task.getPreviusStatus());
+			olderTask.setStatus(frozenStatus);
+			olderTask.setFrozen(true);
+		} else if (olderTask.getPreviusStatus() != null
+				&& frozenStatus.getId().equals(olderTask.getStatus().getId())
+				&& olderTask.getStatus().equals(frozenStatus)) {
+			olderTask.setStatus(olderTask.getPreviusStatus());
 		}
-		task.setLastActivity(ZonedDateTime.now());
-		return taskRepository.save(task);
+		if (olderTask.getCompleted() != null && olderTask.getCompleted()) {
+			if (!olderTask.getStatus().equals(completedStatus) && !olderTask.getStatus().equals(frozenStatus)) {
+				olderTask.setPreviusStatus(olderTask.getStatus());
+			}
+			if (Boolean.TRUE.equals(olderTask.getFrozen())) {
+				olderTask.setFrozen(false);
+			}
+			olderTask.setStatus(completedStatus);
+			olderTask.setCompleted(true);
+		} else if (olderTask.getPreviusStatus() != null
+				&& Boolean.FALSE.equals(olderTask.getFrozen())
+				&& !olderTask.getPreviusStatus().equals(completedStatus)
+				&& olderTask.getStatus().equals(completedStatus)) {
+			olderTask.setStatus(olderTask.getPreviusStatus());
+		} else if (olderTask.getStatus().equals(completedStatus)
+				&& olderTask.getStatus().getId().equals(completedStatus.getId())) {
+			olderTask.setCompleted(false);
+			olderTask.setStatus(olderTask.getPreviusStatus());
+		}
+		olderTask.setLastActivity(ZonedDateTime.now());
+		eventPublisher.publish(TriggerType.TASK_UPDATED, Map.of("task", task, "client", client));
+		return taskRepository.save(olderTask);
 	}
 
 
@@ -139,13 +164,18 @@ public class ClientService {
 	}
 
 
-	public boolean sendMessage(Long clientId, @NotNull Message message) {
+	public boolean sendMessage(Long clientId, Message message) {
+		return sendMessageWithUser(clientId, message, userService.getCurrentUser());
+	}
+
+
+	public boolean sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
 		message.setDate(ZonedDateTime.now());
-		message.setUser(userService.getCurrentUser());
+		message.setUser(user);
 		message.setSent(true);
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		if (!message.isComment()) {
+		if (!message.isComment() && !isDemo) {
 			try {
 				switch (client.getMessageFrom()) {
 					case TELEGRAM -> telegramService.sendMessage(client, message);
@@ -156,10 +186,26 @@ public class ClientService {
 				logger.error(e.getMessage(), e);
 				return false;
 			}
+		} else {
+			// pings
+			Pattern pattern = Pattern.compile("@\\[(.+?)]");
+			Matcher matcher = pattern.matcher(message.getText());
+			if (client.getUnreadPingMessages() == null) {
+				client.setUnreadPingMessages(new HashMap<>());
+			}
+			List<User> users = userService.getUsers();
+			while (matcher.find()) {
+				String fullName = matcher.group(1);
+				users.stream()
+						.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
+						.findFirst()
+						.ifPresent(u -> client.getUnreadPingMessages().put(u.getId(), true));
+			}
 		}
 		webSocketService.sendNewMessages(new ClientMessage(client, message));
 		client.getMessages().add(message);
 		clientsRepository.save(client);
+		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, Map.of("message", message, "client", client));
 		return true;
 	}
 
@@ -176,24 +222,30 @@ public class ClientService {
 		UserActionWaiter task = new UserActionWaiter(client, clientUser.getUser(), watchingUsers, logger, 30_000);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 
-		List<Message> list = client.getMessages().stream()
+		if (client.getUnreadPingMessages() != null) {
+			client.getUnreadPingMessages().put(clientUser.getUser().getId(), false);
+		}
+		clientsRepository.save(client);
+
+		List<Message> messages = client.getMessages().stream()
 				.filter(message -> !message.isRead())
 				.peek(message -> message.setRead(true))
 				.toList();
-		messageRepository.saveAll(list);
+		messageRepository.saveAll(messages);
 		return client;
 	}
 
 
 	public Client updateClient(Long clientId, @NotNull Map<String, Object> c) {    // FIXME
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		client.setFirstname((String) c.get("firstname"));
-		client.setLastname((String) c.get("lastname"));
+		client.setFirstname(c.get("firstname").toString());
+		client.setLastname(c.get("lastname").toString());
 		client.setOrganization(organizationService.getOrganizations().stream()
 				.filter(it -> it.getName().equals(c.get("organization")))
 				.findFirst().orElse(null));
 		client.setMoreInfo((String) c.get("moreInfo"));
 		clientsRepository.save(client);
+		eventPublisher.publish(TriggerType.CLIENT_UPDATED, Map.of("client", client));
 		return client;
 	}
 
@@ -238,12 +290,15 @@ public class ClientService {
 		}
 		message.setDeleted(true);
 		messageRepository.save(message);
+		eventPublisher.publish(TriggerType.MESSAGE_DELETED, Map.of("client", client, "message", message));
 		return true;
 	}
 
 
 	public Boolean deleteClient(Long clientId) {
-		clientsRepository.deleteById(clientId);
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		clientsRepository.delete(client);
+		eventPublisher.publish(TriggerType.CLIENT_DELETED, Map.of("client", client));
 		return true;
 	}
 
@@ -262,11 +317,12 @@ public class ClientService {
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		task.getMessages().add(message);
 		taskRepository.save(task);
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+
+		// pings
 		Pattern pattern = Pattern.compile("@\\[(.+?)]");
 		Matcher matcher = pattern.matcher(message.getText());
-		if (client.getUnreadPingMessages() == null) {
-			client.setUnreadPingMessages(new HashMap<>());
+		if (task.getUnreadPingTasksMessages() == null) {
+			task.setUnreadPingTasksMessages(new HashMap<>());
 		}
 		List<User> users = userService.getUsers();
 		while (matcher.find()) {
@@ -274,8 +330,9 @@ public class ClientService {
 			users.stream()
 					.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
 					.findFirst()
-					.ifPresent(u -> client.getUnreadPingTasksMessages().put(u.getId(), true));
+					.ifPresent(u -> task.getUnreadPingTasksMessages().put(u.getId(), true));
 		}
+		taskRepository.save(task);
 		return true;
 	}
 
@@ -326,12 +383,32 @@ public class ClientService {
 				.toList();
 	}
 
+
 	public List<Message> searchTaskMessage(Long taskId, MessageText messageText) {
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		return task.getMessages().stream()
 				.filter(message -> message.getText() != null)
 				.filter(message -> message.getText().toLowerCase().contains(messageText.getText().toLowerCase()))
 				.sorted()
+				.toList();
+	}
+
+
+	public void markMessageRead(Long taskId, UserId userId) {
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		User user = userRepository.findById(userId.getUserId()).orElseThrow();
+		if (task.getUnreadPingTasksMessages() != null) {
+			task.getUnreadPingTasksMessages().put(user.getId(), false);
+		}
+		taskRepository.save(task);
+	}
+
+
+	public List<FileDto> getClientFiles(Long clientId) {
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		return client.getMessages().stream()
+				.filter(m -> m.getFileUuid() != null)
+				.map(m -> new FileDto(m.getFileUuid(), m.getFileName(), m.getFileType()))
 				.toList();
 	}
 

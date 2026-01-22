@@ -7,16 +7,20 @@ import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
 import ru.ravel.ItDesk.model.DefaultOrganization;
 import ru.ravel.ItDesk.model.Organization;
 import ru.ravel.ItDesk.model.Priority;
+import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.DefaultOrganizationRepository;
 import ru.ravel.ItDesk.repository.OrganizationRepository;
 import ru.ravel.ItDesk.repository.PriorityRepository;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,7 @@ public class OrganizationService {
 	private final OrganizationRepository organizationRepository;
 	private final PriorityRepository priorityRepository;
 	private final DefaultOrganizationRepository defaultOrganizationRepository;
+	private final ClientRepository clientRepository;
 
 
 	public List<Organization> getOrganizations() {
@@ -46,6 +51,7 @@ public class OrganizationService {
 
 
 	public void deleteOrganization(Long organizationId) {
+		clientRepository.findByOrganizationId(organizationId).forEach(client -> client.setOrganization(null));
 		organizationRepository.deleteById(organizationId);
 	}
 
@@ -67,7 +73,13 @@ public class OrganizationService {
 		} else {
 			organization = DefaultOrganization.getInstance();
 		}
-		Duration duration = Duration.of(Objects.requireNonNullElse(organizationPriorityDuration.getHours(), 0L), ChronoUnit.HOURS);
+		Duration duration = Duration.of(
+				BigDecimal.valueOf(Objects.requireNonNullElse(organizationPriorityDuration.getHours(), 0.0F))
+						.setScale(2, RoundingMode.HALF_UP)
+						.multiply(BigDecimal.valueOf(60.0))
+						.longValue(),
+				ChronoUnit.MINUTES
+		);
 		Priority priority = organizationPriorityDuration.getPriority();
 		organization.getSla().put(priority, duration);
 		organizationRepository.save(organization);

@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import ru.ravel.ItDesk.model.automatosation.OutboxStatus;
+import ru.ravel.ItDesk.model.automatosation.EventStatus;
 
 import java.time.Instant;
 import java.util.List;
@@ -34,9 +34,9 @@ public class EventDao {
 						where status = 'NEW' and available_at <= now()
 						order by created_at
 						for update skip locked
-						limit :lim
+						limit :limit
 						""")
-				.setParameter("lim", limit)
+				.setParameter("limit", limit)
 				.getResultList();
 		if (ids.isEmpty()) {
 			return ids;
@@ -46,7 +46,7 @@ public class EventDao {
 						set e.status = :st, e.updatedAt = :now
 						where e.id in :ids
 						""")
-				.setParameter("st", OutboxStatus.PROCESSING)
+				.setParameter("st", EventStatus.PROCESSING)
 				.setParameter("now", Instant.now())
 				.setParameter("ids", ids)
 				.executeUpdate();
@@ -60,7 +60,7 @@ public class EventDao {
 						set e.status = :st, e.updatedAt = :now
 						where e.id = :id
 						""")
-				.setParameter("st", OutboxStatus.DONE)
+				.setParameter("st", EventStatus.DONE)
 				.setParameter("now", Instant.now())
 				.setParameter("id", id)
 				.executeUpdate();
@@ -69,13 +69,13 @@ public class EventDao {
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void markFailed(Long id, Exception e) {
 		em.createQuery("""
-						update AutomationOutboxEvent e
+						update Event e
 						set e.status = :st,
 						    e.updatedAt = :now,
 						    e.lastError = :err
 						where e.id = :id
 						""")
-				.setParameter("st", OutboxStatus.FAILED)
+				.setParameter("st", EventStatus.FAILED)
 				.setParameter("now", Instant.now())
 				.setParameter("err", trimError(e))
 				.setParameter("id", id)

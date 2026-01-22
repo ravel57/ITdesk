@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.model;
+package ru.ravel.ItDesk.model.automatosation;
 
 import lombok.Getter;
 

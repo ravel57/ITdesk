@@ -21,6 +21,7 @@ import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.model.TgBot;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TelegramRepository;
@@ -49,6 +50,7 @@ public class TelegramService {
 	private final MinioClient minioClient;
 	private final MinioService minioService;
 	private final WebSocketService webSocketService;
+	private final EventPublisher eventPublisher;
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
@@ -56,7 +58,7 @@ public class TelegramService {
 
 	TelegramService(ClientRepository clientRepository, MessageRepository messageRepository,
 					TelegramRepository telegramRepository, MinioClient minioClient, MinioService minioService,
-					WebSocketService webSocketService) {
+					WebSocketService webSocketService, EventPublisher eventPublisher) {
 		this.telegramRepository = telegramRepository;
 		this.messageRepository = messageRepository;
 		this.clientRepository = clientRepository;
@@ -66,6 +68,7 @@ public class TelegramService {
 		telegramRepository.findAll().stream()
 				.map(TgBot::getBot)
 				.forEach(bot -> bot.setUpdatesListener(new BotUpdatesListener(bot), exceptionHandler));
+		this.eventPublisher = eventPublisher;
 	}
 
 
@@ -107,7 +110,7 @@ public class TelegramService {
 			message.setMessengerMessageId(messageId);
 		} catch (Exception e) {
 			logger.error(e.getMessage());
-			throw new TelegramException(new RuntimeException(e.getMessage()));
+			throw new TelegramException(new RuntimeException(e));
 		}
 	}
 
@@ -152,10 +155,10 @@ public class TelegramService {
 	private final ExceptionHandler exceptionHandler = e -> {
 		if (e.response() == null) {
 			logger.error(e.getMessage(), e);
-		} else {
-			e.response().errorCode();
-			e.response().description();
-		}
+		} //else {
+//			e.response().errorCode();
+//			e.response().description();
+//		}
 	};
 
 
@@ -186,9 +189,9 @@ public class TelegramService {
 							message.setReplyMessageId(messengerMessage.getId());
 						}
 						saveAttachments(update, message);
-						messageRepository.save(message);
 						if (client != null) {
 							client.getMessages().add(message);
+							clientRepository.save(client);
 						} else {
 							TgBot tgBot = telegramRepository.findByToken(bot.getToken());    // FIXME
 							client = Client.builder()
@@ -199,12 +202,10 @@ public class TelegramService {
 									.messageFrom(MessageFrom.TELEGRAM)
 									.tgBot(tgBot)
 									.build();
+							clientRepository.save(client);    // Чтобы сохранить ID клиента и было на что подвязывать эвенту
+							eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
 						}
-						try {
-							clientRepository.save(client);
-						} catch (Exception e) {
-							clientRepository.save(client);
-						}
+						eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of("client", client, "message", message));
 						webSocketService.sendNewMessages(new ClientMessage(client, message));
 					} else if (update.editedMessage() != null) {
 						Client client = clientRepository.findByTelegramId(update.editedMessage().from().id());    // FIXME Прилетает не из того бота сообщение
@@ -217,10 +218,11 @@ public class TelegramService {
 								.orElseThrow()
 								.setText(update.editedMessage().text());
 						try {
-							clientRepository.save(client);
+							clientRepository.save(client);    // Работает только так ¯\_(ツ)_/¯
 						} catch (Exception e) {
-							clientRepository.save(client);
+							clientRepository.save(client);    // Работает только так ¯\_(ツ)_/¯
 						}
+						eventPublisher.publish(TriggerType.MESSAGE_EDITED, Map.of("client", client, "message", message));
 						webSocketService.editedMessage(new ClientMessage(client, message));
 					}
 				});

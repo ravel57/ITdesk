@@ -1,4 +1,31 @@
 package ru.ravel.ItDesk.model;
 
-public class Criticality {
+import jakarta.persistence.*;
+import lombok.*;
+import org.jetbrains.annotations.NotNull;
+
+
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+public class ServiceCriticality implements Comparable<ServiceCriticality> {
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@EqualsAndHashCode.Include
+	private Long id;
+
+	private String name;
+
+	private Boolean defaultSelection;
+
+	@Column(nullable = false, columnDefinition = "int default 0")
+	private Integer orderNumber;
+
+	@Override
+	public int compareTo(@NotNull ServiceCriticality o) {
+		return orderNumber.compareTo(o.orderNumber);
+	}
 }

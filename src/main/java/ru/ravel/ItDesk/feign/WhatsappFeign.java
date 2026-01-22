@@ -11,7 +11,7 @@ public interface WhatsappFeign {
 	@PostMapping("/send")
 	MessageResponse sendMessage(@RequestHeader("X-Api-Key") String s, @RequestBody WaRequestMessage message);
 
-	@PostMapping("events-get")
+	@PostMapping("/events-get")
 	UpdateResponse getUpdate(@RequestHeader("X-Api-Key") String s, @RequestBody UpdateBody updateBody);
 
 	@PostMapping("/get-media")

@@ -15,7 +15,7 @@ import org.springframework.web.socket.config.annotation.WebSocketTransportRegist
 @CrossOrigin
 class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-	@Value("${allowed-origin}")
+	@Value("${app.allowed-origin:http://localhost:8080}")
 	private String allowedOriginPatterns;
 
 

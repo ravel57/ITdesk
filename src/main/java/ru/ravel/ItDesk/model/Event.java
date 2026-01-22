@@ -8,7 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import ru.ravel.ItDesk.model.automatosation.OutboxStatus;
+import ru.ravel.ItDesk.model.automatosation.EventStatus;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 
 import java.time.Instant;
@@ -23,7 +23,7 @@ import java.time.Instant;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class Events {
+public class Event {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
@@ -35,7 +35,7 @@ public class Events {
 	private JsonNode payload;
 
 	@Enumerated(EnumType.STRING)
-	private OutboxStatus status;
+	private EventStatus status;
 
 	private int retries;
 
@@ -52,7 +52,7 @@ public class Events {
 	void prePersist() {
 		Instant now = Instant.now();
 		if (status == null) {
-			status = OutboxStatus.NEW;
+			status = EventStatus.NEW;
 		}
 		if (availableAt == null) {
 			availableAt = now;

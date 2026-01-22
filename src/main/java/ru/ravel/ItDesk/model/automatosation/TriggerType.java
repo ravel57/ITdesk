@@ -1,4 +1,4 @@
-package ru.ravel.ItDesk.model;
+package ru.ravel.ItDesk.model.automatosation;
 
 public enum TriggerType {
 	MANUAL_MACRO_APPLIED,            // пользователь применил макрос
@@ -19,9 +19,10 @@ public enum TriggerType {
 	// ---- сообщения (чат/комментарии) ----
 	MESSAGE_INCOMING,                // входящее от клиента
 	MESSAGE_OUTGOING,                // исходящее от агента
-	MESSAGE_ADDED_ANY,               // любое сообщение
+	MESSAGE_EDITED,                  // сообщение отредактировано
 	MESSAGE_MENTIONED_USER,          // @упоминание пользователя
 	MESSAGE_CONTAINS_KEYWORD,        // ключевое слово (можно как условие)
+	MESSAGE_DELETED,
 	ATTACHMENT_ADDED,
 
 	// ---- SLA / таймеры ----
@@ -36,11 +37,16 @@ public enum TriggerType {
 	TASK_COMPLETED,
 	TASK_OVERDUE,
 
-	// ---- клиенты / пользователи ----
+	// ---- клиенты ----
 	CLIENT_CREATED,
 	CLIENT_UPDATED,
+	CLIENT_DELETED,
+
+	// ---- пользователи ----
 	USER_CREATED,
 	USER_UPDATED,
+	USER_OPEN_DIALOG,
+	USER_CLOSED_DIALOG,
 
 	// ---- база знаний ----
 	KB_ARTICLE_CREATED,

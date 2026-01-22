@@ -14,7 +14,8 @@ import java.util.List;
 
 
 @Entity
-@Table(name = "t_user")
+@Table(name = "user_t")
+@DiscriminatorColumn(name = "type", discriminatorType = DiscriminatorType.STRING)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -27,40 +28,40 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@EqualsAndHashCode.Include
-	private Long id;
+	protected Long id;
 
-	private String firstname;
+	protected String firstname;
 
-	private String lastname;
+	protected String lastname;
 
-	private String username;
+	protected String username;
 
 	@JsonIgnore
-	private String password;
+	protected String password;
 
 	@ElementCollection(fetch = FetchType.EAGER)
-	@Enumerated(EnumType.ORDINAL)
+	@Enumerated(EnumType.STRING)
 	@CollectionTable(name = "user_authorities", joinColumns = @JoinColumn(name = "user_id"))
 	@Column(name = "authorities")
-	private List<Role> authorities;
+	protected List<Role> authorities;
 
 	@ManyToMany(fetch = FetchType.EAGER)
-	private List<Organization> availableOrganizations;
+	protected List<Organization> availableOrganizations;
 
 	@Builder.Default
 	@JsonIgnore
-	private boolean isAccountNonExpired = true;
+	protected boolean isAccountNonExpired = true;
 
 	@Builder.Default
 	@JsonIgnore
-	private boolean isAccountNonLocked = true;
+	protected boolean isAccountNonLocked = true;
 
 	@Builder.Default
 	@JsonIgnore
-	private boolean isCredentialsNonExpired = true;
+	protected boolean isCredentialsNonExpired = true;
 
 	@Builder.Default
-	private boolean isEnabled = true;
+	protected boolean isEnabled = true;
 
 
 	@Override

@@ -11,8 +11,8 @@ public enum TriggerOperationType {
 	LT("<"),
 	LTE("<="),
 	IN("in"),
-	AND("&&"),
-	OR("||"),
+	AND("and"),
+	OR("or"),
 	;
 
 	private final String operator;

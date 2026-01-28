@@ -6,12 +6,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.AutomationExecutionContext;
-import ru.ravel.ItDesk.model.Event;
-import ru.ravel.ItDesk.model.Message;
-import ru.ravel.ItDesk.model.SystemUser;
-import ru.ravel.ItDesk.model.Task;
+import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.PriorityRepository;
 import ru.ravel.ItDesk.repository.StatusRepository;
+import ru.ravel.ItDesk.repository.TagRepository;
+import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -19,6 +18,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 
 /**
@@ -42,6 +42,9 @@ public class AutomationActionExecutor {
 	private final ClientService clientService;
 	private final PriorityRepository priorityRepository;
 	private final StatusRepository statusRepository;
+	private final TaskFilterService taskFilterService;
+	private final TaskRepository taskRepository;
+	private final TagRepository tagRepository;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -201,17 +204,21 @@ public class AutomationActionExecutor {
 				log.warn("task.setStatus skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			// TODO: taskService.changeStatus(taskId, status)
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			task.setStatus(statusRepository.findByName(status).orElseThrow());
+			taskRepository.save(task);
 			log.info("AUTO task.setStatus(taskId={}, status={})", taskId, status);
 		}
 
-		public void setPriority(Object priority) {
+		public void setPriority(String priority) {
 			Long taskId = resolveTaskId(ctx);
 			if (taskId == null || priority == null) {
 				log.warn("task.setPriority skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			// TODO: taskService.changePriority(taskId, priority)
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			task.setPriority(priorityRepository.findByName(priority).orElseThrow());
+			taskRepository.save(task);
 			log.info("AUTO task.setPriority(taskId={}, priority={})", taskId, priority);
 		}
 
@@ -221,7 +228,9 @@ public class AutomationActionExecutor {
 				log.warn("task.addTag skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			// TODO: taskService.addTag(taskId, tag)
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			task.getTags().add(tagRepository.findByName(tag).orElseThrow());
+			taskRepository.save(task);
 			log.info("AUTO task.addTag(taskId={}, tag={})", taskId, tag);
 		}
 
@@ -231,7 +240,9 @@ public class AutomationActionExecutor {
 				log.warn("task.removeTag skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			// TODO: taskService.removeTag(taskId, tag)
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			task.getTags().remove(tagRepository.findByName(tag).orElseThrow());
+			taskRepository.save(task);
 			log.info("AUTO task.removeTag(taskId={}, tag={})", taskId, tag);
 		}
 

@@ -4,9 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
-import ru.ravel.ItDesk.model.DefaultOrganization;
-import ru.ravel.ItDesk.model.Organization;
-import ru.ravel.ItDesk.model.Priority;
+import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.DefaultOrganizationRepository;
 import ru.ravel.ItDesk.repository.OrganizationRepository;
@@ -56,8 +54,8 @@ public class OrganizationService {
 	}
 
 
-	public Map<Organization, Map<Priority, Duration>> getSlaByPriority() {
-		Map<Organization, Map<Priority, Duration>> slaByOrganization = new HashMap<>();
+	public Map<Organization, Map<Priority, SlaValue>> getSlaByPriority() {
+		Map<Organization, Map<Priority, SlaValue>> slaByOrganization = new HashMap<>();
 		organizationRepository.findAll().stream()
 				.filter(organization -> !(organization instanceof DefaultOrganization))
 				.forEach(org -> slaByOrganization.put(org, org.getSla()));
@@ -66,22 +64,17 @@ public class OrganizationService {
 	}
 
 
-	public void setSla(@NotNull OrganizationPriorityDuration organizationPriorityDuration) {
+	public void setSla(@NotNull OrganizationPriorityDuration dto) {
 		Organization organization;
-		if (organizationPriorityDuration.getOrganization() != null) {
-			organization = organizationRepository.findById(organizationPriorityDuration.getOrganization().getId()).orElseThrow();
+		if (dto.getOrganization() != null) {
+			organization = organizationRepository.findById(dto.getOrganization().getId()).orElseThrow();
 		} else {
 			organization = DefaultOrganization.getInstance();
 		}
-		Duration duration = Duration.of(
-				BigDecimal.valueOf(Objects.requireNonNullElse(organizationPriorityDuration.getHours(), 0.0F))
-						.setScale(2, RoundingMode.HALF_UP)
-						.multiply(BigDecimal.valueOf(60.0))
-						.longValue(),
-				ChronoUnit.MINUTES
-		);
-		Priority priority = organizationPriorityDuration.getPriority();
-		organization.getSla().put(priority, duration);
+		Priority priority = dto.getPriority();
+		BigDecimal value = dto.getValue() == null ? BigDecimal.ZERO : dto.getValue();
+		SlaUnit unit = dto.getUnit() == null ? SlaUnit.HOURS : dto.getUnit();
+		organization.getSla().put(priority, new SlaValue(value, unit));
 		organizationRepository.save(organization);
 	}
 

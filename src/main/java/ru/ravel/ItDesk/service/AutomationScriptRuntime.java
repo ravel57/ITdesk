@@ -339,7 +339,23 @@ public class AutomationScriptRuntime {
 			}
 
 			// operator: && || >= <= > < = ! in
-			if (startsWith("&&") || startsWith("||") || startsWith(">=") || startsWith("<=")) {
+			if (startsWith("&")) {
+				i++;
+				return new Tok(TokType.OP, "and");
+			}
+			if (startsWith("|")) {
+				i++;
+				return new Tok(TokType.OP, "or");
+			}
+			if (startsWithWord("and")) {
+				i += 3;
+				return new Tok(TokType.OP, "and");
+			}
+			if (startsWithWord("or")) {
+				i += 2;
+				return new Tok(TokType.OP, "or");
+			}
+			if (startsWith(">=") || startsWith("<=")) {
 				String op = s.substring(i, i + 2);
 				i += 2;
 				return new Tok(TokType.OP, op);
@@ -386,6 +402,14 @@ public class AutomationScriptRuntime {
 			return s.regionMatches(i, x, 0, x.length());
 		}
 
+		private boolean startsWithWord(String w) {
+			if (!s.regionMatches(true, i, w, 0, w.length())) return false;
+			int end = i + w.length();
+			if (end >= s.length()) return true;
+			char next = s.charAt(end);
+			return !Character.isLetterOrDigit(next) && next != '_';
+		}
+
 		private void skipWs() {
 			while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
 		}
@@ -411,7 +435,7 @@ public class AutomationScriptRuntime {
 
 		private ExprNode parseOr() {
 			ExprNode left = parseAnd();
-			while (cur.type == TokType.OP && "||".equals(cur.text)) {
+			while (cur.type == TokType.OP && "or".equals(cur.text)) {
 				consume();
 				ExprNode right = parseAnd();
 				ExprNode finalLeft = left;
@@ -422,7 +446,7 @@ public class AutomationScriptRuntime {
 
 		private ExprNode parseAnd() {
 			ExprNode left = parseNot();
-			while (cur.type == TokType.OP && "&&".equals(cur.text)) {
+			while (cur.type == TokType.OP && "and".equals(cur.text)) {
 				consume();
 				ExprNode right = parseNot();
 				ExprNode finalLeft = left;

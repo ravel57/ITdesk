@@ -11,4 +11,5 @@ public interface PriorityRepository extends JpaRepository<Priority, Long> {
 
 	Optional<Priority> findByDefaultSelectionTrue();
 
+	Optional<Priority> findByName(String priority);
 }

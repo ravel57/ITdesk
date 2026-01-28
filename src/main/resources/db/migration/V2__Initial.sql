@@ -1,5 +1,5 @@
 INSERT INTO public.user_t (id, firstname, lastname, is_account_non_expired, is_account_non_locked, is_credentials_non_expired, is_enabled, password, username, type)
-VALUES (DEFAULT, 'system', 'user', false, false, false, false, '', 'Система (ULDESK)', 'SystemUser'),
+VALUES (DEFAULT, 'system', 'user (ULDESK)', false, false, false, false, '', 'Система (ULDESK)', 'SystemUser'),
 (DEFAULT, 'admin', 'admin', true, true, true, true, '$2a$12$qzyw1.HJ4TIKvq8Z.Vdt6uwKRTvimL9V6h53u.s/DyoqDEVuML1j.', 'admin', 'User');
 
 INSERT INTO public.user_authorities (user_id, authorities)
@@ -85,4 +85,4 @@ VALUES (DEFAULT, 'Уже решаем', 'решаем');
 
 INSERT INTO automation_trigger(action, automation_rule_status, description, expression, name, order_number, trigger_type)
 VALUES ('client.sendMessage(''Здравствуйте! Это автоответ. Вам напишет первый освободившийся оператор.'')', 'ENABLED', '', 'true', 'Приветственное сообщение', 0, 'CLIENT_CREATED'),
-('task.create(message.text)', 'ENABLED', '', 'client.openTasks.size() = 0 && client.incomeMessages.size() > 1', 'Авто-новая заявка', 2, 'MESSAGE_INCOMING');
+('task.create(message.text)', 'ENABLED', '', 'client.openTasks.size() = 0 and client.incomeMessages.size() > 1', 'Авто-новая заявка', 2, 'MESSAGE_INCOMING');

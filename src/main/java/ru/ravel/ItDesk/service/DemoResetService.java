@@ -65,7 +65,7 @@ public class DemoResetService {
 				.lastname("")
 				.build();
 		userRepository.save(user);
-		userRepository.deleteById(1L);
+		userRepository.delete(userRepository.findByUsername("admin").orElseThrow());
 
 		Organization organization1 = Organization.builder()
 				.name("Организация 1")

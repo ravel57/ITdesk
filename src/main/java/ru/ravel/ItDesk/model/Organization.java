@@ -30,11 +30,10 @@ public class Organization implements Comparable<Organization>, Serializable {
 	protected String name;
 
 	@ElementCollection(fetch = FetchType.EAGER)
-	@CollectionTable(name = "sla_durations", joinColumns = @JoinColumn(name = "organization_id"))
-	@Column(name = "duration")
-	@Convert(converter = DurationConverter.class)
-	@Builder.Default
-	protected Map<Priority, Duration> sla = new HashMap<>();
+	@CollectionTable(name = "organization_sla", joinColumns = @JoinColumn(name = "organization_id"))
+	@MapKeyEnumerated(EnumType.STRING)
+	@MapKeyColumn(name = "priority")
+	private Map<Priority, SlaValue> sla = new HashMap<>();
 
 	@Builder.Default
 	protected Integer orderNumber = 1;

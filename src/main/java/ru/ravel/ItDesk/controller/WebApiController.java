@@ -9,11 +9,13 @@ import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.service.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,8 @@ public class WebApiController {
 //	private final AutomatizationService automatizationService;
 //	private final AutomationQueueService automationQueueService;
 	private final AutomationTriggerService automationTriggerService;
+	private final SlaService slaService;
+	private final TaskRepository taskRepository;
 
 
 	@GetMapping("/clients")
@@ -729,21 +733,74 @@ public class WebApiController {
 
 
 	@GetMapping("/sla")
-	public ResponseEntity<Object> getSlaByPriority() {
-		Map<String, Map<String, Float>> out = new HashMap<>();
-		Map<Organization, Map<Priority, Duration>> slaByPriority = organizationService.getSlaByPriority();
-		slaByPriority.forEach((organization, priorityMap) -> {    // FIXME ошибка сериализаци Duration в json
-			Map<String, Float> collect = priorityMap.entrySet().stream()
-					.collect(Collectors.toMap(
-							e -> e.getKey().getName(),
-							e -> BigDecimal.valueOf(Objects.requireNonNullElse(e.getValue(), Duration.ZERO).toMinutes())
-									.setScale(2, RoundingMode.HALF_UP)
-									.divide(BigDecimal.valueOf(60), RoundingMode.HALF_UP)
-									.floatValue()
-					));
-			out.put(organization.getName(), collect);
+	public ResponseEntity<Map<String, Map<String, Map<String, Object>>>> getSlaByPriority() {
+		Map<String, Map<String, Map<String, Object>>> out = new HashMap<>();
+		Map<Organization, Map<Priority, SlaValue>> slaByPriority = organizationService.getSlaByPriority();
+		slaByPriority.forEach((organization, priorityMap) -> {
+			Map<String, Map<String, Object>> priorities = new HashMap<>();
+			priorityMap.forEach((priority, slaValue) -> {
+				BigDecimal value = slaValue == null || slaValue.getValue() == null
+						? BigDecimal.ZERO
+						: slaValue.getValue();
+				String unit = slaValue == null || slaValue.getUnit() == null
+						? SlaUnit.HOURS.name()
+						: slaValue.getUnit().name();
+				Map<String, Object> dto = new HashMap<>();
+				dto.put("value", value);
+				dto.put("unit", unit);
+				priorities.put(priority.getName(), dto);
+			});
+			out.put(organization.getName(), priorities);
 		});
-		return ResponseEntity.ok().body(out);
+		return ResponseEntity.ok(out);
+	}
+
+
+	@PostMapping("/task/{taskId}/sla/pause")
+	public ResponseEntity<SlaInfoDto> pauseTaskSla(
+			@PathVariable Long taskId,
+			@RequestParam(required = false) String reason
+	) {
+		Task task = taskRepository.findByIdWithSla(taskId).orElseThrow();
+		Sla sla = task.getSla();
+		if (sla == null) {
+			// SLA нет — смысла паузить нет
+			return ResponseEntity.badRequest().build();
+		}
+		slaService.pause(sla, reason);
+		return ResponseEntity.ok(buildInfo(sla));
+	}
+
+
+	@PostMapping("/task/{taskId}/sla/resume")
+	public ResponseEntity<SlaInfoDto> resumeTaskSla(@PathVariable Long taskId) {
+		Task task = taskRepository.findByIdWithSla(taskId).orElseThrow();
+		Sla sla = task.getSla();
+		if (sla == null) {
+			return ResponseEntity.badRequest().build();
+		}
+		slaService.resume(sla);
+		return ResponseEntity.ok(buildInfo(sla));
+	}
+
+
+	@GetMapping("/task/{taskId}/sla/info")
+	public ResponseEntity<SlaInfoDto> getTaskSlaInfo(@PathVariable Long taskId) {
+		Task task = taskRepository.findByIdWithSla(taskId).orElseThrow();
+		Sla sla = task.getSla();
+		if (sla == null) {
+			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L));
+		}
+		return ResponseEntity.ok(buildInfo(sla));
+	}
+
+
+	private SlaInfoDto buildInfo(Sla sla) {
+		boolean paused = slaService.isPaused(sla);
+		ZonedDateTime deadline = slaService.deadline(sla);
+		long pausedSeconds = slaService.getPausedDuration(sla).getSeconds();
+		long remainingSeconds = slaService.remaining(sla).getSeconds();
+		return new SlaInfoDto(paused, deadline, remainingSeconds, pausedSeconds);
 	}
 
 

@@ -1,12 +1,17 @@
 package ru.ravel.ItDesk.dto;
 
-import lombok.Getter;
+import lombok.Data;
 import ru.ravel.ItDesk.model.Organization;
 import ru.ravel.ItDesk.model.Priority;
+import ru.ravel.ItDesk.model.SlaUnit;
 
-@Getter
+import java.math.BigDecimal;
+
+
+@Data
 public class OrganizationPriorityDuration {
 	private Organization organization;
 	private Priority priority;
-	private Float hours;
+	private BigDecimal value;
+	private SlaUnit unit;
 }

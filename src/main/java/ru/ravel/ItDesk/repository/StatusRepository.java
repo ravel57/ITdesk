@@ -11,4 +11,6 @@ public interface StatusRepository extends JpaRepository<Status, Long> {
 
 	Optional<Status> findByDefaultSelectionTrue();
 
+	Optional<Status> findByName(String name);
+
 }

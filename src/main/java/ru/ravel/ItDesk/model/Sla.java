@@ -1,13 +1,13 @@
 package ru.ravel.ItDesk.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Data
@@ -24,4 +24,8 @@ public class Sla {
 	private ZonedDateTime startDate;
 
 	private Duration duration;
+
+	@JsonIgnore
+	@OneToMany(mappedBy = "sla", cascade = CascadeType.ALL, orphanRemoval = true)
+	private List<SlaPause> pauses = new ArrayList<>();
 }

@@ -16,10 +16,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.ZonedDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
@@ -761,8 +758,11 @@ public class WebApiController {
 			@PathVariable Long taskId,
 			@RequestParam(required = false) String reason
 	) {
-		Task task = taskRepository.findByIdWithSla(taskId).orElseThrow();
-		Sla sla = task.getSla();
+		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
+		if (taskOpt.isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		Sla sla = taskOpt.get().getSla();
 		if (sla == null) {
 			// SLA нет — смысла паузить нет
 			return ResponseEntity.badRequest().build();
@@ -774,8 +774,11 @@ public class WebApiController {
 
 	@PostMapping("/task/{taskId}/sla/resume")
 	public ResponseEntity<SlaInfoDto> resumeTaskSla(@PathVariable Long taskId) {
-		Task task = taskRepository.findByIdWithSla(taskId).orElseThrow();
-		Sla sla = task.getSla();
+		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
+		if (taskOpt.isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		Sla sla = taskOpt.get().getSla();
 		if (sla == null) {
 			return ResponseEntity.badRequest().build();
 		}
@@ -786,8 +789,11 @@ public class WebApiController {
 
 	@GetMapping("/task/{taskId}/sla/info")
 	public ResponseEntity<SlaInfoDto> getTaskSlaInfo(@PathVariable Long taskId) {
-		Task task = taskRepository.findByIdWithSla(taskId).orElseThrow();
-		Sla sla = task.getSla();
+		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
+		if (taskOpt.isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		Sla sla = taskOpt.get().getSla();
 		if (sla == null) {
 			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L));
 		}

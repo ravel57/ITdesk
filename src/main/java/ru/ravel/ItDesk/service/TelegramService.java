@@ -15,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientMessage;
@@ -200,7 +201,7 @@ public class TelegramService {
 						}
 						saveAttachments(update, message);
 						if (client != null) {
-							if (messageRepository.existsByMessengerMessageIdAndClientId(update.message().messageId(),client.getId())) {
+							if (messageRepository.existsByMessengerMessageIdAndClientId(update.message().messageId(), client.getId())) {
 								return;
 							}
 							client.getMessages().add(message);
@@ -214,8 +215,23 @@ public class TelegramService {
 									.messageFrom(MessageFrom.TELEGRAM)
 									.tgBot(tgBot)
 									.build();
-							clientRepository.save(client);    // Чтобы сохранить ID клиента и было на что подвязывать эвенту
-							eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
+							boolean created = false;
+							try {
+								clientRepository.save(client);
+								created = true;
+							} catch (DataIntegrityViolationException e) {
+								client = clientRepository
+										.findByTelegramIdAndTgBotId(update.message().from().id(), tgBot.getId())
+										.orElseThrow();
+								if (messageRepository.existsByMessengerMessageIdAndClientId(update.message().messageId(), client.getId())) {
+									return;
+								}
+								client.getMessages().add(message);
+								clientRepository.save(client);
+							}
+							if (created) {
+								eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
+							}
 						}
 						eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of("client", client, "message", message));
 						webSocketService.sendNewMessages(new ClientMessage(client, message));

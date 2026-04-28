@@ -290,8 +290,22 @@ public class ClientService {
 
 	@Transactional
 	public Client markReadAndReturnClient(@NotNull ClientUser clientUser) {
-		Client client = clientsRepository.findById(clientUser.getClientId()).orElseThrow();
-		User user = userRepository.findById(clientUser.getUserId()).orElseThrow();
+		if (clientUser.getClientId() == null || clientUser.getUserId() == null) {
+			logger.warn("mark-read skipped: clientId or userId is null, payload={}", clientUser);
+			return null;
+		}
+		Optional<Client> clientOpt = clientsRepository.findById(clientUser.getClientId());
+		if (clientOpt.isEmpty()) {
+			logger.warn("mark-read skipped: client not found, clientId={}", clientUser.getClientId());
+			return null;
+		}
+		Optional<User> userOpt = userRepository.findById(clientUser.getUserId());
+		if (userOpt.isEmpty()) {
+			logger.warn("mark-read skipped: user not found, userId={}", clientUser.getUserId());
+			return null;
+		}
+		Client client = clientOpt.get();
+		User user = userOpt.get();
 
 		ExecuteFuture executeFuture = clientUserMapWatchingExecutorServices.get(clientUser);
 		if (executeFuture != null) {

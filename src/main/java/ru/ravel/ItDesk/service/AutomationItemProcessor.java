@@ -19,6 +19,7 @@ import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
 import java.time.Instant;
+import java.util.Optional;
 
 
 @Service
@@ -60,8 +61,13 @@ public class AutomationItemProcessor {
 			return;
 		}
 		JsonNode client = event.getPayload().get("client");
-		if (client != null) {
-			Client foundClient = clientRepository.findById(client.get("id").asLong()).orElseThrow();
+		if (client != null && client.hasNonNull("id")) {
+			Optional<Client> foundClientOpt = clientRepository.findById(client.get("id").asLong());
+			if (foundClientOpt.isEmpty()) {
+				event.getPayload().withObject("client").put("deleted", true);
+				return;
+			}
+			Client foundClient = foundClientOpt.get();
 			JsonNode messagesNode = objectMapper.valueToTree(foundClient.getMessages());
 			event.getPayload().withObject("client").set("messages", messagesNode);
 			JsonNode incomeMessagesNode = objectMapper.valueToTree(foundClient.getMessages().stream().filter(m -> !m.isSent()).toList());

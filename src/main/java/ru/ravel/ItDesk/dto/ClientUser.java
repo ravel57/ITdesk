@@ -8,6 +8,6 @@ import ru.ravel.ItDesk.model.User;
 @Getter
 @EqualsAndHashCode
 public class ClientUser {
-	private Client client;
-	private User user;
+	private Long clientId;
+	private Long userId;
 }

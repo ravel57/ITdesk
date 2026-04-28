@@ -288,28 +288,32 @@ public class ClientService {
 	}
 
 
+	@Transactional
 	public Client markReadAndReturnClient(@NotNull ClientUser clientUser) {
-		Client client = clientsRepository.findById(clientUser.getClient().getId()).orElseThrow();
+		Client client = clientsRepository.findById(clientUser.getClientId()).orElseThrow();
+		User user = userRepository.findById(clientUser.getUserId()).orElseThrow();
+
 		ExecuteFuture executeFuture = clientUserMapWatchingExecutorServices.get(clientUser);
 		if (executeFuture != null) {
-			clientUserMapWatchingExecutorServices.get(clientUser).getFuture().cancel(true);
+			executeFuture.getFuture().cancel(true);
 		} else {
 			executeFuture = new ExecuteFuture();
 			clientUserMapWatchingExecutorServices.put(clientUser, executeFuture);
 		}
-		UserActionWaiter task = new UserActionWaiter(client, clientUser.getUser(), watchingUsers, logger, 30_000);
+		UserActionWaiter task = new UserActionWaiter(client, user, watchingUsers, logger, 30_000);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 
 		if (client.getUnreadPingMessages() != null) {
-			client.getUnreadPingMessages().put(clientUser.getUser().getId(), false);
+			client.getUnreadPingMessages().put(user.getId(), false);
 		}
-		clientsRepository.save(client);
 
 		List<Message> messages = client.getMessages().stream()
 				.filter(message -> !message.isRead())
+				.filter(message -> !message.isSent())
 				.peek(message -> message.setRead(true))
 				.toList();
 		messageRepository.saveAll(messages);
+		clientsRepository.save(client);
 		return client;
 	}
 
@@ -427,6 +431,7 @@ public class ClientService {
 						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
 		client.getTasks().forEach(task -> messages.stream()
+				.filter(message -> task.getLinkedMessageId() != null)
 				.filter(message -> message.getId().equals(task.getLinkedMessageId()))
 				.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
 		return new PageMessages(messages, skipFromStart == 0);

@@ -179,11 +179,14 @@ public class TelegramService {
 			try {
 				updates.forEach(update -> {
 					if (update.message() != null) {
-						Client client = clientRepository.findByTelegramId(update.message().from().id());    // FIXME Прилетает не из того бота сообщение
-						ZonedDateTime zonedDateTime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
+						TgBot tgBot = telegramRepository.findByToken(bot.getToken());
+						Client client = clientRepository
+								.findByTelegramIdAndTgBotId(update.message().from().id(), tgBot.getId())
+								.orElse(null);
+						ZonedDateTime messageDatetime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
 						Message message = Message.builder()
 								.text(update.message().text())
-								.date(zonedDateTime)
+								.date(messageDatetime)
 								.isSent(false)
 								.isComment(false)
 								.isRead(false)
@@ -197,10 +200,12 @@ public class TelegramService {
 						}
 						saveAttachments(update, message);
 						if (client != null) {
+							if (messageRepository.existsByMessengerMessageIdAndClientId(update.message().messageId(),client.getId())) {
+								return;
+							}
 							client.getMessages().add(message);
 							clientRepository.save(client);
 						} else {
-							TgBot tgBot = telegramRepository.findByToken(bot.getToken());    // FIXME
 							client = Client.builder()
 									.firstname(update.message().from().firstName())
 									.lastname(update.message().from().lastName())
@@ -215,8 +220,13 @@ public class TelegramService {
 						eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of("client", client, "message", message));
 						webSocketService.sendNewMessages(new ClientMessage(client, message));
 					} else if (update.editedMessage() != null) {
-						Client client = clientRepository.findByTelegramId(update.editedMessage().from().id());    // FIXME Прилетает не из того бота сообщение
-						Message message = messageRepository.findByMessengerMessageId(update.editedMessage().messageId()).orElseThrow();
+						TgBot tgBot = telegramRepository.findByToken(bot.getToken());
+						Client client = clientRepository
+								.findByTelegramIdAndTgBotId(update.editedMessage().from().id(), tgBot.getId())
+								.orElseThrow();
+						Message message = messageRepository
+								.findByMessengerMessageIdAndClientId(update.editedMessage().messageId(), client.getId())
+								.orElseThrow();
 						message.setText(update.editedMessage().text());
 						messageRepository.save(message);
 						client.getMessages().stream()

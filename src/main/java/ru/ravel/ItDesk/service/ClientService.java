@@ -39,10 +39,10 @@ public class ClientService {
 	private final EventPublisher eventPublisher;
 	private final UserRepository userRepository;
 
-	private final Map<ClientUserText, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
-	private final Map<ClientUser, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
-	private final Map<Client, Set<User>> typingUsers = new ConcurrentHashMap<>();
-	private final Map<Client, Set<User>> watchingUsers = new ConcurrentHashMap<>();
+	private final Map<String, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
+	private final Map<String, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
+	private final Map<Long, Set<User>> typingUsers = new ConcurrentHashMap<>();
+	private final Map<Long, Set<User>> watchingUsers = new ConcurrentHashMap<>();
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final Integer pageLimit = 100;
@@ -56,8 +56,8 @@ public class ClientService {
 		clients.forEach(client -> {
 			client.setLastMessage(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - 1)).findFirst().orElseThrow());
 			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.isRead()).count());
-			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client), Collections.emptySet()));
-			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client), Collections.emptySet()));
+			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client.getId()), Collections.emptySet()));
+			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client.getId()), Collections.emptySet()));
 			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> {
@@ -99,6 +99,12 @@ public class ClientService {
 		setSla(client, olderTask);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
+		Priority oldPriority = olderTask.getPriority();
+		Status oldStatus = olderTask.getStatus();
+		User oldExecutor = olderTask.getExecutor();
+		Boolean oldCompleted = olderTask.getCompleted();
+		ZonedDateTime oldDeadline = olderTask.getDeadline();
+		Set<Tag> oldTags = new HashSet<>(Objects.requireNonNullElse(olderTask.getTags(), Collections.emptySet()));
 		olderTask.setName(task.getName());
 		olderTask.setDescription(task.getDescription());
 		olderTask.setPriority(task.getPriority());
@@ -146,8 +152,80 @@ public class ClientService {
 			olderTask.setStatus(olderTask.getPreviusStatus());
 		}
 		olderTask.setLastActivity(ZonedDateTime.now());
-		eventPublisher.publish(TriggerType.TASK_UPDATED, Map.of("task", task, "client", client));
-		return taskRepository.save(olderTask);
+		Task savedTask = taskRepository.save(olderTask);
+		eventPublisher.publish(TriggerType.TASK_UPDATED, Map.of(
+				"task", savedTask,
+				"client", client
+		));
+		if (!Objects.equals(oldStatus, savedTask.getStatus())) {
+			eventPublisher.publish(TriggerType.TASK_STATUS_CHANGED, Map.of(
+					"task", savedTask,
+					"client", client,
+					"oldStatus", oldStatus,
+					"newStatus", savedTask.getStatus()
+			));
+		}
+		if (!Objects.equals(oldPriority, savedTask.getPriority())) {
+			eventPublisher.publish(TriggerType.TASK_PRIORITY_CHANGED, Map.of(
+					"task", savedTask,
+					"client", client,
+					"oldPriority", oldPriority,
+					"newPriority", savedTask.getPriority()
+			));
+		}
+		if (!Objects.equals(oldExecutor, savedTask.getExecutor())) {
+			eventPublisher.publish(TriggerType.TASK_ASSIGNEE_CHANGED, Map.of(
+					"task", savedTask,
+					"client", client,
+					"oldExecutor", oldExecutor,
+					"newExecutor", savedTask.getExecutor()
+			));
+		}
+		if (!Objects.equals(oldDeadline, savedTask.getDeadline())) {
+			eventPublisher.publish(TriggerType.TASK_DUE_DATE_CHANGED, Map.of(
+					"task", savedTask,
+					"client", client,
+					"oldDeadline", oldDeadline,
+					"newDeadline", savedTask.getDeadline()
+			));
+		}
+		if (!Objects.equals(oldCompleted, savedTask.getCompleted()) && Boolean.TRUE.equals(savedTask.getCompleted())) {
+			eventPublisher.publish(TriggerType.TASK_COMPLETED, Map.of(
+					"task", savedTask,
+					"client", client
+			));
+
+			eventPublisher.publish(TriggerType.TASK_CLOSED, Map.of(
+					"task", savedTask,
+					"client", client
+			));
+		}
+		if (Boolean.TRUE.equals(oldCompleted) && !Boolean.TRUE.equals(savedTask.getCompleted())) {
+			eventPublisher.publish(TriggerType.TASK_REOPENED, Map.of(
+					"task", savedTask,
+					"client", client
+			));
+		}
+		Set<Tag> newTags = new HashSet<>(Objects.requireNonNullElse(savedTask.getTags(), Collections.emptySet()));
+		for (Tag tag : newTags) {
+			if (!oldTags.contains(tag)) {
+				eventPublisher.publish(TriggerType.TASK_TAG_ADDED, Map.of(
+						"task", savedTask,
+						"client", client,
+						"tag", tag
+				));
+			}
+		}
+		for (Tag tag : oldTags) {
+			if (!newTags.contains(tag)) {
+				eventPublisher.publish(TriggerType.TASK_TAG_REMOVED, Map.of(
+						"task", savedTask,
+						"client", client,
+						"tag", tag
+				));
+			}
+		}
+		return savedTask;
 	}
 
 
@@ -277,7 +355,10 @@ public class ClientService {
 				users.stream()
 						.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
 						.findFirst()
-						.ifPresent(u -> client.getUnreadPingMessages().put(u.getId(), true));
+						.ifPresent(u -> {
+							client.getUnreadPingMessages().put(u.getId(), true);
+							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, Map.of("client", client, "message", message, "mentionedUser", u));
+						});
 			}
 		}
 		webSocketService.sendNewMessages(new ClientMessage(client, message));
@@ -306,15 +387,24 @@ public class ClientService {
 		}
 		Client client = clientOpt.get();
 		User user = userOpt.get();
-
-		ExecuteFuture executeFuture = clientUserMapWatchingExecutorServices.get(clientUser);
+		String watchKey = "%d:%d".formatted(client.getId(), user.getId());
+		Set<User> currentWatchers = watchingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
+		boolean alreadyWatching = currentWatchers.contains(user);
+		if (!alreadyWatching) {
+			currentWatchers.add(user);
+			eventPublisher.publish(TriggerType.USER_OPEN_DIALOG, Map.of(
+					"client", client,
+					"user", user
+			));
+		}
+		ExecuteFuture executeFuture = clientUserMapWatchingExecutorServices.get(watchKey);
 		if (executeFuture != null) {
 			executeFuture.getFuture().cancel(true);
 		} else {
 			executeFuture = new ExecuteFuture();
-			clientUserMapWatchingExecutorServices.put(clientUser, executeFuture);
+			clientUserMapWatchingExecutorServices.put(watchKey, executeFuture);
 		}
-		UserActionWaiter task = new UserActionWaiter(client, user, watchingUsers, logger, 30_000);
+		UserActionWaiter task = new UserActionWaiter(client, user, watchingUsers, logger, 30_000, eventPublisher, watchKey);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 
 		if (client.getUnreadPingMessages() != null) {
@@ -350,14 +440,17 @@ public class ClientService {
 		Client client = clientsRepository.findById(clientUserText.getClient().getId()).orElseThrow();
 		client.getTypingMessageText().put(clientUserText.getUser().getId(), clientUserText.getText());
 		clientsRepository.save(client);
-		ExecuteFuture executeFuture = clientUserMapTypingExecutorServices.get(clientUserText);
+		String typingKey = "%d:%d".formatted(client.getId(), clientUserText.getUser().getId());
+		Set<User> currentTypingUsers = typingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
+		currentTypingUsers.add(clientUserText.getUser());
+		ExecuteFuture executeFuture = clientUserMapTypingExecutorServices.get(typingKey);
 		if (executeFuture != null) {
-			clientUserMapTypingExecutorServices.get(clientUserText).getFuture().cancel(true);
+			executeFuture.getFuture().cancel(true);
 		} else {
 			executeFuture = new ExecuteFuture();
-			clientUserMapTypingExecutorServices.put(clientUserText, executeFuture);
+			clientUserMapTypingExecutorServices.put(typingKey, executeFuture);
 		}
-		UserActionWaiter task = new UserActionWaiter(client, clientUserText.getUser(), typingUsers, logger, 30_000);
+		UserActionWaiter task = new UserActionWaiter(client, clientUserText.getUser(), typingUsers, logger, 30_000, eventPublisher, typingKey);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 	}
 
@@ -513,23 +606,28 @@ public class ClientService {
 	private record UserActionWaiter(
 			Client client,
 			User user,
-			Map<Client, Set<User>> usersByClient,
+			Map<Long, Set<User>> usersByClient,
 			Logger logger,
-			long sleep
+			long sleep,
+			EventPublisher eventPublisher,
+			String key
 	) implements Runnable {
 		@Override
 		public void run() {
-			Set<User> users = usersByClient.get(client);
-			if (users == null) {
-				ConcurrentSkipListSet<User> listSet = new ConcurrentSkipListSet<>();
-				listSet.add(user);
-				usersByClient.put(client, listSet);
-			} else {
-				users.add(user);
-			}
 			try {
 				Thread.sleep(sleep);
-				usersByClient.get(client).remove(user);
+
+				Set<User> users = usersByClient.get(client.getId());
+				if (users != null) {
+					boolean removed = users.remove(user);
+
+					if (removed) {
+						eventPublisher.publish(TriggerType.USER_CLOSED_DIALOG, Map.of(
+								"client", client,
+								"user", user
+						));
+					}
+				}
 			} catch (InterruptedException ignored) {
 			}
 		}

@@ -13,6 +13,7 @@ import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.dto.UserDto;
 import ru.ravel.ItDesk.feign.SupportFeignClient;
 import ru.ravel.ItDesk.model.*;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
 
 import java.util.*;
@@ -36,6 +37,7 @@ public class UserService {
 	@Getter
 	private final Set<User> usersOnline = new HashSet<>();
 	private final TaskRepository taskRepository;
+	private final EventPublisher eventPublisher;
 
 
 	public List<User> getUsers() {
@@ -69,7 +71,9 @@ public class UserService {
 							.isAccountNonExpired(true)
 							.isCredentialsNonExpired(true)
 							.build();
-					return userRepository.save(user);
+					User saved = userRepository.save(user);
+					eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
+					return saved;
 
 				} catch (Exception e) {
 					logger.error(e.getMessage(), e);
@@ -98,7 +102,9 @@ public class UserService {
 						.map(orgName -> organizationService.getOrganizations().stream()
 								.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
 				.build();
-		return userRepository.save(user);
+		User saved = userRepository.save(user);
+		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
+		return saved;
 	}
 
 

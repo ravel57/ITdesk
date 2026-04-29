@@ -3,19 +3,6 @@ package ru.ravel.ItDesk.model.automatosation;
 public enum TriggerType {
 	MANUAL_MACRO_APPLIED,            // пользователь применил макрос
 
-	// ---- заявки (tickets/support) ----
-	TICKET_CREATED,
-	TICKET_UPDATED,                  // любое изменение (грубый триггер)
-	TICKET_STATUS_CHANGED,
-	TICKET_PRIORITY_CHANGED,
-	TICKET_ASSIGNEE_CHANGED,
-	TICKET_GROUP_CHANGED,
-	TICKET_TAG_ADDED,
-	TICKET_TAG_REMOVED,
-	TICKET_DUE_DATE_CHANGED,
-	TICKET_CLOSED,
-	TICKET_REOPENED,
-
 	// ---- сообщения (чат/комментарии) ----
 	MESSAGE_INCOMING,                // входящее от клиента
 	MESSAGE_OUTGOING,                // исходящее от агента
@@ -33,7 +20,16 @@ public enum TriggerType {
 
 	// ---- задачи (если есть tasks) ----
 	TASK_CREATED,
-	TASK_UPDATED,
+	TASK_UPDATED,                  // любое изменение (грубый триггер)
+	TASK_STATUS_CHANGED,
+	TASK_PRIORITY_CHANGED,
+	TASK_ASSIGNEE_CHANGED,
+	TASK_GROUP_CHANGED,
+	TASK_TAG_ADDED,
+	TASK_TAG_REMOVED,
+	TASK_DUE_DATE_CHANGED,
+	TASK_CLOSED,
+	TASK_REOPENED,
 	TASK_COMPLETED,
 	TASK_OVERDUE,
 
@@ -49,10 +45,10 @@ public enum TriggerType {
 	USER_CLOSED_DIALOG,
 
 	// ---- база знаний ----
-	KB_ARTICLE_CREATED,
-	KB_ARTICLE_UPDATED,
+	KNOWLEDGE_BASE_ARTICLE_CREATED,
+	KNOWLEDGE_BASE_ARTICLE_UPDATED,
 
 	// ---- интеграции ----
 	WEBHOOK_RECEIVED,                // входящий вебхук
-	INTEGRATION_EVENT_RECEIVED       // event bus / сторонние события
+	INTEGRATION_EVENT_RECEIVED,      // event bus / сторонние события
 }

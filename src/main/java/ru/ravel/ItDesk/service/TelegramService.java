@@ -233,6 +233,9 @@ public class TelegramService {
 								eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
 							}
 						}
+						if (message.getFileUuid() != null) {
+							eventPublisher.publish(TriggerType.ATTACHMENT_ADDED, Map.of("client", client, "message", message));
+						}
 						eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of("client", client, "message", message));
 						webSocketService.sendNewMessages(new ClientMessage(client, message));
 					} else if (update.editedMessage() != null) {

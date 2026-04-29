@@ -6,12 +6,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.component.LicenseStarter;
+import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Support;
+import ru.ravel.ItDesk.model.Task;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
+import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.SupportRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -28,6 +35,9 @@ public class SchedulerService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final SupportRepository supportRepository;
+	private final EventPublisher eventPublisher;
+	private final ClientRepository clientRepository;
+	private final AutomationOutboxRepository automationOutboxRepository;
 
 
 	@Scheduled(fixedRate = 500)
@@ -60,6 +70,45 @@ public class SchedulerService {
 				.peek(task -> task.setFrozenUntil(null))
 				.peek(task -> task.setStatus(task.getPreviusStatus()))
 				.forEach(taskRepository::save);
+	}
+
+
+	@Scheduled(fixedDelay = 60000)
+	public void checkOverdueTasks() {
+		List<Task> overdueTasks = taskRepository.findOverdueNotCompleted(ZonedDateTime.now());
+
+		for (Task task : overdueTasks) {
+			if (!automationOutboxRepository.existsByTriggerTypeAndTaskId(TriggerType.TASK_OVERDUE.name(), task.getId())) {
+					eventPublisher.publish(TriggerType.TASK_OVERDUE, Map.of(
+							"task", task
+				));
+			}
+		}
+	}
+
+
+	@Scheduled(fixedDelay = 60000)
+	public void checkInactiveClients() {
+		List<Client> clients = clientRepository.findAll();
+
+		for (Client client : clients) {
+			Message lastMessage = client.getMessages().stream()
+					.max(Message::compareTo)
+					.orElse(null);
+
+			if (lastMessage == null) {
+				continue;
+			}
+
+			if (!lastMessage.isSent() && lastMessage.getDate().plusMinutes(30).isBefore(ZonedDateTime.now())) {
+				if (!automationOutboxRepository.existsByTriggerTypeAndClientId(TriggerType.INACTIVITY_TIMEOUT.name(), client.getId())) {
+					eventPublisher.publish(TriggerType.INACTIVITY_TIMEOUT, Map.of(
+							"client", client,
+							"message", lastMessage
+					));
+				}
+			}
+		}
 	}
 
 }

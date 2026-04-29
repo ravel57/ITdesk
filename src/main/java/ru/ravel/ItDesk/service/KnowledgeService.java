@@ -4,15 +4,18 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Knowledge;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.KnowledgeRepository;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class KnowledgeService {
 
 	private final KnowledgeRepository knowledgeRepository;
+	private final EventPublisher eventPublisher;
 
 
 	public List<Knowledge> getKnowledgeBase() {
@@ -21,12 +24,24 @@ public class KnowledgeService {
 
 
 	public Knowledge newKnowledge(Knowledge knowledge) {
-		return knowledgeRepository.save(knowledge);
+		Knowledge saved = knowledgeRepository.save(knowledge);
+
+		eventPublisher.publish(TriggerType.KNOWLEDGE_BASE_ARTICLE_CREATED, Map.of(
+				"knowledge", saved
+		));
+
+		return saved;
 	}
 
 
 	public Knowledge updateKnowledge(Knowledge knowledge) {
-		return knowledgeRepository.save(knowledge);
+		Knowledge saved = knowledgeRepository.save(knowledge);
+
+		eventPublisher.publish(TriggerType.KNOWLEDGE_BASE_ARTICLE_UPDATED, Map.of(
+				"knowledge", saved
+		));
+
+		return saved;
 	}
 
 

@@ -15,6 +15,12 @@ public enum TriggerFunctionsType {
 	NOT_EMPTY("notEmpty"),
 	IS_TRUE("isTrue"),
 	IS_FALSE("isFalse"),
+	NOW("now"),
+	HOUR("hour"),
+	DAY_OF_WEEK("day_of_week"),
+	IS_WEEKEND("is_weekend"),
+	IS_WORKING_HOURS("is_working_hours"),
+	IS_AFTER_HOURS("is_after_hours"),
 	;
 
 	private final String operator;

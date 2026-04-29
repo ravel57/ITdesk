@@ -12,6 +12,9 @@ import ru.ravel.ItDesk.model.automatosation.TriggerFunctionsType;
 import ru.ravel.ItDesk.model.automatosation.TriggerOperationType;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -788,7 +791,7 @@ public class AutomationScriptRuntime {
 		};
 	}
 
-	private static boolean evalFunction(TriggerFunctionsType fn, Object target, List<Object> args) {
+	private static Object evalFunction(TriggerFunctionsType fn, Object target, List<Object> args) {
 		return switch (fn) {
 			case STARTS_WITH -> {
 				String s = toStr(target);
@@ -812,8 +815,73 @@ public class AutomationScriptRuntime {
 
 			case IS_TRUE -> asBool(target);
 			case IS_FALSE -> !asBool(target);
+
+			case NOW -> ZonedDateTime.now();
+
+			case HOUR -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				yield dateTime == null ? null : dateTime.getHour();
+			}
+
+			case DAY_OF_WEEK -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				yield dateTime == null ? null : dateTime.getDayOfWeek().getValue();
+			}
+
+			case IS_WEEKEND -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					yield false;
+				}
+				DayOfWeek day = dateTime.getDayOfWeek();
+				yield day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
+			}
+
+			case IS_WORKING_HOURS -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					dateTime = ZonedDateTime.now();
+				}
+				DayOfWeek day = dateTime.getDayOfWeek();
+				LocalTime time = dateTime.toLocalTime();
+				boolean workingDay = day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY;
+				boolean workingTime = !time.isBefore(LocalTime.of(9, 0)) && time.isBefore(LocalTime.of(18, 0));
+				yield workingDay && workingTime;
+			}
+
+			case IS_AFTER_HOURS -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					dateTime = ZonedDateTime.now();
+				}
+				DayOfWeek day = dateTime.getDayOfWeek();
+				LocalTime time = dateTime.toLocalTime();
+				boolean weekend = day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
+				boolean afterHours = time.isBefore(LocalTime.of(9, 0)) || !time.isBefore(LocalTime.of(18, 0));
+				yield weekend || afterHours;
+			}
 		};
 	}
+
+
+	private static ZonedDateTime toZonedDateTime(Object v) {
+		switch (v) {
+			case ZonedDateTime zdt -> {
+				return zdt;
+			}
+			case String s -> {
+				try {
+					return ZonedDateTime.parse(s);
+				} catch (Exception ignored) {
+					return null;
+				}
+			}
+			case null, default -> {
+				return null;
+			}
+		}
+	}
+
 
 	private static boolean anyOf(Object target, List<Object> args) {
 		Set<Object> a = new HashSet<>();

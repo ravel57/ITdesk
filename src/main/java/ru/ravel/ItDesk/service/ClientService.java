@@ -94,6 +94,12 @@ public class ClientService {
 
 
 	public Task updateTask(Long clientId, @NotNull Task task) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
+		if (task.getId() == null) {
+			throw new IllegalArgumentException("task.id must not be null");
+		}
 		Task olderTask = taskRepository.findById(task.getId()).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		setSla(client, olderTask);

@@ -562,7 +562,9 @@ public class AutomationScriptRuntime {
 					return ctx -> {
 						Object target = args.isEmpty() ? null : args.getFirst().eval(ctx);
 						List<Object> rest = new ArrayList<>();
-						for (int i = 1; i < args.size(); i++) rest.add(args.get(i).eval(ctx));
+						for (int i = 1; i < args.size(); i++) {
+							rest.add(args.get(i).eval(ctx));
+						}
 						return evalFunction(fn, target, rest);
 					};
 				}

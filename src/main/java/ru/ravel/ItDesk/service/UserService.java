@@ -124,8 +124,14 @@ public class UserService {
 	}
 
 
-	public void userOnline(@NotNull User user) {
-		userRepository.findById(user.getId()).ifPresent(usersOnline::add);
+	public void userOnline(Long id, String username) {
+		if (id != null) {
+			userRepository.findById(id).ifPresent(usersOnline::add);
+			return;
+		}
+		if (username != null && !username.isBlank()) {
+			userRepository.findByUsername(username).ifPresent(usersOnline::add);
+		}
 	}
 
 

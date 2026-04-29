@@ -32,13 +32,13 @@ public class Message implements Comparable<Message> {
 	private User user;
 
 	@Builder.Default
-	private boolean isRead = false;
+	private Boolean isRead = false;
 
 	@Builder.Default
-	private boolean isSent = false;
+	private Boolean isSent = false;
 
 	@Builder.Default
-	private boolean isComment = false;
+	private Boolean isComment = false;
 
 	private Integer messengerMessageId;
 

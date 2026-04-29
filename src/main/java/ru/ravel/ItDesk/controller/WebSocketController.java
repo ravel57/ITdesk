@@ -7,6 +7,7 @@ import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.stereotype.Controller;
 import ru.ravel.ItDesk.dto.ClientUser;
 import ru.ravel.ItDesk.dto.ClientUserText;
+import ru.ravel.ItDesk.dto.UserOnlineDto;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.service.ClientService;
@@ -30,8 +31,8 @@ public class WebSocketController {
 
 
 	@MessageMapping("/user-online")
-	public void userOnline(User user) {
-		userService.userOnline(user);
+	public void userOnline(UserOnlineDto user) {
+		userService.userOnline(user.id(), user.username());
 	}
 
 

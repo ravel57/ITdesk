@@ -2,6 +2,7 @@ package ru.ravel.ItDesk.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Qualifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,11 +14,18 @@ import java.time.Instant;
 
 
 @Service
-@RequiredArgsConstructor
 public class EventPublisher {
 
 	private final AutomationOutboxRepository outboxRepository;
 	private final ObjectMapper objectMapper;
+
+	public EventPublisher(
+			AutomationOutboxRepository outboxRepository,
+			@Qualifier("legacyObjectMapper") ObjectMapper objectMapper
+	) {
+		this.outboxRepository = outboxRepository;
+		this.objectMapper = objectMapper;
+	}
 
 	@Transactional
 	public void publish(TriggerType triggerType, Object payloadObj) {

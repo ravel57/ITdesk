@@ -50,18 +50,18 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 
 	@Builder.Default
 	@JsonIgnore
-	protected boolean isAccountNonExpired = true;
+	protected Boolean isAccountNonExpired = true;
 
 	@Builder.Default
 	@JsonIgnore
-	protected boolean isAccountNonLocked = true;
+	protected Boolean isAccountNonLocked = true;
 
 	@Builder.Default
 	@JsonIgnore
-	protected boolean isCredentialsNonExpired = true;
+	protected Boolean isCredentialsNonExpired = true;
 
 	@Builder.Default
-	protected boolean isEnabled = true;
+	protected Boolean isEnabled = true;
 
 
 	@Override

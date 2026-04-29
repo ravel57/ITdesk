@@ -55,7 +55,7 @@ public class ClientService {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
 			client.setLastMessage(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - 1)).findFirst().orElseThrow());
-			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.isRead()).count());
+			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.getIsRead()).count());
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client.getId()), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client.getId()), Collections.emptySet()));
 			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
@@ -206,7 +206,7 @@ public class ClientService {
 					"client", client
 			));
 		}
-		if (Boolean.TRUE.equals(oldCompleted) && !Boolean.TRUE.equals(savedTask.getCompleted())) {
+		if (Boolean.TRUE.equals(oldCompleted) && !savedTask.getCompleted()) {
 			eventPublisher.publish(TriggerType.TASK_REOPENED, Map.of(
 					"task", savedTask,
 					"client", client
@@ -292,7 +292,9 @@ public class ClientService {
 
 
 	public Duration getPausedDuration(Sla sla) {
-		if (sla == null) return Duration.ZERO;
+		if (sla == null) {
+			return Duration.ZERO;
+		}
 		ZonedDateTime now = ZonedDateTime.now();
 		long seconds = sla.getPauses().stream()
 				.mapToLong(p -> {
@@ -334,10 +336,10 @@ public class ClientService {
 	public boolean sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
 		message.setDate(ZonedDateTime.now());
 		message.setUser(user);
-		message.setSent(true);
+		message.setIsSent(true);
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		if (!message.isComment() && !isDemo) {
+		if (!message.getIsComment() && !isDemo) {
 			try {
 				switch (client.getMessageFrom()) {
 					case TELEGRAM -> telegramService.sendMessage(client, message);
@@ -364,6 +366,7 @@ public class ClientService {
 						.ifPresent(u -> {
 							client.getUnreadPingMessages().put(u.getId(), true);
 							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, Map.of("client", client, "message", message, "mentionedUser", u));
+							webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER, message.getText()));
 						});
 			}
 		}
@@ -418,9 +421,9 @@ public class ClientService {
 		}
 
 		List<Message> messages = client.getMessages().stream()
-				.filter(message -> !message.isRead())
-				.filter(message -> !message.isSent())
-				.peek(message -> message.setRead(true))
+				.filter(message -> !message.getIsRead())
+				.filter(message -> !message.getIsSent())
+				.peek(message -> message.setIsRead(true))
 				.toList();
 		messageRepository.saveAll(messages);
 		clientsRepository.save(client);
@@ -443,12 +446,13 @@ public class ClientService {
 
 
 	public void typing(@NotNull ClientUserText clientUserText) {
-		Client client = clientsRepository.findById(clientUserText.getClient().getId()).orElseThrow();
-		client.getTypingMessageText().put(clientUserText.getUser().getId(), clientUserText.getText());
+		Client client = clientsRepository.findById(clientUserText.getClientId()).orElseThrow();
+		User user = userRepository.findById(clientUserText.getUserId()).orElseThrow();
+		client.getTypingMessageText().put(clientUserText.getUserId(), clientUserText.getText());
 		clientsRepository.save(client);
-		String typingKey = "%d:%d".formatted(client.getId(), clientUserText.getUser().getId());
+		String typingKey = "%d:%d".formatted(client.getId(), clientUserText.getUserId());
 		Set<User> currentTypingUsers = typingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
-		currentTypingUsers.add(clientUserText.getUser());
+		currentTypingUsers.add(user);
 		ExecuteFuture executeFuture = clientUserMapTypingExecutorServices.get(typingKey);
 		if (executeFuture != null) {
 			executeFuture.getFuture().cancel(true);
@@ -456,7 +460,7 @@ public class ClientService {
 			executeFuture = new ExecuteFuture();
 			clientUserMapTypingExecutorServices.put(typingKey, executeFuture);
 		}
-		UserActionWaiter task = new UserActionWaiter(client, clientUserText.getUser(), typingUsers, logger, 30_000, eventPublisher, typingKey);
+		UserActionWaiter task = new UserActionWaiter(client, user, typingUsers, logger, 30_000, eventPublisher, typingKey);
 		executeFuture.setFuture(executeFuture.getExecutor().submit(task));
 	}
 
@@ -525,7 +529,11 @@ public class ClientService {
 			users.stream()
 					.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
 					.findFirst()
-					.ifPresent(u -> task.getUnreadPingTasksMessages().put(u.getId(), true));
+					.ifPresent(u -> {
+						task.getUnreadPingTasksMessages().put(u.getId(), true);
+						eventPublisher.publish(TriggerType.TASK_MESSAGE_MENTIONED_USER, Map.of("task", task, "message", message, "mentionedUser", u));
+						webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT, task.getName()));
+					});
 		}
 		taskRepository.save(task);
 		return true;

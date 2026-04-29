@@ -1,16 +1,16 @@
 plugins {
 	id 'java'
-	id 'org.springframework.boot' version '3.3.3'
-	id 'io.spring.dependency-management' version '1.1.5'
+	id 'org.springframework.boot' version '4.0.6'
+	id 'io.spring.dependency-management' version '1.1.7'
 	id 'org.jetbrains.kotlin.jvm'
 }
 
 ext {
-	springCloudVersion = "2023.0.2"
+	springCloudVersion = "2025.1.1"
 }
 
 group = 'ru.ravel'
-version = '0.3'
+version = '0.4'
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_21
@@ -32,6 +32,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation "org.springframework.security:spring-security-messaging"
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
+	implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 
 //	db
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -60,25 +62,21 @@ dependencies {
 //	logs
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'ch.qos.logback:logback-classic'
-	implementation 'io.prometheus:simpleclient'
-	implementation 'io.prometheus:simpleclient_hotspot'
-	implementation 'io.prometheus:simpleclient_logback'
-	implementation 'io.prometheus:simpleclient_httpserver'
 	implementation 'com.google.flogger:flogger:0.8'
 	implementation 'com.google.flogger:flogger-system-backend:0.8'
 	implementation 'com.google.flogger:flogger-slf4j-backend:0.4'
-	implementation 'org.springframework.boot:spring-boot-starter-log4j2:3.3.1'
+	implementation 'org.springframework.boot:spring-boot-starter-log4j2'
 	implementation 'io.micrometer:micrometer-registry-prometheus'
 	implementation 'net.logstash.logback:logstash-logback-encoder:8.1'
 
 //	minio
-	implementation 'io.minio:minio:8.5.10'
+	implementation 'io.minio:minio:8.6.0'
 	implementation 'commons-io:commons-io:2.16.1'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
 //	thymeleaf
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
-	implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
+//	implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 
 //	websocket
 	implementation 'org.springframework:spring-messaging'
@@ -99,8 +97,8 @@ dependencies {
 //	implementation 'org.sejda.imageio:webp-imageio:0.1.6'
 
 //	Apache POI dependencies
-	implementation 'org.apache.poi:poi:5.0.0'
-	implementation 'org.apache.poi:poi-ooxml:5.0.0'
+	implementation 'org.apache.poi:poi:5.4.1'
+	implementation 'org.apache.poi:poi-ooxml:5.4.1'
 
 // tests
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'

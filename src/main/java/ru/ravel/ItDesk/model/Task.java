@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -67,6 +68,7 @@ public class Task {
 
 	private Long linkedMessageId;
 
+	@JsonProperty(access = JsonProperty.Access.READ_ONLY)
 	@OneToOne(fetch = FetchType.EAGER)
 	private Sla sla;
 

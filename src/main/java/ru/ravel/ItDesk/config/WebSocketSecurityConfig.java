@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.config;
 
+import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,35 +8,69 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
+import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
-import org.springframework.security.config.annotation.web.messaging.MessageSecurityMetadataSourceRegistry;
-import org.springframework.security.config.annotation.web.socket.AbstractSecurityWebSocketMessageBrokerConfigurer;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.config.annotation.web.socket.EnableWebSocketSecurity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.messaging.access.intercept.MessageMatcherDelegatingAuthorizationManager;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
+import ru.ravel.ItDesk.dto.PriorityKeyDeserializer;
+import ru.ravel.ItDesk.model.Priority;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Collection;
+import java.util.List;
 
 
 @Configuration
-public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBrokerConfigurer {
+@RequiredArgsConstructor
+@EnableWebSocketMessageBroker
+@EnableWebSocketSecurity
+public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer {
 
-	Logger logger = LoggerFactory.getLogger(this.getClass());
+	private final JsonMapper objectMapper;
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
+
+	@Bean
+	public AuthorizationManager<Message<?>> messageAuthorizationManager(
+			MessageMatcherDelegatingAuthorizationManager.Builder messages
+	) {
+		messages
+				.nullDestMatcher().permitAll()
+				.simpDestMatchers("/app/**").authenticated()
+				.simpSubscribeDestMatchers("/topic/authenticated-users/**").hasAnyRole("ADMIN", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/clients/**").hasAnyRole("ADMIN", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/clients-for-observer/**").hasRole("OBSERVER")
+				.simpSubscribeDestMatchers("/user/**").authenticated()
+				.simpSubscribeDestMatchers("/queue/**").authenticated()
+				.simpSubscribeDestMatchers("/topic/**").authenticated()
+				.anyMessage().denyAll();
+		return messages.build();
+	}
+
+
+	@Bean(name = "csrfChannelInterceptor")
+	public ChannelInterceptor csrfChannelInterceptor() {
+		return new ChannelInterceptor() {
+		};
+	}
 
 
 	@Override
-	protected void configureInbound(@NotNull MessageSecurityMetadataSourceRegistry messages) {
-		messages.simpDestMatchers("/app/**").authenticated()
-				.simpSubscribeDestMatchers("/topic/authenticated-users/").hasAnyRole("ADMIN", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients/").hasAnyRole("ADMIN", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients-for-observer/").hasRole("OBSERVER")
-				/*.anyMessage().authenticated()*/;
+	public boolean configureMessageConverters(@NotNull List<MessageConverter> messageConverters) {
+		messageConverters.add(new JacksonJsonMessageConverter(objectMapper));
+		return false;
 	}
 
 
@@ -48,12 +83,14 @@ public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBro
 
 	@Override
 	public void registerStompEndpoints(@NotNull StompEndpointRegistry registry) {
-		registry.addEndpoint("/ws").withSockJS();
+		registry.addEndpoint("/ws")
+				.setAllowedOriginPatterns("*")
+				.withSockJS();
 	}
 
 
 	@Override
-	protected void customizeClientInboundChannel(@NotNull ChannelRegistration registration) {
+	public void configureClientInboundChannel(@NotNull ChannelRegistration registration) {
 		registration.interceptors(new ChannelInterceptor() {
 			@Override
 			public Message<?> preSend(@NotNull Message<?> message, @NotNull MessageChannel channel) {
@@ -63,8 +100,12 @@ public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBro
 					Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 					if (destination != null && authentication != null) {
 						Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+						if (logger.isDebugEnabled()) {
+							logger.debug("WebSocket destination: {}, authorities: {}", destination, authorities);
+						}
 					}
 				}
+
 				return message;
 			}
 		});
@@ -77,12 +118,6 @@ public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBro
 		container.setMaxTextMessageBufferSize(1048576);
 		container.setMaxBinaryMessageBufferSize(1048576);
 		return container;
-	}
-
-
-	@Override
-	protected boolean sameOriginDisabled() {
-		return true;
 	}
 
 }

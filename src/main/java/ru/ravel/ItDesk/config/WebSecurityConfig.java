@@ -28,12 +28,12 @@ import ru.ravel.ItDesk.service.UserService;
 class WebSecurityConfig {
 
 	private final AuthService authService;
-	private final UserService userService;
+//	private final UserService userService;
 
 
 	public WebSecurityConfig(AuthService authService, @Lazy UserService userService) {
 		this.authService = authService;
-		this.userService = userService;
+//		this.userService = userService;
 	}
 
 
@@ -57,8 +57,7 @@ class WebSecurityConfig {
 
 	@Bean
 	public AuthenticationProvider authenticationProvider() {
-		DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-		provider.setUserDetailsService(userDetailsService());
+		DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService());
 		provider.setPasswordEncoder(passwordEncoder());
 		return provider;
 	}
@@ -83,7 +82,7 @@ class WebSecurityConfig {
 						.requestMatchers("/settings/profile").authenticated()
 						.requestMatchers("/settings/**").hasRole("ADMIN")
 						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
-						.requestMatchers("/ws/**").authenticated()
+						.requestMatchers("/ws/**").permitAll()
 						.requestMatchers("/actuator/**").permitAll()
 						.requestMatchers("/api/v1/support/resave-message").permitAll()
 						.requestMatchers("/api/v1/support/reset-password").permitAll()

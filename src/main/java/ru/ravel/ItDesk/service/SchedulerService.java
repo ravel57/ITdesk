@@ -100,7 +100,7 @@ public class SchedulerService {
 				continue;
 			}
 
-			if (!lastMessage.isSent() && lastMessage.getDate().plusMinutes(30).isBefore(ZonedDateTime.now())) {
+			if (!lastMessage.getIsSent() && lastMessage.getDate().plusMinutes(30).isBefore(ZonedDateTime.now())) {
 				if (!automationOutboxRepository.existsByTriggerTypeAndClientId(TriggerType.INACTIVITY_TIMEOUT.name(), client.getId())) {
 					eventPublisher.publish(TriggerType.INACTIVITY_TIMEOUT, Map.of(
 							"client", client,

@@ -32,6 +32,7 @@ public enum TriggerType {
 	TASK_REOPENED,
 	TASK_COMPLETED,
 	TASK_OVERDUE,
+	TASK_MESSAGE_MENTIONED_USER,
 
 	// ---- клиенты ----
 	CLIENT_CREATED,

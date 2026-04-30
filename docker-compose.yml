@@ -41,6 +41,7 @@ services:
       - minio:minio
     ports:
       - '56481:8080'
+      - '5705:5705'
     expose:
       - 8080
       - 8081

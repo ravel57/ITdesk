@@ -376,16 +376,13 @@ public class ClientService {
 
 
 	public boolean sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
-		if (message == null) {
-			throw new IllegalArgumentException("message must not be null");
-		}
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
 		message.setDate(ZonedDateTime.now());
 		message.setUser(user);
 		message.setIsSent(true);
-		message.setIsRead(Boolean.TRUE.equals(message.getIsRead()));
+		message.setIsRead(true);
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
@@ -478,8 +475,8 @@ public class ClientService {
 		}
 
 		List<Message> messages = safeCollection(client.getMessages()).stream()
-				.filter(message -> !message.getIsRead())
-				.filter(message -> !message.getIsSent())
+				.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
+				.filter(message -> Boolean.FALSE.equals(message.getIsSent()))
 				.peek(message -> message.setIsRead(true))
 				.toList();
 		messageRepository.saveAll(messages);

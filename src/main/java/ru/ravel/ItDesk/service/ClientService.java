@@ -478,8 +478,8 @@ public class ClientService {
 		}
 
 		List<Message> messages = safeCollection(client.getMessages()).stream()
-				.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
-				.filter(message -> Boolean.FALSE.equals(message.getIsSent()))
+				.filter(message -> !message.getIsRead())
+				.filter(message -> !message.getIsSent())
 				.peek(message -> message.setIsRead(true))
 				.toList();
 		messageRepository.saveAll(messages);

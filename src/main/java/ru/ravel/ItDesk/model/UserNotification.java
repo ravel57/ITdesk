@@ -13,4 +13,5 @@ import lombok.NoArgsConstructor;
 public class UserNotification {
 	private UserNotificationEvent event;
 	private String message;
+	private Long userId;
 }

@@ -109,6 +109,9 @@ public class ClientService {
 		client.getTasks().add(task);
 		clientsRepository.save(client);
 		eventPublisher.publish(TriggerType.TASK_CREATED, eventPayload("task", task, "client", client));
+		if (task.getExecutor() != null) {
+			webSocketService.userNotification(new UserNotification(UserNotificationEvent.NEW_TASK, task.getName(), task.getExecutor().getId()));
+		}
 		return task;
 	}
 
@@ -206,6 +209,13 @@ public class ClientService {
 					"oldExecutor", oldExecutor,
 					"newExecutor", savedTask.getExecutor()
 			));
+			if (savedTask.getExecutor() != null) {
+				webSocketService.userNotification(new UserNotification(
+						UserNotificationEvent.NEW_TASK,
+						savedTask.getName(),
+						savedTask.getExecutor().getId()
+				));
+			}
 		}
 		if (!Objects.equals(oldDeadline, savedTask.getDeadline())) {
 			eventPublisher.publish(TriggerType.TASK_DUE_DATE_CHANGED, eventPayload(
@@ -410,7 +420,7 @@ public class ClientService {
 						.ifPresent(u -> {
 							client.getUnreadPingMessages().put(u.getId(), true);
 							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, eventPayload("client", client, "message", message, "mentionedUser", u));
-							webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER, Objects.toString(message.getText(), "")));
+							webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER, Objects.toString(message.getText(), ""), u.getId()));
 						});
 			}
 		}
@@ -579,6 +589,7 @@ public class ClientService {
 		return true;
 	}
 
+
 	public List<Client> getClientsForObserver(User observer) {
 		if (observer == null || observer.getAvailableOrganizations() == null) {
 			return Collections.emptyList();
@@ -622,8 +633,11 @@ public class ClientService {
 					.ifPresent(u -> {
 						task.getUnreadPingTasksMessages().put(u.getId(), true);
 						eventPublisher.publish(TriggerType.TASK_MESSAGE_MENTIONED_USER, eventPayload("task", task, "message", message, "mentionedUser", u));
-						webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT, Objects.toString(task.getName(), "")));
+						webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT, Objects.toString(task.getName(), ""), u.getId()));
 					});
+		}
+		if (task.getExecutor() != null) {
+			webSocketService.userNotification(new UserNotification(UserNotificationEvent.NEW_CHAT_MESSAGE, task.getName(), task.getExecutor().getId()));
 		}
 		taskRepository.save(task);
 		return true;

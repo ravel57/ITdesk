@@ -54,11 +54,25 @@ public class ClientService {
 	public List<Client> getClients() {
 		List<Client> clients = clientsRepository.findAll();
 		clients.forEach(client -> {
-			client.setLastMessage(client.getMessages().stream().sorted().skip(Math.max(0, client.getMessages().size() - 1)).findFirst().orElseThrow());
-			client.setUnreadMessagesCount(client.getMessages().stream().filter(message -> !message.getIsRead()).count());
+			Collection<Message> messages = safeCollection(client.getMessages());
+			client.setLastMessage(messages.stream()
+					.sorted()
+					.reduce((first, second) -> second)
+					.orElse(null));
+			client.setUnreadMessagesCount(messages.stream()
+					.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
+					.count());
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client.getId()), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client.getId()), Collections.emptySet()));
-			client.getTasks().forEach(task -> task.getMessages().sort(Message::compareTo));
+			safeCollection(client.getTasks()).forEach(task -> {
+				if (task.getMessages() != null) {
+					task.getMessages().sort(Message::compareTo);
+				}
+			});
+			if (client.getMessageFrom() == null) {
+				client.setSourceChannel(null);
+				return;
+			}
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> {
 					TgBot tgBot = Objects.requireNonNullElse(client.getTgBot(), new TgBot());
@@ -79,6 +93,9 @@ public class ClientService {
 
 
 	public Task newTask(Long clientId, @NotNull Task task) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		setSla(client, task);
 		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
@@ -86,9 +103,12 @@ public class ClientService {
 		}
 		task.setLastActivity(ZonedDateTime.now());
 		taskRepository.save(task);
+		if (client.getTasks() == null) {
+			client.setTasks(new ArrayList<>());
+		}
 		client.getTasks().add(task);
 		clientsRepository.save(client);
-		eventPublisher.publish(TriggerType.TASK_CREATED, Map.of("task", task, "client", client));
+		eventPublisher.publish(TriggerType.TASK_CREATED, eventPayload("task", task, "client", client));
 		return task;
 	}
 
@@ -127,19 +147,19 @@ public class ClientService {
 			olderTask.setPreviusStatus(completedStatus);
 		}
 		olderTask.setSla(task.getSla());
-		if (olderTask.getFrozen() != null && olderTask.getFrozen()) {
-			if (!olderTask.getStatus().equals(frozenStatus) && !olderTask.getStatus().equals(completedStatus)) {
+		if (Boolean.TRUE.equals(olderTask.getFrozen())) {
+			if (!Objects.equals(olderTask.getStatus(), frozenStatus) && !Objects.equals(olderTask.getStatus(), completedStatus)) {
 				olderTask.setPreviusStatus(olderTask.getStatus());
 			}
 			olderTask.setStatus(frozenStatus);
 			olderTask.setFrozen(true);
 		} else if (olderTask.getPreviusStatus() != null
-				&& frozenStatus.getId().equals(olderTask.getStatus().getId())
-				&& olderTask.getStatus().equals(frozenStatus)) {
+				&& Objects.equals(frozenStatus.getId(), olderTask.getStatus() == null ? null : olderTask.getStatus().getId())
+				&& Objects.equals(olderTask.getStatus(), frozenStatus)) {
 			olderTask.setStatus(olderTask.getPreviusStatus());
 		}
-		if (olderTask.getCompleted() != null && olderTask.getCompleted()) {
-			if (!olderTask.getStatus().equals(completedStatus) && !olderTask.getStatus().equals(frozenStatus)) {
+		if (Boolean.TRUE.equals(olderTask.getCompleted())) {
+			if (!Objects.equals(olderTask.getStatus(), completedStatus) && !Objects.equals(olderTask.getStatus(), frozenStatus)) {
 				olderTask.setPreviusStatus(olderTask.getStatus());
 			}
 			if (Boolean.TRUE.equals(olderTask.getFrozen())) {
@@ -149,22 +169,22 @@ public class ClientService {
 			olderTask.setCompleted(true);
 		} else if (olderTask.getPreviusStatus() != null
 				&& Boolean.FALSE.equals(olderTask.getFrozen())
-				&& !olderTask.getPreviusStatus().equals(completedStatus)
-				&& olderTask.getStatus().equals(completedStatus)) {
+				&& !Objects.equals(olderTask.getPreviusStatus(), completedStatus)
+				&& Objects.equals(olderTask.getStatus(), completedStatus)) {
 			olderTask.setStatus(olderTask.getPreviusStatus());
-		} else if (olderTask.getStatus().equals(completedStatus)
-				&& olderTask.getStatus().getId().equals(completedStatus.getId())) {
+		} else if (Objects.equals(olderTask.getStatus(), completedStatus)
+				&& Objects.equals(olderTask.getStatus() == null ? null : olderTask.getStatus().getId(), completedStatus.getId())) {
 			olderTask.setCompleted(false);
 			olderTask.setStatus(olderTask.getPreviusStatus());
 		}
 		olderTask.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(olderTask);
-		eventPublisher.publish(TriggerType.TASK_UPDATED, Map.of(
+		eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
 				"task", savedTask,
 				"client", client
 		));
 		if (!Objects.equals(oldStatus, savedTask.getStatus())) {
-			eventPublisher.publish(TriggerType.TASK_STATUS_CHANGED, Map.of(
+			eventPublisher.publish(TriggerType.TASK_STATUS_CHANGED, eventPayload(
 					"task", savedTask,
 					"client", client,
 					"oldStatus", oldStatus,
@@ -172,7 +192,7 @@ public class ClientService {
 			));
 		}
 		if (!Objects.equals(oldPriority, savedTask.getPriority())) {
-			eventPublisher.publish(TriggerType.TASK_PRIORITY_CHANGED, Map.of(
+			eventPublisher.publish(TriggerType.TASK_PRIORITY_CHANGED, eventPayload(
 					"task", savedTask,
 					"client", client,
 					"oldPriority", oldPriority,
@@ -180,7 +200,7 @@ public class ClientService {
 			));
 		}
 		if (!Objects.equals(oldExecutor, savedTask.getExecutor())) {
-			eventPublisher.publish(TriggerType.TASK_ASSIGNEE_CHANGED, Map.of(
+			eventPublisher.publish(TriggerType.TASK_ASSIGNEE_CHANGED, eventPayload(
 					"task", savedTask,
 					"client", client,
 					"oldExecutor", oldExecutor,
@@ -188,7 +208,7 @@ public class ClientService {
 			));
 		}
 		if (!Objects.equals(oldDeadline, savedTask.getDeadline())) {
-			eventPublisher.publish(TriggerType.TASK_DUE_DATE_CHANGED, Map.of(
+			eventPublisher.publish(TriggerType.TASK_DUE_DATE_CHANGED, eventPayload(
 					"task", savedTask,
 					"client", client,
 					"oldDeadline", oldDeadline,
@@ -196,18 +216,18 @@ public class ClientService {
 			));
 		}
 		if (!Objects.equals(oldCompleted, savedTask.getCompleted()) && Boolean.TRUE.equals(savedTask.getCompleted())) {
-			eventPublisher.publish(TriggerType.TASK_COMPLETED, Map.of(
+			eventPublisher.publish(TriggerType.TASK_COMPLETED, eventPayload(
 					"task", savedTask,
 					"client", client
 			));
 
-			eventPublisher.publish(TriggerType.TASK_CLOSED, Map.of(
+			eventPublisher.publish(TriggerType.TASK_CLOSED, eventPayload(
 					"task", savedTask,
 					"client", client
 			));
 		}
-		if (Boolean.TRUE.equals(oldCompleted) && !savedTask.getCompleted()) {
-			eventPublisher.publish(TriggerType.TASK_REOPENED, Map.of(
+		if (Boolean.TRUE.equals(oldCompleted) && Boolean.FALSE.equals(savedTask.getCompleted())) {
+			eventPublisher.publish(TriggerType.TASK_REOPENED, eventPayload(
 					"task", savedTask,
 					"client", client
 			));
@@ -215,7 +235,7 @@ public class ClientService {
 		Set<Tag> newTags = new HashSet<>(Objects.requireNonNullElse(savedTask.getTags(), Collections.emptySet()));
 		for (Tag tag : newTags) {
 			if (!oldTags.contains(tag)) {
-				eventPublisher.publish(TriggerType.TASK_TAG_ADDED, Map.of(
+				eventPublisher.publish(TriggerType.TASK_TAG_ADDED, eventPayload(
 						"task", savedTask,
 						"client", client,
 						"tag", tag
@@ -224,7 +244,7 @@ public class ClientService {
 		}
 		for (Tag tag : oldTags) {
 			if (!newTags.contains(tag)) {
-				eventPublisher.publish(TriggerType.TASK_TAG_REMOVED, Map.of(
+				eventPublisher.publish(TriggerType.TASK_TAG_REMOVED, eventPayload(
 						"task", savedTask,
 						"client", client,
 						"tag", tag
@@ -236,18 +256,21 @@ public class ClientService {
 
 
 	private void setSla(@NotNull Client client, Task task) {
+		if (task == null) {
+			return;
+		}
 		Organization organization = client.getOrganization();
 		SlaValue slaValue = null;
 		if (organization != null) {
 			Map<Priority, SlaValue> map = organizationService.getSlaByPriority().get(organization);
 			if (map != null) slaValue = map.get(task.getPriority());
 		}
-		if (slaValue == null) {
+		if (slaValue == null && DefaultOrganization.getInstance().getSla() != null) {
 			slaValue = DefaultOrganization.getInstance().getSla().get(task.getPriority());
 		}
 		Duration duration = (slaValue == null) ? Duration.ZERO : slaValue.toDuration();
 		Sla sla = Sla.builder()
-				.startDate(task.getCreatedAt())
+				.startDate(Objects.requireNonNullElse(task.getCreatedAt(), ZonedDateTime.now()))
 				.duration(duration)
 				.build();
 		slaRepository.save(sla);
@@ -260,7 +283,7 @@ public class ClientService {
 		if (sla == null) {
 			return;
 		}
-		boolean alreadyPaused = sla.getPauses().stream().anyMatch(p -> p.getEndedAt() == null);
+		boolean alreadyPaused = safeCollection(sla.getPauses()).stream().anyMatch(p -> p.getEndedAt() == null);
 		if (alreadyPaused) {
 			return;
 		}
@@ -269,6 +292,9 @@ public class ClientService {
 		pause.setStartedAt(ZonedDateTime.now());
 		pause.setEndedAt(null);
 		pause.setReason(reason);
+		if (sla.getPauses() == null) {
+			sla.setPauses(new ArrayList<>());
+		}
 		sla.getPauses().add(pause);
 		slaRepository.save(sla);
 	}
@@ -279,7 +305,7 @@ public class ClientService {
 		if (sla == null) {
 			return;
 		}
-		SlaPause active = sla.getPauses().stream()
+		SlaPause active = safeCollection(sla.getPauses()).stream()
 				.filter(p -> p.getEndedAt() == null)
 				.findFirst()
 				.orElse(null);
@@ -296,7 +322,7 @@ public class ClientService {
 			return Duration.ZERO;
 		}
 		ZonedDateTime now = ZonedDateTime.now();
-		long seconds = sla.getPauses().stream()
+		long seconds = safeCollection(sla.getPauses()).stream()
 				.mapToLong(p -> {
 					ZonedDateTime end = (p.getEndedAt() == null) ? now : p.getEndedAt();
 					return Math.max(0, Duration.between(p.getStartedAt(), end).getSeconds());
@@ -308,6 +334,9 @@ public class ClientService {
 
 	public ZonedDateTime getDeadline(Sla sla) {
 		if (sla == null) {
+			return null;
+		}
+		if (sla.getStartDate() == null || sla.getDuration() == null) {
 			return null;
 		}
 		return sla.getStartDate()
@@ -324,23 +353,38 @@ public class ClientService {
 
 
 	public boolean isPaused(Sla sla) {
-		return sla != null && sla.getPauses().stream().anyMatch(p -> p.getEndedAt() == null);
+		return sla != null && safeCollection(sla.getPauses()).stream().anyMatch(p -> p.getEndedAt() == null);
 	}
 
 
 	public boolean sendMessage(Long clientId, Message message) {
+		if (message == null) {
+			throw new IllegalArgumentException("message must not be null");
+		}
 		return sendMessageWithUser(clientId, message, userService.getCurrentUser());
 	}
 
 
 	public boolean sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
+		if (message == null) {
+			throw new IllegalArgumentException("message must not be null");
+		}
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
 		message.setDate(ZonedDateTime.now());
 		message.setUser(user);
 		message.setIsSent(true);
+		message.setIsRead(Boolean.TRUE.equals(message.getIsRead()));
+		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
 		messageRepository.save(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		if (!message.getIsComment() && !isDemo) {
+		if (!Boolean.TRUE.equals(message.getIsComment()) && !isDemo) {
 			try {
+				if (client.getMessageFrom() == null) {
+					logger.warn("message send skipped: client messageFrom is null, clientId={}", client.getId());
+					return false;
+				}
 				switch (client.getMessageFrom()) {
 					case TELEGRAM -> telegramService.sendMessage(client, message);
 					case EMAIL -> emailService.sendEmail(message, client);
@@ -357,7 +401,7 @@ public class ClientService {
 			if (client.getUnreadPingMessages() == null) {
 				client.setUnreadPingMessages(new HashMap<>());
 			}
-			List<User> users = userService.getUsers();
+			Collection<User> users = safeCollection(userService.getUsers());
 			while (matcher.find()) {
 				String fullName = matcher.group(1);
 				users.stream()
@@ -365,22 +409,25 @@ public class ClientService {
 						.findFirst()
 						.ifPresent(u -> {
 							client.getUnreadPingMessages().put(u.getId(), true);
-							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, Map.of("client", client, "message", message, "mentionedUser", u));
-							webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER, message.getText()));
+							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, eventPayload("client", client, "message", message, "mentionedUser", u));
+							webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER, Objects.toString(message.getText(), "")));
 						});
 			}
 		}
 		webSocketService.sendNewMessages(new ClientMessage(client, message));
+		if (client.getMessages() == null) {
+			client.setMessages(new ArrayList<>());
+		}
 		client.getMessages().add(message);
 		clientsRepository.save(client);
-		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, Map.of("message", message, "client", client));
+		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload("message", message, "client", client));
 		return true;
 	}
 
 
 	@Transactional
 	public Client markReadAndReturnClient(@NotNull ClientUser clientUser) {
-		if (clientUser.getClientId() == null || clientUser.getUserId() == null) {
+		if (clientUser == null || clientUser.getClientId() == null || clientUser.getUserId() == null) {
 			logger.warn("mark-read skipped: clientId or userId is null, payload={}", clientUser);
 			return null;
 		}
@@ -401,7 +448,7 @@ public class ClientService {
 		boolean alreadyWatching = currentWatchers.contains(user);
 		if (!alreadyWatching) {
 			currentWatchers.add(user);
-			eventPublisher.publish(TriggerType.USER_OPEN_DIALOG, Map.of(
+			eventPublisher.publish(TriggerType.USER_OPEN_DIALOG, eventPayload(
 					"client", client,
 					"user", user
 			));
@@ -420,9 +467,9 @@ public class ClientService {
 			client.getUnreadPingMessages().put(user.getId(), false);
 		}
 
-		List<Message> messages = client.getMessages().stream()
-				.filter(message -> !message.getIsRead())
-				.filter(message -> !message.getIsSent())
+		List<Message> messages = safeCollection(client.getMessages()).stream()
+				.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
+				.filter(message -> Boolean.FALSE.equals(message.getIsSent()))
 				.peek(message -> message.setIsRead(true))
 				.toList();
 		messageRepository.saveAll(messages);
@@ -431,24 +478,38 @@ public class ClientService {
 	}
 
 
-	public Client updateClient(Long clientId, @NotNull Map<String, Object> c) {    // FIXME
+	public Client updateClient(Long clientId, @NotNull Map<String, Object> c) {
+		if (c == null) {
+			throw new IllegalArgumentException("client payload must not be null");
+		}
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		client.setFirstname(c.get("firstname").toString());
-		client.setLastname(c.get("lastname").toString());
-		client.setOrganization(organizationService.getOrganizations().stream()
-				.filter(it -> it.getName().equals(c.get("organization")))
+		client.setFirstname(Objects.toString(c.get("firstname"), null));
+		client.setLastname(Objects.toString(c.get("lastname"), null));
+		Object organizationName = c.get("organization");
+		client.setOrganization(safeCollection(organizationService.getOrganizations()).stream()
+				.filter(it -> Objects.equals(it.getName(), organizationName))
 				.findFirst().orElse(null));
-		client.setMoreInfo((String) c.get("moreInfo"));
+		client.setMoreInfo(Objects.toString(c.get("moreInfo"), null));
 		clientsRepository.save(client);
-		eventPublisher.publish(TriggerType.CLIENT_UPDATED, Map.of("client", client));
+		eventPublisher.publish(TriggerType.CLIENT_UPDATED, eventPayload("client", client));
 		return client;
 	}
 
 
 	public void typing(@NotNull ClientUserText clientUserText) {
+		if (clientUserText == null || clientUserText.getClientId() == null || clientUserText.getUserId() == null) {
+			logger.warn("typing skipped: clientId or userId is null, payload={}", clientUserText);
+			return;
+		}
 		Client client = clientsRepository.findById(clientUserText.getClientId()).orElseThrow();
 		User user = userRepository.findById(clientUserText.getUserId()).orElseThrow();
-		client.getTypingMessageText().put(clientUserText.getUserId(), clientUserText.getText());
+		if (client.getTypingMessageText() == null) {
+			client.setTypingMessageText(new HashMap<>());
+		}
+		client.getTypingMessageText().put(clientUserText.getUserId(), Objects.toString(clientUserText.getText(), ""));
 		clientsRepository.save(client);
 		String typingKey = "%d:%d".formatted(client.getId(), clientUserText.getUserId());
 		Set<User> currentTypingUsers = typingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
@@ -466,6 +527,15 @@ public class ClientService {
 
 
 	public MessageTask linkToTask(@NotNull MessageTask messageTask) {
+		if (messageTask == null) {
+			throw new IllegalArgumentException("messageTask must not be null");
+		}
+		if (messageTask.getTask() == null || messageTask.getTask().getId() == null) {
+			throw new IllegalArgumentException("task.id must not be null");
+		}
+		if (messageTask.getMessage() == null || messageTask.getMessage().getId() == null) {
+			throw new IllegalArgumentException("message.id must not be null");
+		}
 		Task task = taskRepository.findById(messageTask.getTask().getId()).orElseThrow();
 		task.setLinkedMessageId(messageTask.getMessage().getId());
 		taskRepository.save(task);
@@ -474,56 +544,76 @@ public class ClientService {
 
 
 	public boolean deleteMessage(Long clientId, Long messageId) {
+		if (clientId == null || messageId == null) {
+			throw new IllegalArgumentException("clientId and messageId must not be null");
+		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		Message message = messageRepository.findById(messageId).orElseThrow();
-		switch (client.getMessageFrom()) {
-			case TELEGRAM -> {
-				try {
-					telegramService.deleteMessage(client, message);
-				} catch (TelegramException e) {
-					return false;
+		if (client.getMessageFrom() != null) {
+			switch (client.getMessageFrom()) {
+				case TELEGRAM -> {
+					try {
+						telegramService.deleteMessage(client, message);
+					} catch (TelegramException e) {
+						return false;
+					}
 				}
-			}
-			case WHATSAPP, EMAIL -> {
+				case WHATSAPP, EMAIL -> {
+				}
 			}
 		}
 		message.setDeleted(true);
 		messageRepository.save(message);
-		eventPublisher.publish(TriggerType.MESSAGE_DELETED, Map.of("client", client, "message", message));
+		eventPublisher.publish(TriggerType.MESSAGE_DELETED, eventPayload("client", client, "message", message));
 		return true;
 	}
 
 
 	public Boolean deleteClient(Long clientId) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		clientsRepository.delete(client);
-		eventPublisher.publish(TriggerType.CLIENT_DELETED, Map.of("client", client));
+		eventPublisher.publish(TriggerType.CLIENT_DELETED, eventPayload("client", client));
 		return true;
 	}
 
 	public List<Client> getClientsForObserver(User observer) {
+		if (observer == null || observer.getAvailableOrganizations() == null) {
+			return Collections.emptyList();
+		}
 		return getClients().stream()
 				.filter(client -> observer.getAvailableOrganizations().contains(client.getOrganization()))
-				.peek(client -> client.getTasks().forEach(task -> task.setMessages(Collections.emptyList())))
+				.peek(client -> safeCollection(client.getTasks()).forEach(task -> task.setMessages(Collections.emptyList())))
 				.toList();
 	}
 
 
 	public boolean addTaskMessage(Long taskId, @NotNull Message message) {
+		if (taskId == null) {
+			throw new IllegalArgumentException("taskId must not be null");
+		}
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
+		message.setIsSent(Boolean.TRUE.equals(message.getIsSent()));
+		message.setIsRead(Boolean.TRUE.equals(message.getIsRead()));
+		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
 		messageRepository.save(message);
 		Task task = taskRepository.findById(taskId).orElseThrow();
+		if (task.getMessages() == null) {
+			task.setMessages(new ArrayList<>());
+		}
 		task.getMessages().add(message);
 		taskRepository.save(task);
 
 		// pings
 		Pattern pattern = Pattern.compile("@\\[(.+?)]");
-		Matcher matcher = pattern.matcher(message.getText());
+		Matcher matcher = pattern.matcher(Objects.requireNonNullElse(message.getText(), ""));
 		if (task.getUnreadPingTasksMessages() == null) {
 			task.setUnreadPingTasksMessages(new HashMap<>());
 		}
-		List<User> users = userService.getUsers();
+		Collection<User> users = safeCollection(userService.getUsers());
 		while (matcher.find()) {
 			String fullName = matcher.group(1);
 			users.stream()
@@ -531,8 +621,8 @@ public class ClientService {
 					.findFirst()
 					.ifPresent(u -> {
 						task.getUnreadPingTasksMessages().put(u.getId(), true);
-						eventPublisher.publish(TriggerType.TASK_MESSAGE_MENTIONED_USER, Map.of("task", task, "message", message, "mentionedUser", u));
-						webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT, task.getName()));
+						eventPublisher.publish(TriggerType.TASK_MESSAGE_MENTIONED_USER, eventPayload("task", task, "message", message, "mentionedUser", u));
+						webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT, Objects.toString(task.getName(), "")));
 					});
 		}
 		taskRepository.save(task);
@@ -541,64 +631,84 @@ public class ClientService {
 
 
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
+		int safePage = Math.max(1, Objects.requireNonNullElse(page, 1));
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		int skipFromStart = Math.max(0, client.getMessages().size() - pageLimit * page);
-		List<Message> messages = client.getMessages().stream()
-				.sorted()
+		List<Message> clientMessages = safeCollection(client.getMessages()).stream().sorted().toList();
+		int skipFromStart = Math.max(0, clientMessages.size() - pageLimit * safePage);
+		long limit = skipFromStart != 0 ? pageLimit : Math.max(0, clientMessages.size() - ((long) pageLimit * (safePage - 1)));
+		List<Message> messages = clientMessages.stream()
 				.skip(skipFromStart)
-				.limit(skipFromStart != 0 ? pageLimit : client.getMessages().size() - ((long) pageLimit * (page - 1)))
-				.peek(message -> message.setReplyMessageText(client.getMessages().stream()
-						.filter(m -> m.getId().equals(message.getReplyMessageId()))
+				.limit(limit)
+				.peek(message -> message.setReplyMessageText(clientMessages.stream()
+						.filter(m -> Objects.equals(m.getId(), message.getReplyMessageId()))
 						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
-		client.getTasks().forEach(task -> messages.stream()
+		safeCollection(client.getTasks()).forEach(task -> messages.stream()
 				.filter(message -> task.getLinkedMessageId() != null)
-				.filter(message -> message.getId().equals(task.getLinkedMessageId()))
+				.filter(message -> Objects.equals(message.getId(), task.getLinkedMessageId()))
 				.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
 		return new PageMessages(messages, skipFromStart == 0);
 	}
 
 
 	public LinkedMessagePage getMessagesUntilLinkedMessage(Long clientId, Long linkedMessageId) {
+		if (clientId == null || linkedMessageId == null) {
+			throw new IllegalArgumentException("clientId and linkedMessageId must not be null");
+		}
 		Message message = messageRepository.findById(linkedMessageId).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		List<Message> messages = client.getMessages().stream()
+		List<Message> messages = safeCollection(client.getMessages()).stream()
 				.sorted()
-				.peek(msg -> msg.setReplyMessageText(client.getMessages().stream()
-						.filter(m -> m.getId().equals(msg.getReplyMessageId()))
+				.peek(msg -> msg.setReplyMessageText(safeCollection(client.getMessages()).stream()
+						.filter(m -> Objects.equals(m.getId(), msg.getReplyMessageId()))
 						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
-		client.getTasks().forEach(task -> messages.stream()
-				.filter(msg -> msg.getId().equals(task.getLinkedMessageId()))
+		safeCollection(client.getTasks()).forEach(task -> messages.stream()
+				.filter(msg -> Objects.equals(msg.getId(), task.getLinkedMessageId()))
 				.forEach(msg -> msg.setLinkedTaskId(task.getLinkedMessageId())));
-		int index = messages.indexOf(message);
-		int page = ((Double) Math.ceil((double) (messages.size() - index) / pageLimit)).intValue();
+		int index = Math.max(0, messages.indexOf(message));
+		int page = Math.max(1, ((Double) Math.ceil((double) (messages.size() - index) / pageLimit)).intValue());
 		int skipFromStart = Math.max(0, messages.size() - pageLimit * page);
 		return new LinkedMessagePage(page, messages.stream().skip(skipFromStart).sorted().toList(), skipFromStart == 0);
 	}
 
 
 	public List<Message> searchMessages(Long clientId, MessageText messageText) {
+		if (clientId == null || messageText == null || messageText.getText() == null || messageText.getText().isBlank()) {
+			return Collections.emptyList();
+		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		return client.getMessages().stream()
+		String query = messageText.getText().toLowerCase(Locale.ROOT);
+		return safeCollection(client.getMessages()).stream()
 				.filter(message -> message.getText() != null)
-				.filter(message -> message.getText().toLowerCase().contains(messageText.getText().toLowerCase()))
+				.filter(message -> message.getText().toLowerCase(Locale.ROOT).contains(query))
 				.sorted()
 				.toList();
 	}
 
 
 	public List<Message> searchTaskMessage(Long taskId, MessageText messageText) {
+		if (taskId == null || messageText == null || messageText.getText() == null || messageText.getText().isBlank()) {
+			return Collections.emptyList();
+		}
 		Task task = taskRepository.findById(taskId).orElseThrow();
-		return task.getMessages().stream()
+		String query = messageText.getText().toLowerCase(Locale.ROOT);
+		return safeCollection(task.getMessages()).stream()
 				.filter(message -> message.getText() != null)
-				.filter(message -> message.getText().toLowerCase().contains(messageText.getText().toLowerCase()))
+				.filter(message -> message.getText().toLowerCase(Locale.ROOT).contains(query))
 				.sorted()
 				.toList();
 	}
 
 
 	public void markMessageRead(Long taskId, UserId userId) {
+		if (taskId == null || userId == null || userId.getUserId() == null) {
+			logger.warn("mark task message read skipped: taskId or userId is null");
+			return;
+		}
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		User user = userRepository.findById(userId.getUserId()).orElseThrow();
 		if (task.getUnreadPingTasksMessages() != null) {
@@ -609,11 +719,35 @@ public class ClientService {
 
 
 	public List<FileDto> getClientFiles(Long clientId) {
+		if (clientId == null) {
+			return Collections.emptyList();
+		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		return client.getMessages().stream()
+		return safeCollection(client.getMessages()).stream()
 				.filter(m -> m.getFileUuid() != null)
 				.map(m -> new FileDto(m.getFileUuid(), m.getFileName(), m.getFileType()))
 				.toList();
+	}
+
+
+	private static Map<String, Object> eventPayload(Object... values) {
+		if (values.length % 2 != 0) {
+			throw new IllegalArgumentException("eventPayload requires key-value pairs");
+		}
+		Map<String, Object> payload = new HashMap<>();
+		for (int i = 0; i < values.length; i += 2) {
+			Object key = values[i];
+			if (!(key instanceof String)) {
+				throw new IllegalArgumentException("eventPayload key must be String");
+			}
+			payload.put((String) key, values[i + 1]);
+		}
+		return payload;
+	}
+
+
+	private static <T> Collection<T> safeCollection(Collection<T> collection) {
+		return collection == null ? Collections.emptyList() : collection;
 	}
 
 
@@ -636,7 +770,7 @@ public class ClientService {
 					boolean removed = users.remove(user);
 
 					if (removed) {
-						eventPublisher.publish(TriggerType.USER_CLOSED_DIALOG, Map.of(
+						eventPublisher.publish(TriggerType.USER_CLOSED_DIALOG, eventPayload(
 								"client", client,
 								"user", user
 						));

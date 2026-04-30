@@ -84,25 +84,25 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 
 	@Override
 	public boolean isEnabled() {
-		return isEnabled;
+		return !Boolean.FALSE.equals(isEnabled);
 	}
 
 
 	@Override
 	public boolean isAccountNonExpired() {
-		return isAccountNonExpired;
+		return !Boolean.FALSE.equals(isAccountNonExpired);
 	}
 
 
 	@Override
 	public boolean isAccountNonLocked() {
-		return isAccountNonLocked;
+		return !Boolean.FALSE.equals(isAccountNonLocked);
 	}
 
 
 	@Override
 	public boolean isCredentialsNonExpired() {
-		return isCredentialsNonExpired;
+		return !Boolean.FALSE.equals(isCredentialsNonExpired);
 	}
 
 

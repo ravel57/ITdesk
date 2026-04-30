@@ -32,7 +32,7 @@ public class SystemUser extends User implements Serializable {
 			instance = new SystemUser();
 			repository.save(instance);
 		} else {
-			instance = all.getFirst();
+			instance = all.getFirst();	// FIXME
 		}
 		return instance;
 	}

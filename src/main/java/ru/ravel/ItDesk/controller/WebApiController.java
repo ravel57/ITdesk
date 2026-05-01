@@ -39,11 +39,9 @@ public class WebApiController {
 	private final WhatsappService whatsappService;
 	private final ExportService exportService;
 	private final LlmService llmService;
-//	private final AutomatizationService automatizationService;
-//	private final AutomationQueueService automationQueueService;
 	private final AutomationTriggerService automationTriggerService;
 	private final SlaService slaService;
-	private final TaskRepository taskRepository;
+	private final TaskRepository taskRepository;	// TODO remove from here
 
 
 	@GetMapping("/clients")

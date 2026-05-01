@@ -57,7 +57,7 @@ public class Task {
 	private ZonedDateTime frozenFrom;
 
 	@ManyToOne(fetch = FetchType.EAGER)
-	private Status previusStatus;
+	private Status previousStatus;
 
 	@Builder.Default
 	private ZonedDateTime createdAt =  ZonedDateTime.now();

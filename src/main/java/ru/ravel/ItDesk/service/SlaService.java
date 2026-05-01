@@ -5,10 +5,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.model.Sla;
 import ru.ravel.ItDesk.model.SlaPause;
+import ru.ravel.ItDesk.repository.SlaPauseRepository;
 import ru.ravel.ItDesk.repository.SlaRepository;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.Collection;
+import java.util.Collections;
 
 
 @Service
@@ -16,14 +19,15 @@ import java.time.ZonedDateTime;
 public class SlaService {
 
 	private final SlaRepository slaRepository;
+	private final SlaPauseRepository slaPauseRepository;
 
 
 	@Transactional
 	public void pause(Sla sla, String reason) {
-		if (sla == null) {
+		if (sla == null || sla.getId() == null) {
 			return;
 		}
-		boolean alreadyPaused = sla.getPauses().stream().anyMatch(p -> p.getEndedAt() == null);
+		boolean alreadyPaused = slaPauseRepository.existsBySlaIdAndEndedAtIsNull(sla.getId());
 		if (alreadyPaused) {
 			return;
 		}
@@ -32,44 +36,43 @@ public class SlaService {
 		pause.setStartedAt(ZonedDateTime.now());
 		pause.setEndedAt(null);
 		pause.setReason(reason);
-		sla.getPauses().add(pause);
-		slaRepository.save(sla);
+		slaPauseRepository.saveAndFlush(pause);
 	}
 
 	@Transactional
 	public void resume(Sla sla) {
-		if (sla == null) {
+		if (sla == null || sla.getId() == null) {
 			return;
 		}
-		SlaPause active = sla.getPauses().stream()
-				.filter(p -> p.getEndedAt() == null)
-				.findFirst()
+		SlaPause active = slaPauseRepository.findFirstBySlaIdAndEndedAtIsNull(sla.getId())
 				.orElse(null);
 		if (active == null) {
 			return;
 		}
 		active.setEndedAt(ZonedDateTime.now());
-		slaRepository.save(sla);
+		slaPauseRepository.save(active);
 	}
 
 	@Transactional(readOnly = true)
 	public boolean isPaused(Sla sla) {
-		if (sla == null) {
+		if (sla == null || sla.getId() == null) {
 			return false;
 		}
-		return sla.getPauses().stream().anyMatch(p -> p.getEndedAt() == null);
+		return slaPauseRepository.existsBySlaIdAndEndedAtIsNull(sla.getId());
 	}
 
 	@Transactional(readOnly = true)
 	public Duration getPausedDuration(Sla sla) {
-		if (sla == null) {
+		if (sla == null || sla.getId() == null) {
 			return Duration.ZERO;
 		}
 		ZonedDateTime now = ZonedDateTime.now();
-		long seconds = sla.getPauses().stream().mapToLong(p -> {
-			ZonedDateTime end = (p.getEndedAt() == null) ? now : p.getEndedAt();
-			return Math.max(0, Duration.between(p.getStartedAt(), end).getSeconds());
-		}).sum();
+		long seconds = slaPauseRepository.findAllBySlaId(sla.getId()).stream()
+				.mapToLong(p -> {
+					ZonedDateTime end = p.getEndedAt() == null ? now : p.getEndedAt();
+					return Math.max(0, Duration.between(p.getStartedAt(), end).getSeconds());
+				})
+				.sum();
 		return Duration.ofSeconds(seconds);
 	}
 
@@ -90,6 +93,11 @@ public class SlaService {
 			return Duration.ZERO;
 		}
 		return Duration.between(ZonedDateTime.now(), deadline);
+	}
+
+
+	private Collection<SlaPause> pauses(Sla sla) {
+		return sla.getPauses() == null ? Collections.emptyList() : sla.getPauses();
 	}
 
 }

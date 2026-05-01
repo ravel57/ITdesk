@@ -125,7 +125,7 @@ public class ClientService {
 		}
 		Task olderTask = taskRepository.findById(task.getId()).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-		setSla(client, olderTask);
+//		setSla(client, olderTask);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
@@ -137,6 +137,9 @@ public class ClientService {
 		olderTask.setName(task.getName());
 		olderTask.setDescription(task.getDescription());
 		olderTask.setPriority(task.getPriority());
+		if (olderTask.getSla() == null || !Objects.equals(oldPriority, task.getPriority())) {
+			setSla(client, olderTask);
+		}
 		olderTask.setStatus(task.getStatus());
 		olderTask.setDeadline(task.getDeadline());
 		olderTask.setExecutor(task.getExecutor());
@@ -144,41 +147,41 @@ public class ClientService {
 		olderTask.setLinkedMessageId(task.getLinkedMessageId());
 		olderTask.setFrozen(task.getFrozen());
 		olderTask.setCompleted(task.getCompleted());
-		if (task.getPreviusStatus() != null) {
-			olderTask.setPreviusStatus(task.getPreviusStatus());
+		if (task.getPreviousStatus() != null) {
+			olderTask.setPreviousStatus(task.getPreviousStatus());
 		} else {
-			olderTask.setPreviusStatus(completedStatus);
+			olderTask.setPreviousStatus(completedStatus);
 		}
-		olderTask.setSla(task.getSla());
+//		olderTask.setSla(task.getSla());
 		if (Boolean.TRUE.equals(olderTask.getFrozen())) {
 			if (!Objects.equals(olderTask.getStatus(), frozenStatus) && !Objects.equals(olderTask.getStatus(), completedStatus)) {
-				olderTask.setPreviusStatus(olderTask.getStatus());
+				olderTask.setPreviousStatus(olderTask.getStatus());
 			}
 			olderTask.setStatus(frozenStatus);
 			olderTask.setFrozen(true);
-		} else if (olderTask.getPreviusStatus() != null
+		} else if (olderTask.getPreviousStatus() != null
 				&& Objects.equals(frozenStatus.getId(), olderTask.getStatus() == null ? null : olderTask.getStatus().getId())
 				&& Objects.equals(olderTask.getStatus(), frozenStatus)) {
-			olderTask.setStatus(olderTask.getPreviusStatus());
+			olderTask.setStatus(olderTask.getPreviousStatus());
 		}
 		if (Boolean.TRUE.equals(olderTask.getCompleted())) {
 			if (!Objects.equals(olderTask.getStatus(), completedStatus) && !Objects.equals(olderTask.getStatus(), frozenStatus)) {
-				olderTask.setPreviusStatus(olderTask.getStatus());
+				olderTask.setPreviousStatus(olderTask.getStatus());
 			}
 			if (Boolean.TRUE.equals(olderTask.getFrozen())) {
 				olderTask.setFrozen(false);
 			}
 			olderTask.setStatus(completedStatus);
 			olderTask.setCompleted(true);
-		} else if (olderTask.getPreviusStatus() != null
+		} else if (olderTask.getPreviousStatus() != null
 				&& Boolean.FALSE.equals(olderTask.getFrozen())
-				&& !Objects.equals(olderTask.getPreviusStatus(), completedStatus)
+				&& !Objects.equals(olderTask.getPreviousStatus(), completedStatus)
 				&& Objects.equals(olderTask.getStatus(), completedStatus)) {
-			olderTask.setStatus(olderTask.getPreviusStatus());
+			olderTask.setStatus(olderTask.getPreviousStatus());
 		} else if (Objects.equals(olderTask.getStatus(), completedStatus)
 				&& Objects.equals(olderTask.getStatus() == null ? null : olderTask.getStatus().getId(), completedStatus.getId())) {
 			olderTask.setCompleted(false);
-			olderTask.setStatus(olderTask.getPreviusStatus());
+			olderTask.setStatus(olderTask.getPreviousStatus());
 		}
 		olderTask.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(olderTask);
@@ -273,7 +276,9 @@ public class ClientService {
 		SlaValue slaValue = null;
 		if (organization != null) {
 			Map<Priority, SlaValue> map = organizationService.getSlaByPriority().get(organization);
-			if (map != null) slaValue = map.get(task.getPriority());
+			if (map != null) {
+				slaValue = map.get(task.getPriority());
+			}
 		}
 		if (slaValue == null && DefaultOrganization.getInstance().getSla() != null) {
 			slaValue = DefaultOrganization.getInstance().getSla().get(task.getPriority());

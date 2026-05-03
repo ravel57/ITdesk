@@ -27,4 +27,7 @@ public class LlmRequestBody {
 
 	@JsonProperty("include_debug")
 	private Boolean includeDebug;
+
+	@JsonProperty("instance_name")
+	private String instanceName;
 }

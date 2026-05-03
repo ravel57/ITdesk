@@ -91,12 +91,9 @@ public class OrganizationService {
 	public void setSla(@NotNull OrganizationPriorityDuration dto) {
 		Organization organization;
 		if (dto.getOrganization() != null) {
-			organization = organizationRepository.findById(dto.getOrganization().getId()).orElseThrow();
+			organization = organizationRepository.findLockedById(dto.getOrganization().getId()).orElseThrow();
 		} else {
-			organization = defaultOrganizationRepository.findAll()
-					.stream()
-					.findFirst()
-					.orElseThrow();
+			organization = defaultOrganizationRepository.findLocked().orElseThrow();
 		}
 		Priority priority = priorityRepository.findById(dto.getPriority().getId()).orElseThrow();
 		BigDecimal value = dto.getValue() == null ? BigDecimal.ZERO : dto.getValue();
@@ -107,15 +104,17 @@ public class OrganizationService {
 				value,
 				unit
 		);
-		if (updated == 0) {
-			OrganizationSla organizationSla = new OrganizationSla(
-					organization,
-					priority,
-					value,
-					unit
-			);
-			organizationSlaRepository.save(organizationSla);
+		if (updated > 0) {
+			return;
 		}
+		OrganizationSla organizationSla = new OrganizationSla(
+				organization,
+				priority,
+				value,
+				unit
+		);
+
+		organizationSlaRepository.save(organizationSla);
 	}
 
 }

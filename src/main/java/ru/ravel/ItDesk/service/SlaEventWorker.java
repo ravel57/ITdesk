@@ -10,6 +10,7 @@ import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 
@@ -22,18 +23,21 @@ public class SlaEventWorker {
 	private final EventPublisher eventPublisher;
 	private final AutomationOutboxRepository outboxRepository;
 
-	@Scheduled(fixedDelayString = "${sla.worker.delay-ms:60000}")
+	@Scheduled(fixedDelayString = "${app.sla.worker.delay-ms:60000}")
 	public void checkSla() {
-		var tasks = taskRepository.findAllActiveWithSla();
+		List<Task> tasks = taskRepository.findAllActiveWithSla();
 		for (Task task : tasks) {
 			Sla sla = task.getSla();
 			if (sla == null) {
 				continue;
 			}
+			if (slaService.isPaused(sla)) {
+				continue;
+			}
 			Duration remaining = slaService.remaining(sla);
 			if (remaining.isNegative() || remaining.isZero()) {
 				publishOnce(task, sla, TriggerType.SLA_BREACHED, remaining);
-			} else if (remaining.toMinutes() <= 30) {
+			} else if (remaining.compareTo(sla.getDuration().dividedBy(2)) <= 0) {
 				publishOnce(task, sla, TriggerType.SLA_WARNING, remaining);
 			}
 		}

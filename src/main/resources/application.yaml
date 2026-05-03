@@ -79,6 +79,9 @@ app:
   llm-url: ${LLM_URL:''}
   automation:
     worker-delay-ms: 200
+  sla:
+    worker:
+      delay-ms: 60000
 
 
 logging:

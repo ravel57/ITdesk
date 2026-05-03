@@ -24,10 +24,13 @@ public class TaskFilter {
 
 	String label;
 
+	String filterJoinOperator;
+
 	@JdbcTypeCode(SqlTypes.JSON)
 	List<Filter> selectedOptions;
 
 	@Data
+	@NoArgsConstructor
 	@AllArgsConstructor
 	public static class Filter {
 		String label;

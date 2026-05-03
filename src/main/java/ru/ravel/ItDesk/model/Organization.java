@@ -29,12 +29,6 @@ public class Organization implements Comparable<Organization>, Serializable {
 
 	protected String name;
 
-	@ElementCollection(fetch = FetchType.EAGER)
-	@CollectionTable(name = "organization_sla", joinColumns = @JoinColumn(name = "organization_id"))
-	@MapKeyEnumerated(EnumType.STRING)
-	@MapKeyColumn(name = "priority")
-	private Map<Priority, SlaValue> sla = new HashMap<>();
-
 	@Builder.Default
 	protected Integer orderNumber = 1;
 

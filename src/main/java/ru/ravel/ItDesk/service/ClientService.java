@@ -272,16 +272,37 @@ public class ClientService {
 		if (task == null) {
 			return;
 		}
+		Map<Organization, Map<Priority, SlaValue>> slaByPriority = organizationService.getSlaByPriority();
 		Organization organization = client.getOrganization();
 		SlaValue slaValue = null;
 		if (organization != null) {
-			Map<Priority, SlaValue> map = organizationService.getSlaByPriority().get(organization);
-			if (map != null) {
-				slaValue = map.get(task.getPriority());
+			Map<Priority, SlaValue> organizationSla = slaByPriority.entrySet().stream()
+					.filter(entry -> Objects.equals(entry.getKey().getId(), organization.getId()))
+					.map(Map.Entry::getValue)
+					.findFirst()
+					.orElse(null);
+			if (organizationSla != null) {
+				slaValue = organizationSla.entrySet().stream()
+						.filter(entry -> Objects.equals(entry.getKey().getId(), task.getPriority().getId()))
+						.map(Map.Entry::getValue)
+						.findFirst()
+						.orElse(null);
 			}
 		}
-		if (slaValue == null && DefaultOrganization.getInstance().getSla() != null) {
-			slaValue = DefaultOrganization.getInstance().getSla().get(task.getPriority());
+		if (slaValue == null) {
+			Map<Priority, SlaValue> defaultSla = slaByPriority.entrySet().stream()
+					.filter(entry -> entry.getKey() instanceof DefaultOrganization)
+					.map(Map.Entry::getValue)
+					.findFirst()
+					.orElse(null);
+
+			if (defaultSla != null) {
+				slaValue = defaultSla.entrySet().stream()
+						.filter(entry -> Objects.equals(entry.getKey().getId(), task.getPriority().getId()))
+						.map(Map.Entry::getValue)
+						.findFirst()
+						.orElse(null);
+			}
 		}
 		Duration duration = (slaValue == null) ? Duration.ZERO : slaValue.toDuration();
 		Sla sla = Sla.builder()

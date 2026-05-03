@@ -3,21 +3,15 @@ package ru.ravel.ItDesk.service;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.OrganizationPriorityDuration;
 import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.repository.ClientRepository;
-import ru.ravel.ItDesk.repository.DefaultOrganizationRepository;
-import ru.ravel.ItDesk.repository.OrganizationRepository;
-import ru.ravel.ItDesk.repository.PriorityRepository;
+import ru.ravel.ItDesk.repository.*;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 
 @Service
@@ -28,6 +22,7 @@ public class OrganizationService {
 	private final PriorityRepository priorityRepository;
 	private final DefaultOrganizationRepository defaultOrganizationRepository;
 	private final ClientRepository clientRepository;
+	private final OrganizationSlaRepository organizationSlaRepository;
 
 
 	public List<Organization> getOrganizations() {
@@ -56,26 +51,71 @@ public class OrganizationService {
 
 	public Map<Organization, Map<Priority, SlaValue>> getSlaByPriority() {
 		Map<Organization, Map<Priority, SlaValue>> slaByOrganization = new HashMap<>();
-		organizationRepository.findAll().stream()
+		List<Organization> organizations = organizationRepository.findAll().stream()
 				.filter(organization -> !(organization instanceof DefaultOrganization))
-				.forEach(org -> slaByOrganization.put(org, org.getSla()));
-		slaByOrganization.put(DefaultOrganization.getInstance(), DefaultOrganization.getInstance().getSla());
+				.sorted()
+				.toList();
+		for (Organization organization : organizations) {
+			slaByOrganization.put(
+					organization,
+					getSlaMapForOrganization(organization.getId())
+			);
+		}
+		DefaultOrganization defaultOrganization = defaultOrganizationRepository.findAll()
+				.stream()
+				.findFirst()
+				.orElseThrow();
+		slaByOrganization.put(
+				defaultOrganization,
+				getSlaMapForOrganization(defaultOrganization.getId())
+		);
 		return slaByOrganization;
 	}
 
 
+	private Map<Priority, SlaValue> getSlaMapForOrganization(Long organizationId) {
+		Map<Priority, SlaValue> result = new HashMap<>();
+		organizationSlaRepository.findAllByOrganizationId(organizationId)
+				.forEach(organizationSla -> result.put(
+						organizationSla.getPriority(),
+						new SlaValue(
+								organizationSla.getValue(),
+								organizationSla.getUnit()
+						)
+				));
+		return result;
+	}
+
+
+	@Transactional
 	public void setSla(@NotNull OrganizationPriorityDuration dto) {
 		Organization organization;
 		if (dto.getOrganization() != null) {
 			organization = organizationRepository.findById(dto.getOrganization().getId()).orElseThrow();
 		} else {
-			organization = DefaultOrganization.getInstance();
+			organization = defaultOrganizationRepository.findAll()
+					.stream()
+					.findFirst()
+					.orElseThrow();
 		}
-		Priority priority = dto.getPriority();
+		Priority priority = priorityRepository.findById(dto.getPriority().getId()).orElseThrow();
 		BigDecimal value = dto.getValue() == null ? BigDecimal.ZERO : dto.getValue();
 		SlaUnit unit = dto.getUnit() == null ? SlaUnit.HOURS : dto.getUnit();
-		organization.getSla().put(priority, new SlaValue(value, unit));
-		organizationRepository.save(organization);
+		int updated = organizationSlaRepository.updateSlaValue(
+				organization.getId(),
+				priority.getId(),
+				value,
+				unit
+		);
+		if (updated == 0) {
+			OrganizationSla organizationSla = new OrganizationSla(
+					organization,
+					priority,
+					value,
+					unit
+			);
+			organizationSlaRepository.save(organizationSla);
+		}
 	}
 
 }

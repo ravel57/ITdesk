@@ -125,7 +125,6 @@ public class ClientService {
 		}
 		Task olderTask = taskRepository.findById(task.getId()).orElseThrow();
 		Client client = clientsRepository.findById(clientId).orElseThrow();
-//		setSla(client, olderTask);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
@@ -140,19 +139,27 @@ public class ClientService {
 		if (olderTask.getSla() == null || !Objects.equals(oldPriority, task.getPriority())) {
 			setSla(client, olderTask);
 		}
-		olderTask.setStatus(task.getStatus());
+		boolean reopening = Boolean.TRUE.equals(olderTask.getCompleted()) && Boolean.FALSE.equals(task.getCompleted());
 		olderTask.setDeadline(task.getDeadline());
 		olderTask.setExecutor(task.getExecutor());
 		olderTask.setTags(task.getTags());
 		olderTask.setLinkedMessageId(task.getLinkedMessageId());
 		olderTask.setFrozen(task.getFrozen());
 		olderTask.setCompleted(task.getCompleted());
-		if (task.getPreviousStatus() != null) {
+		if (reopening) {
+			olderTask.setStatus(
+					olderTask.getPreviousStatus() != null && !Objects.equals(olderTask.getPreviousStatus(), completedStatus) && !Objects.equals(olderTask.getPreviousStatus(), frozenStatus)
+							? olderTask.getPreviousStatus()
+							: task.getStatus()
+			);
+		} else {
+			olderTask.setStatus(task.getStatus());
+		}
+		if (task.getPreviousStatus() != null && !Objects.equals(task.getPreviousStatus(), completedStatus) && !Objects.equals(task.getPreviousStatus(), frozenStatus)) {
 			olderTask.setPreviousStatus(task.getPreviousStatus());
 		} else {
 			olderTask.setPreviousStatus(completedStatus);
 		}
-//		olderTask.setSla(task.getSla());
 		if (Boolean.TRUE.equals(olderTask.getFrozen())) {
 			if (!Objects.equals(olderTask.getStatus(), frozenStatus) && !Objects.equals(olderTask.getStatus(), completedStatus)) {
 				olderTask.setPreviousStatus(olderTask.getStatus());
@@ -239,7 +246,7 @@ public class ClientService {
 					"client", client
 			));
 		}
-		if (Boolean.TRUE.equals(oldCompleted) && Boolean.FALSE.equals(savedTask.getCompleted())) {
+		if (Boolean.TRUE.equals(oldCompleted) && !savedTask.getCompleted()) {
 			eventPublisher.publish(TriggerType.TASK_REOPENED, eventPayload(
 					"task", savedTask,
 					"client", client

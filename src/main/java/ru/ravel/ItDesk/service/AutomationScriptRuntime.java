@@ -12,10 +12,7 @@ import ru.ravel.ItDesk.model.automatosation.TriggerFunctionsType;
 import ru.ravel.ItDesk.model.automatosation.TriggerOperationType;
 
 import java.math.BigDecimal;
-import java.time.DayOfWeek;
-import java.time.Duration;
-import java.time.LocalTime;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -595,6 +592,11 @@ public class AutomationScriptRuntime {
 							continue;
 						}
 
+						if ("last".equalsIgnoreCase(part)) {
+							current = ctx -> lastOf(receiver.eval(ctx));
+							continue;
+						}
+
 						TriggerFunctionsType fn = mapFn(part);
 
 						current = ctx -> {
@@ -762,6 +764,52 @@ public class AutomationScriptRuntime {
 		return 0;
 	}
 
+	private static Object lastOf(Object value) {
+		switch (value) {
+			case null -> {
+				return null;
+			}
+			case JsonNode node -> {
+				if (node.isArray()) {
+					if (node.isEmpty()) {
+						return null;
+					}
+					return unwrap(node.get(node.size() - 1));
+				}
+				if (node.isTextual()) {
+					String s = node.asText();
+					return s.isEmpty() ? null : String.valueOf(s.charAt(s.length() - 1));
+				}
+				return null;
+			}
+			case List<?> list -> {
+				if (list.isEmpty()) {
+					return null;
+				}
+				return list.get(list.size() - 1);
+			}
+			case Collection<?> collection -> {
+				if (collection.isEmpty()) {
+					return null;
+				}
+				Object last = null;
+				for (Object item : collection) {
+					last = item;
+				}
+				return last;
+			}
+			case CharSequence s -> {
+				if (s.isEmpty()) {
+					return null;
+				}
+				return String.valueOf(s.charAt(s.length() - 1));
+			}
+			default -> {
+			}
+		}
+		return null;
+	}
+
 	private static Object unwrap(JsonNode n) {
 		if (n == null || n.isNull()) {
 			return null;
@@ -893,63 +941,6 @@ public class AutomationScriptRuntime {
 				String suf = args.isEmpty() ? null : toStr(args.getFirst());
 				yield s != null && suf != null && s.endsWith(suf);
 			}
-			case ANY_OF -> anyOf(target, args);
-			case NONE_OF -> !anyOf(target, args);
-			case ALL_OF -> allOf(target, args);
-
-			case IS_NULL -> target == null;
-			case NOT_NULL -> target != null;
-
-			case IS_EMPTY -> isEmpty(target);
-			case NOT_EMPTY -> !isEmpty(target);
-
-			case IS_TRUE -> asBool(target);
-			case IS_FALSE -> !asBool(target);
-
-			case NOW -> ZonedDateTime.now();
-
-			case HOUR -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
-				yield dateTime == null ? null : dateTime.getHour();
-			}
-
-			case DAY_OF_WEEK -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
-				yield dateTime == null ? null : dateTime.getDayOfWeek().getValue();
-			}
-
-			case IS_WEEKEND -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
-				if (dateTime == null) {
-					yield false;
-				}
-				DayOfWeek day = dateTime.getDayOfWeek();
-				yield day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
-			}
-
-			case IS_WORKING_HOURS -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
-				if (dateTime == null) {
-					dateTime = ZonedDateTime.now();
-				}
-				DayOfWeek day = dateTime.getDayOfWeek();
-				LocalTime time = dateTime.toLocalTime();
-				boolean workingDay = day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY;
-				boolean workingTime = !time.isBefore(LocalTime.of(9, 0)) && time.isBefore(LocalTime.of(18, 0));
-				yield workingDay && workingTime;
-			}
-
-			case IS_AFTER_HOURS -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
-				if (dateTime == null) {
-					dateTime = ZonedDateTime.now();
-				}
-				DayOfWeek day = dateTime.getDayOfWeek();
-				LocalTime time = dateTime.toLocalTime();
-				boolean weekend = day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
-				boolean afterHours = time.isBefore(LocalTime.of(9, 0)) || !time.isBefore(LocalTime.of(18, 0));
-				yield weekend || afterHours;
-			}
 
 			case CONTAINS -> {
 				String s = toStr(target);
@@ -964,6 +955,38 @@ public class AutomationScriptRuntime {
 			case LOWER -> {
 				String s = toStr(target);
 				yield s == null ? null : s.toLowerCase(Locale.ROOT);
+			}
+
+			case UPPER -> {
+				String s = toStr(target);
+				yield s == null ? null : s.toUpperCase(Locale.ROOT);
+			}
+
+			case TRIM -> {
+				String s = toStr(target);
+				yield s == null ? null : s.trim();
+			}
+
+			case LENGTH -> sizeOf(target);
+
+			case LAST -> lastOf(target);
+
+			case EQUALS_IGNORE_CASE -> {
+				String left = toStr(target);
+				String right = args.isEmpty() ? null : toStr(args.getFirst());
+				yield left != null && right != null && left.equalsIgnoreCase(right);
+			}
+
+			case MATCHES -> {
+				String text = toStr(target);
+				String regex = args.isEmpty() ? null : toStr(args.getFirst());
+				yield matchesRegex(text, regex);
+			}
+
+			case CONTAINS_REGEX -> {
+				String text = toStr(target);
+				String regex = args.isEmpty() ? null : toStr(args.getFirst());
+				yield containsRegex(text, regex);
 			}
 
 			case DAYS_BETWEEN -> {
@@ -988,12 +1011,153 @@ public class AutomationScriptRuntime {
 				yield Duration.between(from, to).toMinutes();
 			}
 
+			case DAYS_SINCE -> {
+				ZonedDateTime from = toZonedDateTime(target);
+				if (from == null) {
+					yield null;
+				}
+				yield Duration.between(from, ZonedDateTime.now()).toDays();
+			}
+
+			case MINUTES_SINCE -> {
+				ZonedDateTime from = toZonedDateTime(target);
+				if (from == null) {
+					yield null;
+				}
+				yield Duration.between(from, ZonedDateTime.now()).toMinutes();
+			}
+
 			case HAS_TAG -> {
 				String tagName = args.isEmpty() ? null : toStr(args.getFirst());
 				yield hasTag(target, tagName);
 			}
 
 			case NO_OPEN_TASKS -> noOpenTasks(root);
+
+			case HAS_OPEN_TASKS -> !noOpenTasks(root);
+
+			case OPEN_TASKS_COUNT -> sizeOf(readByPathStatic(root, "client.openTasks"));
+
+			case MESSAGES_COUNT -> sizeOf(readByPathStatic(root, "client.messages"));
+
+			case INCOME_MESSAGES_COUNT -> sizeOf(readByPathStatic(root, "client.incomeMessages"));
+
+			case OUTCOME_MESSAGES_COUNT -> sizeOf(readByPathStatic(root, "client.outcomeMessages"));
+
+			case IS_FIRST_MESSAGE -> {
+				Object count = sizeOf(readByPathStatic(root, "client.incomeMessages"));
+				yield toBigDecimal(count) != null && toBigDecimal(count).compareTo(BigDecimal.ONE) == 0;
+			}
+
+			case IS_REPEAT_MESSAGE -> {
+				Object count = sizeOf(readByPathStatic(root, "client.incomeMessages"));
+				BigDecimal value = toBigDecimal(count);
+				yield value != null && value.compareTo(BigDecimal.ONE) > 0;
+			}
+
+			case HAS_ATTACHMENT -> hasAttachment(root, target);
+
+			case IS_IMAGE -> isImage(target);
+
+			case IS_DOCUMENT -> isDocument(target);
+
+			case IS_TELEGRAM -> messageFromEquals(root, target, "TELEGRAM");
+
+			case IS_EMAIL -> messageFromEquals(root, target, "EMAIL");
+
+			case IS_WHATSAPP -> messageFromEquals(root, target, "WHATSAPP");
+
+			case IS_TODAY -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					yield false;
+				}
+
+				ZonedDateTime now = ZonedDateTime.now(dateTime.getZone());
+				yield dateTime.toLocalDate().equals(now.toLocalDate());
+			}
+
+			case IS_BEFORE -> {
+				ZonedDateTime left = toZonedDateTime(target);
+				ZonedDateTime right = args.isEmpty() ? null : toZonedDateTime(args.getFirst());
+				yield left != null && right != null && left.isBefore(right);
+			}
+
+			case IS_AFTER -> {
+				ZonedDateTime left = toZonedDateTime(target);
+				ZonedDateTime right = args.isEmpty() ? null : toZonedDateTime(args.getFirst());
+				yield left != null && right != null && left.isAfter(right);
+			}
+
+			case ANY_OF -> anyOf(target, args);
+
+			case NONE_OF -> !anyOf(target, args);
+
+			case ALL_OF -> allOf(target, args);
+
+			case IS_NULL -> target == null;
+
+			case NOT_NULL -> target != null;
+
+			case IS_EMPTY -> isEmpty(target);
+
+			case NOT_EMPTY -> !isEmpty(target);
+
+			case IS_TRUE -> asBool(target);
+
+			case IS_FALSE -> !asBool(target);
+
+			case NOW -> ZonedDateTime.now();
+
+			case HOUR -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				yield dateTime == null ? null : dateTime.getHour();
+			}
+
+			case DAY_OF_WEEK -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				yield dateTime == null ? null : dateTime.getDayOfWeek().getValue();
+			}
+
+			case IS_WEEKEND -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					yield false;
+				}
+
+				DayOfWeek day = dateTime.getDayOfWeek();
+				yield day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
+			}
+
+			case IS_WORKING_HOURS -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					dateTime = ZonedDateTime.now();
+				}
+
+				DayOfWeek day = dateTime.getDayOfWeek();
+				LocalTime time = dateTime.toLocalTime();
+
+				boolean workingDay = day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY;
+				boolean workingTime = !time.isBefore(LocalTime.of(9, 0)) && time.isBefore(LocalTime.of(18, 0));
+
+				yield workingDay && workingTime;
+			}
+
+			case IS_AFTER_HOURS -> {
+				ZonedDateTime dateTime = toZonedDateTime(target);
+				if (dateTime == null) {
+					dateTime = ZonedDateTime.now();
+				}
+
+				DayOfWeek day = dateTime.getDayOfWeek();
+				LocalTime time = dateTime.toLocalTime();
+
+				boolean weekend = day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
+				boolean afterHours = time.isBefore(LocalTime.of(9, 0)) || !time.isBefore(LocalTime.of(18, 0));
+
+				yield weekend || afterHours;
+			}
 		};
 	}
 
@@ -1037,6 +1201,153 @@ public class AutomationScriptRuntime {
 		return true;
 	}
 
+	private static boolean matchesRegex(String text, String regex) {
+		if (text == null || regex == null || regex.isBlank()) {
+			return false;
+		}
+
+		try {
+			return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+					.matcher(text)
+					.matches();
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	private static boolean containsRegex(String text, String regex) {
+		if (text == null || regex == null || regex.isBlank()) {
+			return false;
+		}
+
+		try {
+			return Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+					.matcher(text)
+					.find();
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	private static boolean hasAttachment(JsonNode root, Object target) {
+		JsonNode messageNode = null;
+
+		if (target instanceof JsonNode node) {
+			messageNode = node;
+		}
+
+		if (messageNode == null) {
+			messageNode = readByPathStatic(root, "message");
+		}
+
+		if (messageNode == null || messageNode.isNull()) {
+			return false;
+		}
+
+		return hasNonBlankField(messageNode, "fileUuid")
+				|| hasNonBlankField(messageNode, "fileName")
+				|| hasNonBlankField(messageNode, "fileType");
+	}
+
+	private static boolean hasNonBlankField(JsonNode node, String field) {
+		JsonNode value = node.get(field);
+		return value != null && !value.isNull() && !value.asText("").isBlank();
+	}
+
+	private static boolean isImage(Object target) {
+		String value = extractFileTypeOrName(target);
+		if (value == null) {
+			return false;
+		}
+
+		String s = value.toLowerCase(Locale.ROOT);
+
+		return s.startsWith("image/")
+				|| s.endsWith(".jpg")
+				|| s.endsWith(".jpeg")
+				|| s.endsWith(".png")
+				|| s.endsWith(".gif")
+				|| s.endsWith(".webp")
+				|| s.endsWith(".bmp");
+	}
+
+	private static boolean isDocument(Object target) {
+		String value = extractFileTypeOrName(target);
+		if (value == null) {
+			return false;
+		}
+
+		String s = value.toLowerCase(Locale.ROOT);
+
+		return s.equals("application/pdf")
+				|| s.contains("word")
+				|| s.contains("excel")
+				|| s.contains("spreadsheet")
+				|| s.contains("document")
+				|| s.endsWith(".pdf")
+				|| s.endsWith(".doc")
+				|| s.endsWith(".docx")
+				|| s.endsWith(".xls")
+				|| s.endsWith(".xlsx")
+				|| s.endsWith(".txt")
+				|| s.endsWith(".rtf");
+	}
+
+	private static String extractFileTypeOrName(Object target) {
+		if (target == null) {
+			return null;
+		}
+
+		if (target instanceof JsonNode node) {
+			JsonNode fileType = node.get("fileType");
+			if (fileType != null && !fileType.isNull() && !fileType.asText("").isBlank()) {
+				return fileType.asText();
+			}
+
+			JsonNode type = node.get("type");
+			if (type != null && !type.isNull() && !type.asText("").isBlank()) {
+				return type.asText();
+			}
+
+			JsonNode fileName = node.get("fileName");
+			if (fileName != null && !fileName.isNull() && !fileName.asText("").isBlank()) {
+				return fileName.asText();
+			}
+
+			JsonNode name = node.get("name");
+			if (name != null && !name.isNull() && !name.asText("").isBlank()) {
+				return name.asText();
+			}
+
+			return null;
+		}
+
+		return toStr(target);
+	}
+
+	private static boolean messageFromEquals(JsonNode root, Object target, String expected) {
+		String value = null;
+
+		if (target != null) {
+			value = toStr(target);
+		}
+
+		if (value == null || value.isBlank()) {
+			JsonNode node = readByPathStatic(root, "client.messageFrom");
+			if (node != null && !node.isNull()) {
+				value = node.asText();
+			}
+		}
+
+		if (value == null || value.isBlank()) {
+			JsonNode node = readByPathStatic(root, "message.messageFrom");
+			if (node != null && !node.isNull()) {
+				value = node.asText();
+			}
+		}
+
+		return value != null && value.equalsIgnoreCase(expected);
+	}
 
 	private static boolean hasTag(Object target, String tagName) {
 		if (target == null || tagName == null || tagName.isBlank()) {
@@ -1120,13 +1431,50 @@ public class AutomationScriptRuntime {
 			case ZonedDateTime zdt -> {
 				return zdt;
 			}
+			case JsonNode node -> {
+				if (node.isTextual()) {
+					return toZonedDateTime(node.asText());
+				}
+				if (node.isNumber()) {
+					try {
+						return ZonedDateTime.ofInstant(
+								Instant.ofEpochMilli(node.asLong()),
+								ZoneId.systemDefault()
+						);
+					} catch (Exception ignored) {
+						return null;
+					}
+				}
+				return null;
+			}
+
 			case String s -> {
 				try {
 					return ZonedDateTime.parse(s);
 				} catch (Exception ignored) {
+				}
+				try {
+					return OffsetDateTime.parse(s).toZonedDateTime();
+				} catch (Exception ignored) {
+				}
+				try {
+					return LocalDateTime.parse(s).atZone(ZoneId.systemDefault());
+				} catch (Exception ignored) {
+				}
+				return null;
+			}
+
+			case Number n -> {
+				try {
+					return ZonedDateTime.ofInstant(
+							Instant.ofEpochMilli(n.longValue()),
+							ZoneId.systemDefault()
+					);
+				} catch (Exception ignored) {
 					return null;
 				}
 			}
+
 			case null, default -> {
 				return null;
 			}

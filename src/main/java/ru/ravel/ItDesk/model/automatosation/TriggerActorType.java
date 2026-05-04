@@ -5,5 +5,12 @@ public enum TriggerActorType {
 	AGENT,           // сотрудник поддержки
 	CLIENT,          // клиент (внешний пользователь)
 	BOT,             // telegram bot / whatsapp bot
-	INTEGRATION      // внешняя система
+	INTEGRATION,     // внешняя система
+
+	ADMIN,
+	AUTOMATION,
+	SCHEDULER,
+	WEBHOOK,
+	API,
+	;
 }

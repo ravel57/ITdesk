@@ -51,5 +51,33 @@ public enum TriggerActionType {
 
 	// ---- композиция ----
 	RUN_MACRO,                       // выполнить макрос как действие
-	RUN_RULE                         // выполнить другое правило (осторожно с циклами)
+	RUN_RULE,                         // выполнить другое правило (осторожно с циклами)
+
+	CREATE_TASK_IF_NO_OPEN_TASKS,
+	ADD_TAG_TO_OPEN_TASKS,
+	REMOVE_TAG_FROM_OPEN_TASKS,
+	SET_OPEN_TASKS_PRIORITY,
+	SET_OPEN_TASKS_STATUS,
+
+	CLOSE_TASK,
+	REOPEN_TASK,
+	DELETE_TASK,
+
+	ADD_CLIENT_TAG,
+	REMOVE_CLIENT_TAG,
+	SET_CLIENT_ASSIGNEE,
+	CLEAR_CLIENT_ASSIGNEE,
+	BLOCK_CLIENT,
+	UNBLOCK_CLIENT,
+
+	SEND_CLIENT_MESSAGE,
+
+	CREATE_KNOWLEDGE_ARTICLE,
+	UPDATE_KNOWLEDGE_ARTICLE,
+
+	WAIT,
+	DELAY_UNTIL,
+	STOP_RULES,
+	STOP_PROCESSING,
+	;
 }

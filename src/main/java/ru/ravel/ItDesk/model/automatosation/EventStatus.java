@@ -6,4 +6,10 @@ public enum EventStatus {
 	DONE,
 	FAILED,
 	CANCELLED,
+
+	RETRYING,
+	DEAD_LETTER,
+	SKIPPED,
+	EXPIRED,
+	;
 }

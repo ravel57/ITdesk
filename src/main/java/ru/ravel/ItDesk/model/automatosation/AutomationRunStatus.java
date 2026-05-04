@@ -9,5 +9,12 @@ public enum AutomationRunStatus {
 	FAILED,
 	RETRYING,
 	CANCELED,
-	TIMEOUT
+	TIMEOUT,
+
+	WAITING,
+	DELAYED,
+	BLOCKED,
+	DEAD_LETTER,
+	DRY_RUN,
+	;
 }

@@ -4,4 +4,10 @@ public enum TriggerEntityType {
 	CLIENT,
 	MESSAGE,
 	TASK,
+	USER,
+	TAG,
+	SLA,
+	KNOWLEDGE,
+	FILE,
+	ORGANIZATION
 }

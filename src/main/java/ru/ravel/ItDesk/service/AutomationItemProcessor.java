@@ -18,6 +18,8 @@ import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 
 
@@ -67,15 +69,40 @@ public class AutomationItemProcessor {
 				return;
 			}
 			Client foundClient = foundClientOpt.get();
-			JsonNode messagesNode = objectMapper.valueToTree(foundClient.getMessages());
+
+			List<Message> messages = foundClient.getMessages().stream()
+					.sorted(Comparator.comparing(
+							Message::getDate,
+							Comparator.nullsLast(Comparator.naturalOrder())
+					))
+					.toList();
+			JsonNode messagesNode = objectMapper.valueToTree(messages);
 			event.getPayload().withObject("client").set("messages", messagesNode);
-			JsonNode incomeMessagesNode = objectMapper.valueToTree(foundClient.getMessages().stream().filter(m -> !m.getIsSent()).toList());
+			JsonNode incomeMessagesNode = objectMapper.valueToTree(
+					messages.stream()
+							.filter(m -> !Boolean.TRUE.equals(m.getIsSent()))
+							.toList()
+			);
 			event.getPayload().withObject("client").set("incomeMessages", incomeMessagesNode);
-			JsonNode outcomeMessagesNode = objectMapper.valueToTree(foundClient.getMessages().stream().filter(Message::getIsSent).toList());
+			JsonNode outcomeMessagesNode = objectMapper.valueToTree(
+					messages.stream()
+							.filter(m -> Boolean.TRUE.equals(m.getIsSent()))
+							.toList()
+			);
 			event.getPayload().withObject("client").set("outcomeMessages", outcomeMessagesNode);
-			JsonNode tasksNode = objectMapper.valueToTree(foundClient.getTasks());
+			List<ru.ravel.ItDesk.model.Task> tasks = foundClient.getTasks().stream()
+					.sorted(Comparator.comparing(
+							ru.ravel.ItDesk.model.Task::getId,
+							Comparator.nullsLast(Comparator.naturalOrder())
+					))
+					.toList();
+			JsonNode tasksNode = objectMapper.valueToTree(tasks);
 			event.getPayload().withObject("client").set("tasks", tasksNode);
-			JsonNode openTasksNode = objectMapper.valueToTree(foundClient.getTasks().stream().filter(task -> !task.getCompleted()).toList());
+			JsonNode openTasksNode = objectMapper.valueToTree(
+					tasks.stream()
+							.filter(task -> !Boolean.TRUE.equals(task.getCompleted()))
+							.toList()
+			);
 			event.getPayload().withObject("client").set("openTasks", openTasksNode);
 		}
 		automationTriggerRepository

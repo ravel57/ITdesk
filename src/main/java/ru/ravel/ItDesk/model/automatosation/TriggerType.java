@@ -15,6 +15,11 @@ public enum TriggerType {
 	// ---- SLA / таймеры ----
 	SLA_WARNING,                     // скоро нарушится
 	SLA_BREACHED,                    // нарушен
+	SLA_STARTED,
+	SLA_PAUSED,
+	SLA_RESUMED,
+	SLA_CANCELLED,
+	SLA_COMPLETED,
 	INACTIVITY_TIMEOUT,              // нет ответа X минут/часов
 	SCHEDULED_CRON,                  // по расписанию (cron)
 
@@ -33,6 +38,9 @@ public enum TriggerType {
 	TASK_COMPLETED,
 	TASK_OVERDUE,
 	TASK_MESSAGE_MENTIONED_USER,
+	TASK_COMMENT_ADDED,
+	TASK_COMMENT_DELETED,
+	TASK_EXECUTOR_CHANGED,
 
 	// ---- клиенты ----
 	CLIENT_CREATED,
@@ -48,8 +56,24 @@ public enum TriggerType {
 	// ---- база знаний ----
 	KNOWLEDGE_BASE_ARTICLE_CREATED,
 	KNOWLEDGE_BASE_ARTICLE_UPDATED,
+	KNOWLEDGE_BASE_ARTICLE_DELETED,
+	KNOWLEDGE_BASE_ARTICLE_PUBLISHED,
 
 	// ---- интеграции ----
 	WEBHOOK_RECEIVED,                // входящий вебхук
 	INTEGRATION_EVENT_RECEIVED,      // event bus / сторонние события
+
+	// ---- расписание ----
+	WORKING_HOURS_STARTED,
+	WORKING_HOURS_ENDED,
+
+	// ---- автоматизации ----
+	AUTOMATION_RULE_CREATED,
+	AUTOMATION_RULE_UPDATED,
+	AUTOMATION_RULE_DISABLED,
+	AUTOMATION_RULE_FAILED,
+
+	// ---- система ----
+	SYSTEM_MAINTENANCE_STARTED,
+	SYSTEM_MAINTENANCE_ENDED
 }

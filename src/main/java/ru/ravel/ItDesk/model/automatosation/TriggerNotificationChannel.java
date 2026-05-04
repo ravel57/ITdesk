@@ -5,9 +5,10 @@ public enum TriggerNotificationChannel {
 	EMAIL,
 	TELEGRAM,
 	WHATSAPP,
-//	WEB_PUSH,        // системные push-уведомления браузера
-//	SMS,             // если появится
-//	SLACK,
-//	MS_TEAMS,
-//	WEBHOOK          // если “уведомление” = webhook
+	WEB_PUSH,        // системные push-уведомления браузера
+	SMS,             // если появится
+	SLACK,
+	MS_TEAMS,
+	WEBHOOK,         // если “уведомление” = webhook
+	;
 }

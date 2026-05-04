@@ -13,6 +13,7 @@ import ru.ravel.ItDesk.model.automatosation.TriggerOperationType;
 
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -122,7 +123,7 @@ public class AutomationScriptRuntime {
 				continue;
 			}
 			if (c == ',') {
-				out.add(parseLiteral(cur.toString().trim()));
+				out.add(parseArg(cur.toString().trim(), payloadRoot));
 				cur.setLength(0);
 				continue;
 			}
@@ -539,24 +540,17 @@ public class AutomationScriptRuntime {
 				return ctx -> null;
 			}
 
-			// ident: function(...) OR path (client.messages.size())
+						// ident: function(...) OR path OR rust-like method call:
+			// contains(message.text, 'x')
+			// message.text.contains('x')
+			// message.text.lower().contains('x')
 			if (cur.type == TokType.IDENT) {
 				String name = cur.text;
 				consume();
 
-				// function call: starts_with(x,y)
+				// function call: contains(message.text, 'ошибка')
 				if (cur.type == TokType.LPAREN) {
-					consume();
-					List<ExprNode> args = new ArrayList<>();
-					if (cur.type != TokType.RPAREN) {
-						args.add(parseExpression());
-						while (cur.type == TokType.COMMA) {
-							consume();
-							args.add(parseExpression());
-						}
-					}
-					expect(TokType.RPAREN);
-					consume();
+					List<ExprNode> args = parseArgumentList();
 
 					TriggerFunctionsType fn = mapFn(name);
 					return ctx -> {
@@ -565,13 +559,15 @@ public class AutomationScriptRuntime {
 						for (int i = 1; i < args.size(); i++) {
 							rest.add(args.get(i).eval(ctx));
 						}
-						return evalFunction(fn, target, rest);
+						return evalFunction(fn, target, rest, ctx);
 					};
 				}
 
-				// path: name(.name | .size())*
+				// path base: message.text / client.openTasks / task.tags
 				List<PathSeg> segs = new ArrayList<>();
 				segs.add(new PathSeg(name, false));
+
+				ExprNode current = null;
 
 				while (cur.type == TokType.DOT) {
 					consume();
@@ -579,19 +575,57 @@ public class AutomationScriptRuntime {
 					String part = cur.text;
 					consume();
 
-					// .size()
-					if ("size".equalsIgnoreCase(part) && cur.type == TokType.LPAREN) {
-						consume();
-						expect(TokType.RPAREN);
-						consume();
-						segs.add(new PathSeg("size", true));
+					// method call over current value:
+					// message.text.contains('x')
+					// task.tags.hasTag('VIP')
+					// message.text.lower()
+					if (cur.type == TokType.LPAREN) {
+						List<ExprNode> args = parseArgumentList();
+
+						ExprNode receiver;
+						if (current != null) {
+							receiver = current;
+						} else {
+							List<PathSeg> frozenPath = new ArrayList<>(segs);
+							receiver = ctx -> resolvePath(ctx, frozenPath);
+						}
+
+						if ("size".equalsIgnoreCase(part)) {
+							current = ctx -> sizeOf(receiver.eval(ctx));
+							continue;
+						}
+
+						TriggerFunctionsType fn = mapFn(part);
+
+						current = ctx -> {
+							Object target = receiver.eval(ctx);
+
+							List<Object> rest = new ArrayList<>();
+							for (ExprNode arg : args) {
+								rest.add(arg.eval(ctx));
+							}
+
+							return evalFunction(fn, target, rest, ctx);
+						};
+
 						continue;
 					}
 
-					segs.add(new PathSeg(part, false));
+					// property access
+					if (current != null) {
+						ExprNode previous = current;
+						current = ctx -> readProperty(previous.eval(ctx), part);
+					} else {
+						segs.add(new PathSeg(part, false));
+					}
 				}
 
-				return ctx -> resolvePath(ctx, segs);
+				if (current != null) {
+					return current;
+				}
+
+				List<PathSeg> frozenPath = new ArrayList<>(segs);
+				return ctx -> resolvePath(ctx, frozenPath);
 			}
 
 			// fallback
@@ -632,6 +666,27 @@ public class AutomationScriptRuntime {
 			throw new IllegalArgumentException("Unknown function: " + x);
 		}
 
+		private List<ExprNode> parseArgumentList() {
+			expect(TokType.LPAREN);
+			consume();
+
+			List<ExprNode> args = new ArrayList<>();
+
+			if (cur.type != TokType.RPAREN) {
+				args.add(parseExpression());
+
+				while (cur.type == TokType.COMMA) {
+					consume();
+					args.add(parseExpression());
+				}
+			}
+
+			expect(TokType.RPAREN);
+			consume();
+
+			return args;
+		}
+
 		private record PathSeg(String key, boolean isSize) {
 		}
 	}
@@ -658,18 +713,51 @@ public class AutomationScriptRuntime {
 		return unwrap(cur);
 	}
 
-	private static Object sizeOf(JsonNode node) {
-		if (node == null || node.isNull()) {
-			return 0;
+	private static Object readProperty(Object source, String property) {
+		if (source == null || property == null || property.isBlank()) {
+			return null;
 		}
-		if (node.isArray()) {
-			return node.size();
+		if (source instanceof JsonNode node) {
+			JsonNode child = node.get(property);
+			return unwrap(child);
 		}
-		if (node.isTextual()) {
-			return node.asText().length();
+		if (source instanceof Map<?, ?> map) {
+			return map.get(property);
 		}
-		if (node.isObject()) {
-			return node.size();
+		return null;
+	}
+
+	private static Object sizeOf(Object value) {
+		switch (value) {
+			case null -> {
+				return 0;
+			}
+			case JsonNode node -> {
+				if (node.isNull()) {
+					return 0;
+				}
+				if (node.isArray()) {
+					return node.size();
+				}
+				if (node.isTextual()) {
+					return node.asText().length();
+				}
+				if (node.isObject()) {
+					return node.size();
+				}
+				return 0;
+			}
+			case CharSequence s -> {
+				return s.length();
+			}
+			case Collection<?> c -> {
+				return c.size();
+			}
+			case Map<?, ?> m -> {
+				return m.size();
+			}
+			default -> {
+			}
 		}
 		return 0;
 	}
@@ -793,7 +881,7 @@ public class AutomationScriptRuntime {
 		};
 	}
 
-	private static Object evalFunction(TriggerFunctionsType fn, Object target, List<Object> args) {
+	private static Object evalFunction(TriggerFunctionsType fn, Object target, List<Object> args, JsonNode root) {
 		return switch (fn) {
 			case STARTS_WITH -> {
 				String s = toStr(target);
@@ -862,7 +950,168 @@ public class AutomationScriptRuntime {
 				boolean afterHours = time.isBefore(LocalTime.of(9, 0)) || !time.isBefore(LocalTime.of(18, 0));
 				yield weekend || afterHours;
 			}
+
+			case CONTAINS -> {
+				String s = toStr(target);
+				String part = args.isEmpty() ? null : toStr(args.getFirst());
+				yield containsIgnoreCase(s, part);
+			}
+
+			case CONTAINS_ANY -> containsAny(target, args);
+
+			case CONTAINS_ALL -> containsAll(target, args);
+
+			case LOWER -> {
+				String s = toStr(target);
+				yield s == null ? null : s.toLowerCase(Locale.ROOT);
+			}
+
+			case DAYS_BETWEEN -> {
+				ZonedDateTime from = toZonedDateTime(target);
+				ZonedDateTime to = args.isEmpty() ? null : toZonedDateTime(args.getFirst());
+
+				if (from == null || to == null) {
+					yield null;
+				}
+
+				yield Duration.between(from, to).toDays();
+			}
+
+			case MINUTES_BETWEEN -> {
+				ZonedDateTime from = toZonedDateTime(target);
+				ZonedDateTime to = args.isEmpty() ? null : toZonedDateTime(args.getFirst());
+
+				if (from == null || to == null) {
+					yield null;
+				}
+
+				yield Duration.between(from, to).toMinutes();
+			}
+
+			case HAS_TAG -> {
+				String tagName = args.isEmpty() ? null : toStr(args.getFirst());
+				yield hasTag(target, tagName);
+			}
+
+			case NO_OPEN_TASKS -> noOpenTasks(root);
 		};
+	}
+
+
+	private static boolean containsIgnoreCase(String source, String part) {
+		if (source == null || part == null) {
+			return false;
+		}
+
+		return source.toLowerCase(Locale.ROOT)
+				.contains(part.toLowerCase(Locale.ROOT));
+	}
+
+	private static boolean containsAny(Object target, List<Object> args) {
+		String source = toStr(target);
+		if (source == null || args == null || args.isEmpty()) {
+			return false;
+		}
+
+		for (Object arg : args) {
+			if (containsIgnoreCase(source, toStr(arg))) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static boolean containsAll(Object target, List<Object> args) {
+		String source = toStr(target);
+		if (source == null || args == null || args.isEmpty()) {
+			return false;
+		}
+
+		for (Object arg : args) {
+			if (!containsIgnoreCase(source, toStr(arg))) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+
+	private static boolean hasTag(Object target, String tagName) {
+		if (target == null || tagName == null || tagName.isBlank()) {
+			return false;
+		}
+		String expected = tagName.trim().toLowerCase(Locale.ROOT);
+		if (target instanceof JsonNode node && node.isArray()) {
+			for (JsonNode item : node) {
+				if (tagMatches(item, expected)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		if (target instanceof Collection<?> collection) {
+			for (Object item : collection) {
+				if (tagMatches(item, expected)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		return tagMatches(target, expected);
+	}
+
+	private static boolean tagMatches(Object tag, String expected) {
+		if (tag == null || expected == null) {
+			return false;
+		}
+
+		if (tag instanceof JsonNode node) {
+			JsonNode nameNode = node.get("name");
+			if (nameNode != null && !nameNode.isNull()) {
+				return nameNode.asText("").trim().toLowerCase(Locale.ROOT).equals(expected);
+			}
+
+			JsonNode titleNode = node.get("title");
+			if (titleNode != null && !titleNode.isNull()) {
+				return titleNode.asText("").trim().toLowerCase(Locale.ROOT).equals(expected);
+			}
+
+			return false;
+		}
+
+		return String.valueOf(tag).trim().toLowerCase(Locale.ROOT).equals(expected);
+	}
+
+	private static boolean noOpenTasks(JsonNode root) {
+		JsonNode openTasks = readByPathStatic(root, "client.openTasks");
+
+		if (openTasks == null || openTasks.isNull()) {
+			return true;
+		}
+
+		if (openTasks.isArray()) {
+			return openTasks.isEmpty();
+		}
+
+		return false;
+	}
+
+	private static JsonNode readByPathStatic(JsonNode root, String path) {
+		if (root == null || root.isNull() || path == null || path.isBlank()) {
+			return null;
+		}
+
+		JsonNode cur = root;
+		for (String p : path.split("\\.")) {
+			if (cur == null || cur.isNull()) {
+				return null;
+			}
+			cur = cur.get(p);
+		}
+
+		return cur;
 	}
 
 

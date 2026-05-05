@@ -1,5 +1,6 @@
 FROM node:22-alpine AS nodejs
 RUN apk add --no-cache \
+    git \
     python3 \
     make \
     g++ \

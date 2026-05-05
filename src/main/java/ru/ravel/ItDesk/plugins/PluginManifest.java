@@ -29,6 +29,8 @@ public class PluginManifest {
 	public static class PluginRuntime {
 		private String type;
 		private String entrypoint;
+		private Long timeoutMs;
+		private Integer memoryMb;
 	}
 
 	@Data
@@ -42,6 +44,8 @@ public class PluginManifest {
 		private String name;
 		private String handler;
 		private Boolean enabled = true;
+		private Long cacheTtlMs;
+		private Long refreshIntervalMs;
 	}
 
 	@Data

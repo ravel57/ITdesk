@@ -54,12 +54,12 @@ services:
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
       - LLM_URL=${LLM_URL}
-      - PLUGINS_DIR=/opt/uldesk/plugins
-      - LOG_PATH=/opt/uldesk/logs
+      - PLUGINS_DIR=/home/java/plugins
+      - LOG_PATH=/home/java/logs
     volumes:
-      - ./webapp-logs:/var/log
-      - ./plugins:/opt/uldesk/plugins
-      - ./logs:/opt/uldesk/logs
+      - ./webapp-logs:/home/java/logs
+      - ./plugins:/home/java/plugins
+      - ./logs:/home/java/logs
     networks:
       - default
       - monitoring

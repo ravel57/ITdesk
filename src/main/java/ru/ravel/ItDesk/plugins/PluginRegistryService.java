@@ -96,9 +96,43 @@ public class PluginRegistryService {
 		if (schema.getExtensions() != null) {
 			for (PluginFrontendSchema.PluginUiExtension extension : schema.getExtensions()) {
 				extension.setPluginKey(pluginKey);
+				applyHookFrontendSettings(extension, manifest);
 			}
 		}
 		frontendSchemas.put(pluginKey, schema);
+	}
+
+
+	private void applyHookFrontendSettings(
+			PluginFrontendSchema.PluginUiExtension extension,
+			PluginManifest manifest
+	) {
+		if (!"remote-text".equals(extension.getComponent())) {
+			return;
+		}
+		if (extension.getProps() == null) {
+			return;
+		}
+		Object hookObject = extension.getProps().get("hook");
+		if (hookObject == null) {
+			return;
+		}
+		String hookName = hookObject.toString();
+		if (manifest.getHooks() == null) {
+			return;
+		}
+		for (PluginManifest.PluginHookDefinition hook : manifest.getHooks()) {
+			if (!Objects.equals(hook.getName(), hookName)) {
+				continue;
+			}
+			if (hook.getCacheTtlMs() != null && !extension.getProps().containsKey("cacheTtlMs")) {
+				extension.getProps().put("cacheTtlMs", hook.getCacheTtlMs());
+			}
+			if (hook.getRefreshIntervalMs() != null && !extension.getProps().containsKey("refreshIntervalMs")) {
+				extension.getProps().put("refreshIntervalMs", hook.getRefreshIntervalMs());
+			}
+			return;
+		}
 	}
 
 
@@ -117,7 +151,7 @@ public class PluginRegistryService {
 		if (!groovyFile.exists()) {
 			throw new IllegalStateException("Groovy entrypoint not found: %s".formatted(groovyFile.getAbsolutePath()));
 		}
-		groovyPluginRuntime.loadPlugin(pluginKey, groovyFile);
+		groovyPluginRuntime.loadPlugin(pluginKey, pluginDir, manifest);
 	}
 
 
@@ -208,9 +242,9 @@ public class PluginRegistryService {
 						"runtime", manifest.getRuntime() != null ? manifest.getRuntime().getType() : "frontend-only",
 						"extensionPoints", manifest.getExtensionPoints() != null
 								? manifest.getExtensionPoints().stream()
-										.map(PluginManifest.PluginExtensionPointDefinition::getPoint)
-										.filter(Objects::nonNull)
-										.toList()
+								.map(PluginManifest.PluginExtensionPointDefinition::getPoint)
+								.filter(Objects::nonNull)
+								.toList()
 								: List.of()
 				));
 			} catch (Exception e) {

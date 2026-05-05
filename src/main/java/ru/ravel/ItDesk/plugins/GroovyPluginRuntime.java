@@ -1,57 +1,202 @@
 package ru.ravel.ItDesk.plugins;
 
-import groovy.lang.GroovyShell;
-import org.codehaus.groovy.runtime.InvokerHelper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Data;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
+import java.util.concurrent.TimeUnit;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
-public class GroovyPluginRuntime {
+public class GroovyPluginRuntime implements PluginRuntime {
 
-	private final Map<String, Object> pluginInstances = new ConcurrentHashMap<>();
+	private final ObjectMapper objectMapper = new ObjectMapper();
 
+	private final Map<String, SandboxPluginInfo> plugins = new ConcurrentHashMap<>();
 
-	public void loadPlugin(String pluginKey, File groovyFile) {
-		try {
-			GroovyShell shell = new GroovyShell();
-			Object pluginInstance = shell.evaluate(groovyFile);
-			if (pluginInstance == null) {
-				throw new IllegalStateException("Groovy plugin returned null: " + pluginKey);
-			}
-			pluginInstances.put(pluginKey, pluginInstance);
-		} catch (Exception e) {
-			throw new IllegalStateException("Failed to load Groovy plugin: " + pluginKey, e);
+	@Override
+	public void loadPlugin(String pluginKey, File pluginDir, PluginManifest manifest) {
+		if (manifest.getRuntime() == null) {
+			return;
 		}
+
+		String entrypoint = manifest.getRuntime().getEntrypoint();
+
+		if (entrypoint == null || entrypoint.isBlank()) {
+			throw new IllegalArgumentException("runtime.entrypoint is required for plugin: " + pluginKey);
+		}
+
+		File groovyFile = new File(pluginDir, entrypoint);
+
+		if (!groovyFile.exists()) {
+			throw new IllegalArgumentException("Groovy entrypoint not found: " + groovyFile.getAbsolutePath());
+		}
+
+		SandboxPluginInfo info = new SandboxPluginInfo();
+
+		info.setPluginKey(pluginKey);
+		info.setPluginDir(pluginDir);
+		info.setEntrypoint(entrypoint);
+		info.setTimeoutMs(manifest.getRuntime().getTimeoutMs() != null
+				? manifest.getRuntime().getTimeoutMs()
+				: 3000L
+		);
+		info.setMemoryMb(manifest.getRuntime().getMemoryMb() != null
+				? manifest.getRuntime().getMemoryMb()
+				: 128
+		);
+
+		plugins.put(pluginKey, info);
 	}
 
-
+	@Override
 	public Object invoke(String pluginKey, String handlerName, Map<String, Object> context) {
-		Object pluginInstance = pluginInstances.get(pluginKey);
-		if (pluginInstance == null) {
+		SandboxPluginInfo info = plugins.get(pluginKey);
+
+		if (info == null) {
 			throw new IllegalStateException("Plugin is not loaded: " + pluginKey);
 		}
+
 		try {
-			return InvokerHelper.invokeMethod(pluginInstance, handlerName, context);
+			ProcessBuilder processBuilder = createProcessBuilder(info, handlerName);
+
+			Process process = processBuilder.start();
+
+			byte[] inputJson = objectMapper.writeValueAsBytes(context);
+
+			process.getOutputStream().write(inputJson);
+			process.getOutputStream().flush();
+			process.getOutputStream().close();
+
+			boolean finished = process.waitFor(
+					Duration.ofMillis(info.getTimeoutMs()).toMillis(),
+					TimeUnit.MILLISECONDS
+			);
+
+			if (!finished) {
+				process.destroyForcibly();
+
+				throw new IllegalStateException(
+						"Plugin timeout: plugin=" + pluginKey + ", handler=" + handlerName
+				);
+			}
+
+			String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+
+			if (process.exitValue() != 0) {
+				throw new IllegalStateException(
+						"Plugin process failed: plugin=" + pluginKey +
+								", handler=" + handlerName +
+								", stderr=" + stderr
+				);
+			}
+
+			if (stdout.isBlank()) {
+				return Map.of();
+			}
+
+			return objectMapper.readValue(stdout, Object.class);
 		} catch (Exception e) {
 			throw new IllegalStateException(
-					"Failed to invoke plugin handler: plugin=" + pluginKey + ", handler=" + handlerName,
+					"Failed to invoke sandbox plugin: plugin=" + pluginKey + ", handler=" + handlerName,
 					e
 			);
 		}
 	}
 
 
-	public void clear() {
-		pluginInstances.clear();
+	private ProcessBuilder createProcessBuilder(SandboxPluginInfo info, String handlerName) {
+		try {
+			String classPath = System.getProperty("java.class.path");
+
+			if (classPath == null || classPath.isBlank()) {
+				throw new IllegalStateException("java.class.path is empty");
+			}
+
+			Path argsFile = createJavaArgsFile(info, handlerName, classPath);
+
+			return new ProcessBuilder(
+					getJavaExecutable(),
+					"@" + argsFile.toAbsolutePath()
+			);
+		} catch (Exception e) {
+			throw new IllegalStateException("Failed to create sandbox process builder", e);
+		}
 	}
 
 
+	private Path createJavaArgsFile(
+			SandboxPluginInfo info,
+			String handlerName,
+			String classPath
+	) throws Exception {
+		Path argsFile = Files.createTempFile("uldesk-plugin-sandbox-", ".args");
+
+		List<String> lines = new ArrayList<>();
+
+		lines.add("-Xmx" + info.getMemoryMb() + "m");
+		lines.add("-cp");
+		lines.add(quoteArg(classPath));
+		lines.add("ru.ravel.ItDesk.plugins.GroovySandboxMain");
+		lines.add("--plugin-dir");
+		lines.add(quoteArg(info.getPluginDir().getAbsolutePath()));
+		lines.add("--entrypoint");
+		lines.add(quoteArg(info.getEntrypoint()));
+		lines.add("--handler");
+		lines.add(quoteArg(handlerName));
+
+		Files.writeString(argsFile, String.join(System.lineSeparator(), lines));
+
+		argsFile.toFile().deleteOnExit();
+
+		return argsFile;
+	}
+
+
+	private String quoteArg(String value) {
+		if (value == null) {
+			return "\"\"";
+		}
+
+		return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	}
+
+
+	@Override
 	public void remove(String pluginKey) {
-		pluginInstances.remove(pluginKey);
+		plugins.remove(pluginKey);
 	}
 
+	@Override
+	public void clear() {
+		plugins.clear();
+	}
+
+	private String getJavaExecutable() {
+		String javaHome = System.getProperty("java.home");
+
+		if (javaHome == null || javaHome.isBlank()) {
+			return "java";
+		}
+
+		return javaHome + File.separator + "bin" + File.separator + "java";
+	}
+
+	@Data
+	private static class SandboxPluginInfo {
+		private String pluginKey;
+		private File pluginDir;
+		private String entrypoint;
+		private Long timeoutMs;
+		private Integer memoryMb;
+	}
 }

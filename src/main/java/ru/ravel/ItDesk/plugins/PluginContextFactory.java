@@ -47,6 +47,14 @@ public class PluginContextFactory {
 		map.put("email", client.getEmail());
 		map.put("sourceChannel", client.getSourceChannel());
 		map.put("messageFrom", client.getMessageFrom() != null ? client.getMessageFrom().name() : null);
+		if (client.getOrganization() != null) {
+			Map<String, Object> organization = new HashMap<>();
+			organization.put("id", client.getOrganization().getId());
+			organization.put("name", client.getOrganization().getName());
+			map.put("organization", organization);
+		} else {
+			map.put("organization", null);
+		}
 		return map;
 	}
 

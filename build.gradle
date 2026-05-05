@@ -123,6 +123,13 @@ tasks.named('test') {
 springBoot {
 	buildInfo()
 }
+
+bootJar {
+	manifest {
+		attributes 'Main-Class': 'org.springframework.boot.loader.launch.PropertiesLauncher'
+	}
+}
+
 kotlin {
 	jvmToolchain(21)
 }

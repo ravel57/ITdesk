@@ -6,14 +6,14 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 
 @Component
 public class GroovyPluginRuntime implements PluginRuntime {
@@ -22,26 +22,21 @@ public class GroovyPluginRuntime implements PluginRuntime {
 
 	private final Map<String, SandboxPluginInfo> plugins = new ConcurrentHashMap<>();
 
+
 	@Override
 	public void loadPlugin(String pluginKey, File pluginDir, PluginManifest manifest) {
 		if (manifest.getRuntime() == null) {
 			return;
 		}
-
 		String entrypoint = manifest.getRuntime().getEntrypoint();
-
 		if (entrypoint == null || entrypoint.isBlank()) {
 			throw new IllegalArgumentException("runtime.entrypoint is required for plugin: " + pluginKey);
 		}
-
 		File groovyFile = new File(pluginDir, entrypoint);
-
 		if (!groovyFile.exists()) {
 			throw new IllegalArgumentException("Groovy entrypoint not found: " + groovyFile.getAbsolutePath());
 		}
-
 		SandboxPluginInfo info = new SandboxPluginInfo();
-
 		info.setPluginKey(pluginKey);
 		info.setPluginDir(pluginDir);
 		info.setEntrypoint(entrypoint);
@@ -53,34 +48,26 @@ public class GroovyPluginRuntime implements PluginRuntime {
 				? manifest.getRuntime().getMemoryMb()
 				: 128
 		);
-
 		plugins.put(pluginKey, info);
 	}
 
 	@Override
 	public Object invoke(String pluginKey, String handlerName, Map<String, Object> context) {
 		SandboxPluginInfo info = plugins.get(pluginKey);
-
 		if (info == null) {
 			throw new IllegalStateException("Plugin is not loaded: " + pluginKey);
 		}
-
 		try {
 			ProcessBuilder processBuilder = createProcessBuilder(info, handlerName);
-
 			Process process = processBuilder.start();
-
 			byte[] inputJson = objectMapper.writeValueAsBytes(context);
-
 			process.getOutputStream().write(inputJson);
 			process.getOutputStream().flush();
 			process.getOutputStream().close();
-
 			boolean finished = process.waitFor(
 					Duration.ofMillis(info.getTimeoutMs()).toMillis(),
 					TimeUnit.MILLISECONDS
 			);
-
 			if (!finished) {
 				process.destroyForcibly();
 
@@ -88,10 +75,8 @@ public class GroovyPluginRuntime implements PluginRuntime {
 						"Plugin timeout: plugin=" + pluginKey + ", handler=" + handlerName
 				);
 			}
-
 			String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 			String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-
 			if (process.exitValue() != 0) {
 				throw new IllegalStateException(
 						"Plugin process failed: plugin=" + pluginKey +
@@ -99,11 +84,9 @@ public class GroovyPluginRuntime implements PluginRuntime {
 								", stderr=" + stderr
 				);
 			}
-
 			if (stdout.isBlank()) {
 				return Map.of();
 			}
-
 			return objectMapper.readValue(stdout, Object.class);
 		} catch (Exception e) {
 			throw new IllegalStateException(
@@ -117,32 +100,29 @@ public class GroovyPluginRuntime implements PluginRuntime {
 	private ProcessBuilder createProcessBuilder(SandboxPluginInfo info, String handlerName) {
 		try {
 			String classPath = System.getProperty("java.class.path");
-
 			if (classPath == null || classPath.isBlank()) {
 				throw new IllegalStateException("java.class.path is empty");
 			}
-
-			Path argsFile = createJavaArgsFile(info, handlerName, classPath);
-
-			return new ProcessBuilder(
-					getJavaExecutable(),
-					"@" + argsFile.toAbsolutePath()
-			);
+			Path argsFile;
+			if (isRunningFromBootJar(classPath)) {
+				argsFile = createBootJarArgsFile(info, handlerName, getApplicationJarPath(classPath));
+			} else {
+				argsFile = createDevClasspathArgsFile(info, handlerName, classPath);
+			}
+			return new ProcessBuilder(getJavaExecutable(), "@%s".formatted(argsFile.toAbsolutePath()));
 		} catch (Exception e) {
 			throw new IllegalStateException("Failed to create sandbox process builder", e);
 		}
 	}
 
 
-	private Path createJavaArgsFile(
+	private Path createDevClasspathArgsFile(
 			SandboxPluginInfo info,
 			String handlerName,
 			String classPath
 	) throws Exception {
-		Path argsFile = Files.createTempFile("uldesk-plugin-sandbox-", ".args");
-
+		Path argsFile = Files.createTempFile("uldesk-plugin-sandbox-dev-", ".args");
 		List<String> lines = new ArrayList<>();
-
 		lines.add("-Xmx" + info.getMemoryMb() + "m");
 		lines.add("-cp");
 		lines.add(quoteArg(classPath));
@@ -153,11 +133,31 @@ public class GroovyPluginRuntime implements PluginRuntime {
 		lines.add(quoteArg(info.getEntrypoint()));
 		lines.add("--handler");
 		lines.add(quoteArg(handlerName));
-
 		Files.writeString(argsFile, String.join(System.lineSeparator(), lines));
-
 		argsFile.toFile().deleteOnExit();
+		return argsFile;
+	}
 
+
+	private Path createBootJarArgsFile(
+			SandboxPluginInfo info,
+			String handlerName,
+			String applicationJarPath
+	) throws Exception {
+		Path argsFile = Files.createTempFile("uldesk-plugin-sandbox-jar-", ".args");
+		List<String> lines = new ArrayList<>();
+		lines.add("-Xmx" + info.getMemoryMb() + "m");
+		lines.add("-Dloader.main=ru.ravel.ItDesk.plugins.GroovySandboxMain");
+		lines.add("-jar");
+		lines.add(quoteArg(applicationJarPath));
+		lines.add("--plugin-dir");
+		lines.add(quoteArg(info.getPluginDir().getAbsolutePath()));
+		lines.add("--entrypoint");
+		lines.add(quoteArg(info.getEntrypoint()));
+		lines.add("--handler");
+		lines.add(quoteArg(handlerName));
+		Files.writeString(argsFile, String.join(System.lineSeparator(), lines));
+		argsFile.toFile().deleteOnExit();
 		return argsFile;
 	}
 
@@ -166,8 +166,48 @@ public class GroovyPluginRuntime implements PluginRuntime {
 		if (value == null) {
 			return "\"\"";
 		}
-
 		return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	}
+
+
+	private boolean isRunningFromBootJar(String classPath) {
+		return getApplicationJarPathOrNull(classPath) != null;
+	}
+
+
+	private String getApplicationJarPath(String classPath) {
+		String jarPath = getApplicationJarPathOrNull(classPath);
+		if (jarPath == null) {
+			throw new IllegalStateException("Application jar not found in classpath: " + classPath);
+		}
+		return jarPath;
+	}
+
+
+	private String getApplicationJarPathOrNull(String classPath) {
+		String[] parts = classPath.split(File.pathSeparator);
+		for (String part : parts) {
+			File file = new File(part);
+			if (!file.exists() || !file.isFile()) {
+				continue;
+			}
+			if (!file.getName().endsWith(".jar")) {
+				continue;
+			}
+			if (isSpringBootExecutableJar(file)) {
+				return file.getAbsolutePath();
+			}
+		}
+		return null;
+	}
+
+
+	private boolean isSpringBootExecutableJar(File file) {
+		try (java.util.jar.JarFile jarFile = new java.util.jar.JarFile(file)) {
+			return jarFile.getEntry("BOOT-INF/classes/ru/ravel/ItDesk/plugins/GroovySandboxMain.class") != null;
+		} catch (Exception e) {
+			return false;
+		}
 	}
 
 
@@ -176,20 +216,21 @@ public class GroovyPluginRuntime implements PluginRuntime {
 		plugins.remove(pluginKey);
 	}
 
+
 	@Override
 	public void clear() {
 		plugins.clear();
 	}
 
+
 	private String getJavaExecutable() {
 		String javaHome = System.getProperty("java.home");
-
 		if (javaHome == null || javaHome.isBlank()) {
 			return "java";
 		}
-
 		return javaHome + File.separator + "bin" + File.separator + "java";
 	}
+
 
 	@Data
 	private static class SandboxPluginInfo {
@@ -199,4 +240,5 @@ public class GroovyPluginRuntime implements PluginRuntime {
 		private Long timeoutMs;
 		private Integer memoryMb;
 	}
+
 }

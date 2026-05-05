@@ -1,9 +1,14 @@
 FROM node:22-alpine AS nodejs
-RUN apk add --no-cache git
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    vips-dev \
+    libc6-compat
 WORKDIR /usr/src/node
 RUN git clone https://github.com/ravel57/itdesk-front
 WORKDIR /usr/src/node/itdesk-front
-RUN yarn install
+RUN yarn install --network-timeout 300000
 RUN yarn build
 
 FROM gradle:8.14.3-jdk21-alpine AS gradle

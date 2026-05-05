@@ -39,6 +39,7 @@ public class SlaService {
 		slaPauseRepository.saveAndFlush(pause);
 	}
 
+
 	@Transactional
 	public void resume(Sla sla) {
 		if (sla == null || sla.getId() == null) {
@@ -53,6 +54,7 @@ public class SlaService {
 		slaPauseRepository.save(active);
 	}
 
+
 	@Transactional(readOnly = true)
 	public boolean isPaused(Sla sla) {
 		if (sla == null || sla.getId() == null) {
@@ -60,6 +62,7 @@ public class SlaService {
 		}
 		return slaPauseRepository.existsBySlaIdAndEndedAtIsNull(sla.getId());
 	}
+
 
 	@Transactional(readOnly = true)
 	public Duration getPausedDuration(Sla sla) {
@@ -76,6 +79,7 @@ public class SlaService {
 		return Duration.ofSeconds(seconds);
 	}
 
+
 	@Transactional(readOnly = true)
 	public ZonedDateTime deadline(Sla sla) {
 		if (sla == null) {
@@ -85,6 +89,7 @@ public class SlaService {
 				.plus(sla.getDuration())
 				.plus(getPausedDuration(sla));
 	}
+
 
 	@Transactional(readOnly = true)
 	public Duration remaining(Sla sla) {

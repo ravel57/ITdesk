@@ -46,3 +46,5 @@ src/main/resources/static/*
 /pgdata/
 /prometheus/
 /.env
+/logs/
+/plugins/

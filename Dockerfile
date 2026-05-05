@@ -15,4 +15,5 @@ RUN gradle bootJar
 FROM alpine/java:22-jdk AS java
 WORKDIR /home/java/
 COPY --from=gradle /home/gradle/build/libs/*.jar /home/java/ItDesk.jar
+RUN mkdir -p /opt/uldesk/plugins
 CMD ["java", "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5705", "-jar", "ItDesk.jar"]

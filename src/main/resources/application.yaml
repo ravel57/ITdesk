@@ -83,6 +83,9 @@ app:
     worker:
       delay-ms: 60000
 
+uldesk:
+  plugins:
+    dir: ${PLUGINS_DIR:./plugins}
 
 logging:
   level:

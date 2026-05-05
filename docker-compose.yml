@@ -53,8 +53,13 @@ services:
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
+      - LLM_URL=${LLM_URL}
+      - PLUGINS_DIR=/opt/uldesk/plugins
+      - LOG_PATH=/opt/uldesk/logs
     volumes:
       - ./webapp-logs:/var/log
+      - ./plugins:/opt/uldesk/plugins
+      - ./logs:/opt/uldesk/logs
     networks:
       - default
       - monitoring

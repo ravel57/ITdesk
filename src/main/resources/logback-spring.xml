@@ -2,30 +2,31 @@
     <jansi>true</jansi>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) --- %cyan(%46.46logger) : %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) --- %cyan(%46.46logger) : %msg%n
+            </pattern>
         </encoder>
     </appender>
-<!--<appender name="SYSLOG" class="ch.qos.logback.classic.net.SyslogAppender">-->
-<!--    <syslogHost>localhost</syslogHost>-->
-<!--    <facility>USER</facility>-->
-<!--    <port>514</port>-->
-<!--    <suffixPattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) -&#45;&#45; %cyan(%46.46logger) : %msg%n</suffixPattern>-->
-<!--</appender>-->
+    <!--<appender name="SYSLOG" class="ch.qos.logback.classic.net.SyslogAppender">-->
+    <!--    <syslogHost>localhost</syslogHost>-->
+    <!--    <facility>USER</facility>-->
+    <!--    <port>514</port>-->
+    <!--    <suffixPattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %highlight(%-5level) -&#45;&#45; %cyan(%46.46logger) : %msg%n</suffixPattern>-->
+    <!--</appender>-->
     <appender name="JSON-FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>/var/log/app-json.log</file>
+        <file>${LOG_PATH:-./logs}/app-json.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>/var/log/itdesk-json.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <fileNamePattern>${LOG_PATH:-./logs}/itdesk-json.%d{yyyy-MM-dd}.log</fileNamePattern>
             <maxHistory>7</maxHistory>
         </rollingPolicy>
         <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
     </appender>
     <logger name="org.springframework" level="INFO"/>
-    <logger name="ru.ravel.ItDesk" level="INFO"/>
-    <logger name="ru.ravel.ItDesk" level="WARN"/>
+    <!--<logger name="ru.ravel.ItDesk" level="INFO"/>-->
+    <!--<logger name="ru.ravel.ItDesk" level="WARN"/>-->
     <logger name="ru.ravel.ItDesk" level="ERROR"/>
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-<!--    <appender-ref ref="SYSLOG" />-->
+        <!--<appender-ref ref="SYSLOG" />-->
         <appender-ref ref="JSON-FILE"/>
     </root>
 </configuration>

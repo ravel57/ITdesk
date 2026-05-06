@@ -42,7 +42,7 @@ public class GroovyPluginRuntime implements PluginRuntime {
 		info.setEntrypoint(entrypoint);
 		info.setTimeoutMs(manifest.getRuntime().getTimeoutMs() != null
 				? manifest.getRuntime().getTimeoutMs()
-				: 3000L
+				: 20000L
 		);
 		info.setMemoryMb(manifest.getRuntime().getMemoryMb() != null
 				? manifest.getRuntime().getMemoryMb()
@@ -99,19 +99,67 @@ public class GroovyPluginRuntime implements PluginRuntime {
 
 	private ProcessBuilder createProcessBuilder(SandboxPluginInfo info, String handlerName) {
 		try {
-			String classPath = System.getProperty("java.class.path");
-			if (classPath == null || classPath.isBlank()) {
-				throw new IllegalStateException("java.class.path is empty");
-			}
+			String extractedClassPath = getExtractedBootClasspathOrNull();
 			Path argsFile;
-			if (isRunningFromBootJar(classPath)) {
-				argsFile = createBootJarArgsFile(info, handlerName, getApplicationJarPath(classPath));
+			if (extractedClassPath != null) {
+				argsFile = createDevClasspathArgsFile(info, handlerName, extractedClassPath);
 			} else {
-				argsFile = createDevClasspathArgsFile(info, handlerName, classPath);
+				String classPath = System.getProperty("java.class.path");
+				if (classPath == null || classPath.isBlank()) {
+					throw new IllegalStateException("java.class.path is empty");
+				}
+				if (isRunningFromBootJar(classPath)) {
+					argsFile = createBootJarArgsFile(info, handlerName, getApplicationJarPath(classPath));
+				} else {
+					argsFile = createDevClasspathArgsFile(info, handlerName, classPath);
+				}
 			}
 			return new ProcessBuilder(getJavaExecutable(), "@%s".formatted(argsFile.toAbsolutePath()));
 		} catch (Exception e) {
 			throw new IllegalStateException("Failed to create sandbox process builder", e);
+		}
+	}
+
+
+	private String getExtractedBootClasspathOrNull() {
+		File appDir = new File("/home/java/app");
+		if (!appDir.exists()) {
+			return null;
+		}
+		List<String> classPathParts = new ArrayList<>();
+		addIfExists(classPathParts, "/home/java/app/application/BOOT-INF/classes");
+		addJarsIfExists(classPathParts, "/home/java/app/dependencies/BOOT-INF/lib");
+		addJarsIfExists(classPathParts, "/home/java/app/snapshot-dependencies/BOOT-INF/lib");
+		if (classPathParts.isEmpty()) {
+			addIfExists(classPathParts, "/home/java/app/BOOT-INF/classes");
+			addJarsIfExists(classPathParts, "/home/java/app/BOOT-INF/lib");
+		}
+		if (classPathParts.isEmpty()) {
+			return null;
+		}
+		return String.join(File.pathSeparator, classPathParts);
+	}
+
+
+	private void addIfExists(List<String> classPathParts, String path) {
+		File file = new File(path);
+		if (file.exists()) {
+			classPathParts.add(file.getAbsolutePath());
+		}
+	}
+
+
+	private void addJarsIfExists(List<String> classPathParts, String dirPath) {
+		File dir = new File(dirPath);
+		if (!dir.exists() || !dir.isDirectory()) {
+			return;
+		}
+		File[] jars = dir.listFiles(file -> file.isFile() && file.getName().endsWith(".jar"));
+		if (jars == null) {
+			return;
+		}
+		for (File jar : jars) {
+			classPathParts.add(jar.getAbsolutePath());
 		}
 	}
 

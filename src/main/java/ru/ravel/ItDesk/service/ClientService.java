@@ -62,6 +62,7 @@ public class ClientService {
 			client.setUnreadMessagesCount(messages.stream()
 					.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
 					.count());
+			client.setFirstUnansweredMessageDate(getFirstUnansweredMessageDate(messages));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client.getId()), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client.getId()), Collections.emptySet()));
 			safeCollection(client.getTasks()).forEach(task -> {
@@ -794,6 +795,15 @@ public class ClientService {
 		return collection == null ? Collections.emptyList() : collection;
 	}
 
+	@Transactional
+	public void answerRequired(Long clientId, Long messageId, AnswerRequired answerRequired) {
+		Message message = messageRepository.findById(messageId).orElseThrow();
+		message.setAnswerRequired(
+				Objects.requireNonNullElse(answerRequired, AnswerRequired.NOT_SET)
+		);
+		messageRepository.save(message);
+	}
+
 
 	private record UserActionWaiter(
 			Client client,
@@ -823,6 +833,45 @@ public class ClientService {
 			} catch (InterruptedException ignored) {
 			}
 		}
+	}
+
+	private ZonedDateTime getFirstUnansweredMessageDate(Collection<Message> messages) {
+		List<Message> sortedMessages = safeCollection(messages).stream()
+				.filter(message -> message.getDate() != null)
+				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
+				.sorted()
+				.toList();
+		ZonedDateTime lastOperatorAnswerDate = sortedMessages.stream()
+				.filter(this::isOutgoingOperatorMessage)
+				.map(Message::getDate)
+				.max(ZonedDateTime::compareTo)
+				.orElse(null);
+		List<Message> unansweredIncomingMessages = sortedMessages.stream()
+				.filter(this::isIncomingMessage)
+				.filter(message -> lastOperatorAnswerDate == null || message.getDate().isAfter(lastOperatorAnswerDate))
+				.toList();
+		if (unansweredIncomingMessages.isEmpty()) {
+			return null;
+		}
+		Message lastMarkedMessage = unansweredIncomingMessages.stream()
+				.filter(message ->
+						message.getAnswerRequired() == AnswerRequired.ANSWER_REQUIRED ||
+						message.getAnswerRequired() == AnswerRequired.ANSWER_NOT_REQUIRED
+				)
+				.reduce((first, second) -> second)
+				.orElse(null);
+		if (lastMarkedMessage == null || lastMarkedMessage.getAnswerRequired() != AnswerRequired.ANSWER_REQUIRED) {
+			return null;
+		}
+		return unansweredIncomingMessages.getFirst().getDate();
+	}
+
+	private boolean isIncomingMessage(Message message) {
+		return Boolean.FALSE.equals(message.getIsSent()) && !Boolean.TRUE.equals(message.getIsComment());
+	}
+
+	private boolean isOutgoingOperatorMessage(Message message) {
+		return Boolean.TRUE.equals(message.getIsSent()) && !Boolean.TRUE.equals(message.getIsComment());
 	}
 
 }

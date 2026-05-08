@@ -8,6 +8,7 @@ import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 import org.hibernate.type.SqlTypes;
 
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentSkipListSet;
 
@@ -99,4 +100,7 @@ public class Client {
 	@Transient
 	@Builder.Default
 	private Set<User> watchingUsers = new ConcurrentSkipListSet<>();
+
+	@Transient
+	private ZonedDateTime firstUnansweredMessageDate;
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.jetbrains.annotations.NotNull;
+import ru.ravel.ItDesk.dto.AnswerRequired;
 
 import java.time.ZonedDateTime;
 import java.util.UUID;
@@ -68,6 +69,9 @@ public class Message implements Comparable<Message> {
 
 	@Transient
 	private Long linkedTaskId;
+
+	@Builder.Default
+	private AnswerRequired answerRequired = AnswerRequired.NOT_SET;
 
 	@Override
 	public int compareTo(@NotNull Message o) {

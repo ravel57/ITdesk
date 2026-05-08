@@ -41,7 +41,7 @@ public class WebApiController {
 	private final LlmService llmService;
 	private final AutomationTriggerService automationTriggerService;
 	private final SlaService slaService;
-	private final TaskRepository taskRepository;	// TODO remove from here
+	private final TaskRepository taskRepository;    // TODO remove from here
 
 
 	@GetMapping("/clients")
@@ -125,6 +125,22 @@ public class WebApiController {
 			} else {
 				return ResponseEntity.status(HttpStatus.CONFLICT).build();
 			}
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/client/{clientId}/message/{messageId}/answer-required")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> answerRequired(
+			@PathVariable Long clientId,
+			@PathVariable Long messageId,
+			@RequestBody AnswerRequired answerRequired
+	) {
+		if (LicenseStarter.isLicenseActive) {
+			clientService.answerRequired(clientId, messageId, answerRequired);
+			return ResponseEntity.ok().body(true);
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}

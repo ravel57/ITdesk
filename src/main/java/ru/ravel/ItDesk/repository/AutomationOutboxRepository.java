@@ -4,6 +4,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.ravel.ItDesk.model.Event;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
+
+import java.time.Instant;
+import java.util.List;
 
 
 public interface AutomationOutboxRepository extends JpaRepository<Event, Long> {
@@ -33,5 +37,20 @@ public interface AutomationOutboxRepository extends JpaRepository<Event, Long> {
 			@Param("triggerType") String triggerType,
 			@Param("clientId") Long clientId
 	);
+
+	List<Event> findAllByTriggerTypeAndCreatedAtBetween(
+			TriggerType triggerType,
+			Instant from,
+			Instant to
+	);
+
+
+	@Query(value = """
+		select *
+		from event e
+		where e.payload -> 'task' ->> 'id' = cast(:taskId as text)
+		order by e.created_at desc
+		""", nativeQuery = true)
+	List<Event> findTaskHistoryEvents(@Param("taskId") Long taskId);
 
 }

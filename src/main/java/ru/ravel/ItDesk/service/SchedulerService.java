@@ -32,12 +32,13 @@ public class SchedulerService {
 	private final UserService userService;
 	private final LicenseStarter licenseStarter;
 	private final TaskRepository taskRepository;
-
-	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final SupportRepository supportRepository;
 	private final EventPublisher eventPublisher;
 	private final ClientRepository clientRepository;
 	private final AutomationOutboxRepository automationOutboxRepository;
+	private final GlobalSearchService globalSearchService;
+
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
 	@Scheduled(fixedRate = 500)
@@ -109,6 +110,12 @@ public class SchedulerService {
 				}
 			}
 		}
+	}
+
+
+	@Scheduled(fixedRate = 1, timeUnit = TimeUnit.HOURS)
+	public void reindexGlobalSearch() {
+		globalSearchService.reindexAll();
 	}
 
 }

@@ -71,6 +71,9 @@ management:
     export.prometheus.enabled: true
     distribution.percentiles-histogram."[http.server.requests]": true
 
+elasticsearch:
+  url: ${ELASTICSEARCH_URL:http://localhost:9200}
+  index: uldesk_global_search
 
 app:
   allowed-origin: ${ALLOWED_ORIGIN:http://localhost:8080}

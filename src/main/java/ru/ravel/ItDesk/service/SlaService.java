@@ -82,7 +82,7 @@ public class SlaService {
 
 	@Transactional(readOnly = true)
 	public ZonedDateTime deadline(Sla sla) {
-		if (sla == null) {
+		if (sla == null || sla.getStartDate() == null || sla.getDuration() == null) {
 			return null;
 		}
 		return sla.getStartDate()

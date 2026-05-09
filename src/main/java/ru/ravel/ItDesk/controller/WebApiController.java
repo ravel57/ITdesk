@@ -42,6 +42,9 @@ public class WebApiController {
 	private final AutomationTriggerService automationTriggerService;
 	private final SlaService slaService;
 	private final TaskRepository taskRepository;    // TODO remove from here
+	private final AnalyticsService analyticsService;
+	private final GlobalSearchService globalSearchService;
+	private final TaskHistoryService taskHistoryService;
 
 
 	@GetMapping("/clients")
@@ -1001,6 +1004,45 @@ public class WebApiController {
 	@GetMapping("/llm-query")
 	public ResponseEntity<Object> getLlmQuery(@RequestParam String query) {
 		return ResponseEntity.ok().body(llmService.askLlm(query));
+	}
+
+
+	@GetMapping("/analytics/summary")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getAnalyticsSummary(
+			@RequestParam(required = false) String from,
+			@RequestParam(required = false) String to,
+			@RequestParam(defaultValue = "DAY") String groupBy
+	) {
+		return ResponseEntity.ok().body(analyticsService.getSummary(from, to, groupBy));
+	}
+
+
+	@GetMapping("/global-search")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> globalSearch(@RequestParam String query) {
+		return ResponseEntity.ok().body(globalSearchService.search(query));
+	}
+
+
+	@PostMapping("/global-search/reindex")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> reindexGlobalSearch() {
+		return ResponseEntity.ok().body(globalSearchService.reindexAll());
+	}
+
+
+	@GetMapping("/global-search/count")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> countGlobalSearchDocuments() {
+		return ResponseEntity.ok().body(globalSearchService.countDocuments());
+	}
+
+
+	@GetMapping("/task/{taskId}/history")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getTaskHistory(@PathVariable Long taskId) {
+		return ResponseEntity.ok(taskHistoryService.getTaskHistory(taskId));
 	}
 
 }

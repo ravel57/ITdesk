@@ -62,6 +62,8 @@ public class Task {
 	@Builder.Default
 	private ZonedDateTime createdAt =  ZonedDateTime.now();
 
+	private ZonedDateTime closedAt;
+
 	private ZonedDateTime deadline;
 
 	private ZonedDateTime lastActivity;

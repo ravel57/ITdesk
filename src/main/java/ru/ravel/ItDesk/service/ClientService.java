@@ -38,6 +38,7 @@ public class ClientService {
 	private final WebSocketService webSocketService;
 	private final EventPublisher eventPublisher;
 	private final UserRepository userRepository;
+	private final GlobalSearchService globalSearchService;
 
 	private final Map<String, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<String, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -109,6 +110,8 @@ public class ClientService {
 		}
 		client.getTasks().add(task);
 		clientsRepository.save(client);
+		globalSearchService.indexClient(client);
+		globalSearchService.indexTask(client, task);
 		eventPublisher.publish(TriggerType.TASK_CREATED, eventPayload("task", task, "client", client));
 		if (task.getExecutor() != null) {
 			webSocketService.userNotification(new UserNotification(UserNotificationEvent.NEW_TASK, task.getName(), task.getExecutor().getId()));
@@ -134,6 +137,16 @@ public class ClientService {
 		Boolean oldCompleted = olderTask.getCompleted();
 		ZonedDateTime oldDeadline = olderTask.getDeadline();
 		Set<Tag> oldTags = new HashSet<>(Objects.requireNonNullElse(olderTask.getTags(), Collections.emptySet()));
+		List<Map<String, Object>> changes = new ArrayList<>();
+		addChange(changes, "name", "Название", olderTask.getName(), task.getName());
+		addChange(changes, "description", "Описание", olderTask.getDescription(), task.getDescription());
+		addChange(changes, "deadline", "Дедлайн", olderTask.getDeadline(), task.getDeadline());
+		addChange(changes, "executor", "Исполнитель", getUserDisplayName(olderTask.getExecutor()), getUserDisplayName(task.getExecutor()));
+		addChange(changes, "priority", "Приоритет", getName(olderTask.getPriority()), getName(task.getPriority()));
+		addChange(changes, "status", "Статус", getName(olderTask.getStatus()), getName(task.getStatus()));
+		addChange(changes, "completed", "Закрыта", olderTask.getCompleted(), task.getCompleted());
+		addChange(changes, "frozen", "Заморожена", olderTask.getFrozen(), task.getFrozen());
+		addChange(changes, "linkedMessageId", "Связанное сообщение", olderTask.getLinkedMessageId(), task.getLinkedMessageId());
 		olderTask.setName(task.getName());
 		olderTask.setDescription(task.getDescription());
 		olderTask.setPriority(task.getPriority());
@@ -147,6 +160,13 @@ public class ClientService {
 		olderTask.setLinkedMessageId(task.getLinkedMessageId());
 		olderTask.setFrozen(task.getFrozen());
 		olderTask.setCompleted(task.getCompleted());
+		if (!Objects.equals(oldCompleted, task.getCompleted())) {
+			if (Boolean.TRUE.equals(task.getCompleted())) {
+				olderTask.setClosedAt(ZonedDateTime.now());
+			} else {
+				olderTask.setClosedAt(null);
+			}
+		}
 		if (reopening) {
 			olderTask.setStatus(
 					olderTask.getPreviousStatus() != null && !Objects.equals(olderTask.getPreviousStatus(), completedStatus) && !Objects.equals(olderTask.getPreviousStatus(), frozenStatus)
@@ -193,10 +213,15 @@ public class ClientService {
 		}
 		olderTask.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(olderTask);
-		eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
-				"task", savedTask,
-				"client", client
-		));
+		globalSearchService.indexClient(client);
+		globalSearchService.indexTask(client, savedTask);
+		if (!changes.isEmpty()) {
+			eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
+					"task", savedTask,
+					"client", client,
+					"changes", changes
+			));
+		}
 		if (!Objects.equals(oldStatus, savedTask.getStatus())) {
 			eventPublisher.publish(TriggerType.TASK_STATUS_CHANGED, eventPayload(
 					"task", savedTask,
@@ -461,6 +486,8 @@ public class ClientService {
 		}
 		client.getMessages().add(message);
 		clientsRepository.save(client);
+		globalSearchService.indexClient(client);
+		globalSearchService.indexClientMessage(client, message);
 		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload("message", message, "client", client));
 		return true;
 	}
@@ -535,6 +562,7 @@ public class ClientService {
 				.findFirst().orElse(null));
 		client.setMoreInfo(Objects.toString(c.get("moreInfo"), null));
 		clientsRepository.save(client);
+		globalSearchService.indexClient(client);
 		eventPublisher.publish(TriggerType.CLIENT_UPDATED, eventPayload("client", client));
 		return client;
 	}
@@ -605,6 +633,8 @@ public class ClientService {
 		}
 		message.setDeleted(true);
 		messageRepository.save(message);
+		globalSearchService.deleteDocument("CLIENT_MESSAGE:" + message.getId());
+		globalSearchService.deleteDocument("TASK_MESSAGE:" + message.getId());
 		eventPublisher.publish(TriggerType.MESSAGE_DELETED, eventPayload("client", client, "message", message));
 		return true;
 	}
@@ -615,6 +645,17 @@ public class ClientService {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
 		Client client = clientsRepository.findById(clientId).orElseThrow();
+		safeCollection(client.getMessages()).forEach(message ->
+				globalSearchService.deleteDocument("CLIENT_MESSAGE:" + message.getId())
+		);
+		safeCollection(client.getTasks()).forEach(task -> {
+			globalSearchService.deleteDocument("TASK:" + task.getId());
+
+			safeCollection(task.getMessages()).forEach(message ->
+					globalSearchService.deleteDocument("TASK_MESSAGE:" + message.getId())
+			);
+		});
+		globalSearchService.deleteDocument("CLIENT:" + client.getId());
 		clientsRepository.delete(client);
 		eventPublisher.publish(TriggerType.CLIENT_DELETED, eventPayload("client", client));
 		return true;
@@ -671,6 +712,9 @@ public class ClientService {
 			webSocketService.userNotification(new UserNotification(UserNotificationEvent.NEW_CHAT_MESSAGE, task.getName(), task.getExecutor().getId()));
 		}
 		taskRepository.save(task);
+		Client client = clientsRepository.findByTaskId(taskId).orElse(null);
+		globalSearchService.indexTask(client, task);
+		globalSearchService.indexTaskMessage(client, task, message);
 		return true;
 	}
 
@@ -872,6 +916,50 @@ public class ClientService {
 
 	private boolean isOutgoingOperatorMessage(Message message) {
 		return Boolean.TRUE.equals(message.getIsSent()) && !Boolean.TRUE.equals(message.getIsComment());
+	}
+
+
+	private static void addChange(List<Map<String, Object>> changes, String field, String label, Object oldValue, Object newValue) {
+		if (Objects.equals(oldValue, newValue)) {
+			return;
+		}
+		Map<String, Object> change = new LinkedHashMap<>();
+		change.put("field", field);
+		change.put("label", label);
+		change.put("oldValue", Objects.toString(oldValue, ""));
+		change.put("newValue", Objects.toString(newValue, ""));
+		changes.add(change);
+	}
+
+
+	private static String getName(Object object) {
+		if (object == null) {
+			return "";
+		}
+		if (object instanceof Status status) {
+			return status.getName();
+		}
+		if (object instanceof Priority priority) {
+			return priority.getName();
+		}
+		if (object instanceof Tag tag) {
+			return tag.getName();
+		}
+		return Objects.toString(object, "");
+	}
+
+
+	private static String getUserDisplayName(User user) {
+		if (user == null) {
+			return "";
+		}
+		String lastname = Objects.toString(user.getLastname(), "").trim();
+		String firstname = Objects.toString(user.getFirstname(), "").trim();
+		String fullName = (lastname + " " + firstname).trim();
+		if (!fullName.isBlank()) {
+			return fullName;
+		}
+		return Objects.toString(user.getUsername(), "");
 	}
 
 }

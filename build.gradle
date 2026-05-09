@@ -104,6 +104,10 @@ dependencies {
 	implementation 'org.apache.groovy:groovy:4.0.24'
 	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
 
+//	elasticsearch
+	implementation 'org.springframework.boot:spring-boot-starter-json'
+	implementation 'co.elastic.clients:elasticsearch-java:8.15.0'
+
 // tests
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'

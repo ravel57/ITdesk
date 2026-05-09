@@ -17,7 +17,8 @@ import java.time.Instant;
 @Table(
 		name = "event", indexes = {
 		@Index(name = "idx_outbox_status_time", columnList = "status, available_at, created_at"),
-		@Index(name = "idx_outbox_org_trigger", columnList = "trigger_type")
+		@Index(name = "idx_outbox_org_trigger", columnList = "trigger_type"),
+		@Index(name = "idx_outbox_trigger_created", columnList = "trigger_type, created_at")
 })
 @Data
 @Builder
@@ -33,6 +34,15 @@ public class Event {
 
 	@JdbcTypeCode(SqlTypes.JSON)
 	private JsonNode payload;
+
+	private Long actorUserId;
+
+	private String actorUsername;
+
+	private String actorDisplayName;
+
+	@Enumerated(EnumType.STRING)
+	private ActorType actorType;
 
 	@Enumerated(EnumType.STRING)
 	private EventStatus status;

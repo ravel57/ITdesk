@@ -56,6 +56,8 @@ services:
       - LLM_URL=${LLM_URL}
       - PLUGINS_DIR=/home/java/plugins
       - LOG_PATH=/home/java/logs
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ELASTICSEARCH_INDEX=uldesk_global_search
     volumes:
       - ./webapp-logs:/home/java/logs
       - ./plugins:/home/java/plugins
@@ -131,6 +133,20 @@ services:
     user: root
     networks:
       - monitoring
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: uldesk-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
 
 networks:
   default:

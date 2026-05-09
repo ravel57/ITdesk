@@ -140,7 +140,6 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
-    container_name: uldesk-elasticsearch
     restart: unless-stopped
     environment:
       - discovery.type=single-node

@@ -32,8 +32,12 @@ services:
 
   webapp:
     depends_on:
-      - postgres
-      - minio
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
     build: '.'
     restart: unless-stopped
     links:
@@ -137,6 +141,7 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
     container_name: uldesk-elasticsearch
+    restart: unless-stopped
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -147,6 +152,14 @@ services:
       - 9200
     volumes:
       - ./elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health?wait_for_status=yellow\\&timeout=5s || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
 networks:
   default:

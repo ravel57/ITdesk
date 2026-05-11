@@ -28,6 +28,9 @@ public class LicenseStarter {
 	@Value("${app.instance-name}")
 	private String instanceName;
 
+	@Value("${app.is-demo:false}")
+	private boolean isDemo;
+
 	public static Long maxUsers;               // FIXME
 	public static Boolean isLicenseActive;     // FIXME
 	public static Boolean isLicenseExpireSoon; // FIXME
@@ -36,29 +39,34 @@ public class LicenseStarter {
 
 
 	public void run() {
-		try {
-			License instance;
-			List<License> instances = repository.findAll();
-			if (instances.isEmpty()) {
-				instance = licenseFeignClient.register(instanceName);
-				repository.save(instance);
-			} else {
-				instance = licenseFeignClient.license(instances.getFirst().getLicense());
+		if (!isDemo) {
+			try {
+				License instance;
+				List<License> instances = repository.findAll();
+				if (instances.isEmpty()) {
+					instance = licenseFeignClient.register(instanceName);
+					repository.save(instance);
+				} else {
+					instance = licenseFeignClient.license(instances.getFirst().getLicense());
+				}
+				instance.setVersion(buildProperties.getVersion());
+				licenseFeignClient.sendVersion(instance.getLicense(), buildProperties.getVersion());
+				maxUsers = instance.getUsersCount();
+				if (ZonedDateTime.now().isAfter(Objects.requireNonNullElse(instance.getValidUntil(), ZonedDateTime.now()))) {
+					isLicenseExpired = true;
+					throw new RuntimeException("license expired");
+				}
+				isLicenseActive = true;
+				isLicenseExpireSoon = ZonedDateTime.now().plusDays(7).isAfter(instance.getValidUntil());
+				licenseUntil = instance.getValidUntil();
+				logger.info("license accessed");
+			} catch (RuntimeException e) {
+				logger.error(e.getMessage());
+				isLicenseActive = false;
 			}
-			instance.setVersion(buildProperties.getVersion());
-			licenseFeignClient.sendVersion(instance.getLicense(), buildProperties.getVersion());
-			maxUsers = instance.getUsersCount();
-			if (ZonedDateTime.now().isAfter(Objects.requireNonNullElse(instance.getValidUntil(), ZonedDateTime.now()))) {
-				isLicenseExpired = true;
-				throw new RuntimeException("license expired");
-			}
+		} else {
 			isLicenseActive = true;
-			isLicenseExpireSoon = ZonedDateTime.now().plusDays(7).isAfter(instance.getValidUntil());
-			licenseUntil = instance.getValidUntil();
-			logger.info("license accessed");
-		} catch (RuntimeException e) {
-			logger.error(e.getMessage());
-			isLicenseActive = false;
+			isLicenseExpireSoon = false;
 		}
 	}
 

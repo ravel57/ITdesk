@@ -45,6 +45,7 @@ public class AutomationActionExecutor {
 	private final TaskFilterService taskFilterService;
 	private final TaskRepository taskRepository;
 	private final TagRepository tagRepository;
+	private final TaskService taskService;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -185,7 +186,7 @@ public class AutomationActionExecutor {
 		public Long create(String title) {
 			Long clientId = resolveClientId(ctx);
 			if (clientId == null || title == null || title.isBlank()) return null;
-			Task task = clientService.newTask(clientId, Task.builder()
+			Task task = taskService.newTask(clientId, Task.builder()
 					.priority(priorityRepository.findByDefaultSelectionTrue().orElseThrow())
 					.status(statusRepository.findByDefaultSelectionTrue().orElseThrow())
 					.name(title)

@@ -32,6 +32,14 @@ public class Task {
 	private String description = "";
 
 	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn(name = "type_id")
+	private TaskType type;
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Builder.Default
+	private List<ChecklistItem> checklist = new ArrayList<>();
+
+	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn
 	private Status status;
 

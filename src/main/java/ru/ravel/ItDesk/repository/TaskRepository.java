@@ -42,4 +42,6 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			""")
 	List<Task> findAllActiveWithSla();
 
+
+	boolean existsByTypeId(Long typeId);
 }

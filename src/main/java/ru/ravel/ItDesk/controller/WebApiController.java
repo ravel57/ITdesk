@@ -45,6 +45,7 @@ public class WebApiController {
 	private final AnalyticsService analyticsService;
 	private final GlobalSearchService globalSearchService;
 	private final TaskHistoryService taskHistoryService;
+	private final TaskService taskService;
 
 
 	@GetMapping("/clients")
@@ -58,7 +59,7 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(clientService.newTask(clientId, task));
+			return ResponseEntity.ok().body(taskService.newTask(clientId, task));
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -69,7 +70,7 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(clientService.updateTask(clientId, task));
+			return ResponseEntity.ok().body(taskService.updateTask(clientId, task));
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -1043,6 +1044,12 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTaskHistory(@PathVariable Long taskId) {
 		return ResponseEntity.ok(taskHistoryService.getTaskHistory(taskId));
+	}
+
+
+	@GetMapping("/task-types")
+	public List<TaskType> getTaskTypes() {
+		return taskService.getTaskTypes();
 	}
 
 }

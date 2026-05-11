@@ -33,6 +33,16 @@ public class TaskService {
 	}
 
 
+	@Transactional(readOnly = true)
+	public TaskType getTaskType(Long id) {
+		if (id == null) {
+			throw new IllegalArgumentException("id must not be null");
+		}
+		return taskTypeRepository.findById(id)
+				.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: %d".formatted(id)));
+	}
+
+
 	@Transactional
 	public Task newTask(Long clientId, Task task) {
 		if (clientId == null) {
@@ -358,7 +368,7 @@ public class TaskService {
 		}
 		String lastname = Objects.toString(user.getLastname(), "").trim();
 		String firstname = Objects.toString(user.getFirstname(), "").trim();
-		String fullName = (lastname + " " + firstname).trim();
+		String fullName = ("%s %s".formatted(lastname, firstname)).trim();
 
 		if (!fullName.isBlank()) {
 			return fullName;
@@ -392,40 +402,74 @@ public class TaskService {
 
 	@Transactional
 	public TaskType createTaskType(TaskType taskType) {
+		if (taskType == null) {
+			throw new IllegalArgumentException("taskType must not be null");
+		}
 		String type = normalizeTaskTypeName(taskType.getType());
 		if (taskTypeRepository.existsByType(type)) {
-			throw new IllegalArgumentException("Тип заявки уже существует: " + type);
+			throw new IllegalArgumentException("Тип заявки уже существует: %s".formatted(type));
 		}
 		return taskTypeRepository.save(TaskType.builder()
 				.type(type)
+				.checklistTemplate(normalizeChecklist(taskType.getChecklistTemplate()))
+				.autoApplyChecklist(!Boolean.FALSE.equals(taskType.getAutoApplyChecklist()))
 				.build());
 	}
 
 
 	@Transactional
 	public TaskType updateTaskType(Long id, TaskType request) {
+		if (id == null) {
+			throw new IllegalArgumentException("id must not be null");
+		}
+		if (request == null) {
+			throw new IllegalArgumentException("taskType must not be null");
+		}
 		TaskType taskType = taskTypeRepository.findById(id)
-				.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: " + id));
+				.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: %d".formatted(id)));
 		String type = normalizeTaskTypeName(request.getType());
 		taskTypeRepository.findByType(type)
 				.filter(found -> !found.getId().equals(id))
 				.ifPresent(found -> {
-					throw new IllegalArgumentException("Тип заявки уже существует: " + type);
+					throw new IllegalArgumentException("Тип заявки уже существует: %s".formatted(type));
 				});
 		taskType.setType(type);
+		taskType.setChecklistTemplate(normalizeChecklist(request.getChecklistTemplate()));
+		taskType.setAutoApplyChecklist(!Boolean.FALSE.equals(request.getAutoApplyChecklist()));
 		return taskTypeRepository.save(taskType);
 	}
 
 
 	@Transactional
 	public void deleteTaskType(Long id) {
-		if (!taskTypeRepository.existsById(id)) {
-			throw new IllegalArgumentException("Тип заявки не найден: " + id);
+		if (id == null) {
+			throw new IllegalArgumentException("id must not be null");
 		}
-		if (taskRepository.existsByTypeId(id)) {
-			throw new IllegalStateException("Нельзя удалить тип заявки, который используется в заявках");
+		TaskType taskType = taskTypeRepository.findById(id)
+				.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: %d".formatted(id)));
+		List<Task> tasksWithDeletedType = taskRepository.findAllByTypeId(id);
+		for (Task task : tasksWithDeletedType) {
+			TaskType oldType = task.getType();
+			task.setType(null);
+			task.setLastActivity(ZonedDateTime.now());
+			Task savedTask = taskRepository.save(task);
+			Client client = clientsRepository.findByTaskId(savedTask.getId()).orElse(null);
+			if (client != null) {
+				globalSearchService.indexClient(client);
+				globalSearchService.indexTask(client, savedTask);
+			}
+			eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
+					"task", savedTask,
+					"client", client,
+					"changes", List.of(Map.of(
+							"field", "type",
+							"label", "Тип",
+							"oldValue", getTaskTypeName(oldType),
+							"newValue", ""
+					))
+			));
 		}
-		taskTypeRepository.deleteById(id);
+		taskTypeRepository.delete(taskType);
 	}
 
 
@@ -452,12 +496,12 @@ public class TaskService {
 		}
 		if (requestType.getId() != null) {
 			return taskTypeRepository.findById(requestType.getId())
-					.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: " + requestType.getId()));
+					.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: %d".formatted(requestType.getId())));
 		}
 		if (requestType.getType() != null && !requestType.getType().isBlank()) {
 			String type = normalizeTaskTypeName(requestType.getType());
 			return taskTypeRepository.findByType(type)
-					.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: " + type));
+					.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: %s".formatted(type)));
 		}
 		return getDefaultTaskType();
 	}

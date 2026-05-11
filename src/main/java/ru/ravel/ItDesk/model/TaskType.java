@@ -1,10 +1,12 @@
 package ru.ravel.ItDesk.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 @Entity
@@ -20,4 +22,12 @@ public class TaskType {
 	private Long id;
 
 	private String type;
+
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(columnDefinition = "jsonb")
+	@Builder.Default
+	private List<ChecklistItem> checklistTemplate = new ArrayList<>();
+
+	@Builder.Default
+	private Boolean autoApplyChecklist = true;
 }

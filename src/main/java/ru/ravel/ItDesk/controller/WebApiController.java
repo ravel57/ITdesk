@@ -1048,8 +1048,68 @@ public class WebApiController {
 
 
 	@GetMapping("/task-types")
-	public List<TaskType> getTaskTypes() {
-		return taskService.getTaskTypes();
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getTaskTypes() {
+		return ResponseEntity.ok(taskService.getTaskTypes());
+	}
+
+
+	@GetMapping("/task-types/{id}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getTaskType(@PathVariable Long id) {
+		try {
+			return ResponseEntity.ok(taskService.getTaskType(id));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		}
+	}
+
+
+	@PostMapping("/task-types")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> createTaskType(@RequestBody TaskType taskType) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+
+		try {
+			return ResponseEntity.ok(taskService.createTaskType(taskType));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+		}
+	}
+
+
+	@PatchMapping("/task-types/{id}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> updateTaskType(
+			@PathVariable Long id,
+			@RequestBody TaskType taskType
+	) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+
+		try {
+			return ResponseEntity.ok(taskService.updateTaskType(id, taskType));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+		}
+	}
+
+
+	@DeleteMapping("/task-types/{id}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> deleteTaskType(@PathVariable Long id) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		try {
+			taskService.deleteTaskType(id);
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		}
 	}
 
 }

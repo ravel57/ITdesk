@@ -67,9 +67,14 @@ public class SchedulerService {
 		taskRepository.findAll().stream()
 				.filter(task -> task.getFrozen() != null && task.getFrozen())
 				.filter(task -> ZonedDateTime.now().isAfter(Objects.requireNonNullElse(task.getFrozenUntil(), ZonedDateTime.now())))
-				.peek(task -> task.setFrozen(false))
-				.peek(task -> task.setFrozenUntil(null))
-				.peek(task -> task.setStatus(task.getPreviousStatus()))
+				.peek(task -> {
+					task.setFrozen(false);
+					task.setFrozenFrom(null);
+					task.setFrozenUntil(null);
+					if (task.getPreviousStatus() != null) {
+						task.setStatus(task.getPreviousStatus());
+					}
+				})
 				.forEach(taskRepository::save);
 	}
 
@@ -80,9 +85,7 @@ public class SchedulerService {
 
 		for (Task task : overdueTasks) {
 			if (!automationOutboxRepository.existsByTriggerTypeAndTaskId(TriggerType.TASK_OVERDUE.name(), task.getId())) {
-					eventPublisher.publish(TriggerType.TASK_OVERDUE, Map.of(
-							"task", task
-				));
+				eventPublisher.publish(TriggerType.TASK_OVERDUE, Map.of("task", task));
 			}
 		}
 	}

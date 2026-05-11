@@ -99,6 +99,7 @@ public class TaskService {
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
 		Status oldStatus = olderTask.getStatus();
+		Status statusBeforeUpdate = olderTask.getStatus();
 		User oldExecutor = olderTask.getExecutor();
 		Boolean oldCompleted = olderTask.getCompleted();
 		ZonedDateTime oldDeadline = olderTask.getDeadline();
@@ -128,7 +129,21 @@ public class TaskService {
 		olderTask.setExecutor(task.getExecutor());
 		olderTask.setTags(task.getTags());
 		olderTask.setLinkedMessageId(task.getLinkedMessageId());
-		olderTask.setFrozen(Boolean.TRUE.equals(task.getFrozen()));
+		if (task.getFrozen() != null) {
+			if (task.getFrozen()) {
+				olderTask.setFrozen(true);
+				olderTask.setFrozenFrom(
+						task.getFrozenFrom() != null
+								? task.getFrozenFrom()
+								: Objects.requireNonNullElse(olderTask.getFrozenFrom(), ZonedDateTime.now())
+				);
+				olderTask.setFrozenUntil(task.getFrozenUntil());
+			} else {
+				olderTask.setFrozen(false);
+				olderTask.setFrozenFrom(null);
+				olderTask.setFrozenUntil(null);
+			}
+		}
 		olderTask.setCompleted(Boolean.TRUE.equals(task.getCompleted()));
 		if (!Objects.equals(oldCompleted, task.getCompleted())) {
 			if (Boolean.TRUE.equals(task.getCompleted())) {
@@ -148,15 +163,13 @@ public class TaskService {
 		} else {
 			olderTask.setStatus(task.getStatus());
 		}
-		if (task.getPreviousStatus() != null
-				&& !Objects.equals(task.getPreviousStatus(), completedStatus)
-				&& !Objects.equals(task.getPreviousStatus(), frozenStatus)) {
+		if (task.getPreviousStatus() != null && !Objects.equals(task.getPreviousStatus(), completedStatus) && !Objects.equals(task.getPreviousStatus(), frozenStatus)) {
 			olderTask.setPreviousStatus(task.getPreviousStatus());
-		} else {
-			olderTask.setPreviousStatus(completedStatus);
 		}
 		if (Boolean.TRUE.equals(olderTask.getFrozen())) {
-			if (!Objects.equals(olderTask.getStatus(), frozenStatus)
+			if (!Objects.equals(statusBeforeUpdate, frozenStatus) && !Objects.equals(statusBeforeUpdate, completedStatus)) {
+				olderTask.setPreviousStatus(statusBeforeUpdate);
+			} else if (!Objects.equals(olderTask.getStatus(), frozenStatus)
 					&& !Objects.equals(olderTask.getStatus(), completedStatus)) {
 				olderTask.setPreviousStatus(olderTask.getStatus());
 			}
@@ -174,6 +187,8 @@ public class TaskService {
 			}
 			if (Boolean.TRUE.equals(olderTask.getFrozen())) {
 				olderTask.setFrozen(false);
+				olderTask.setFrozenFrom(null);
+				olderTask.setFrozenUntil(null);
 			}
 			olderTask.setStatus(completedStatus);
 			olderTask.setCompleted(true);

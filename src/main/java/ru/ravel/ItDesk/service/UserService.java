@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.dto.UserDto;
+import ru.ravel.ItDesk.dto.UserNotificationSettingsDto;
 import ru.ravel.ItDesk.feign.SupportFeignClient;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
@@ -101,6 +102,14 @@ public class UserService {
 				.availableOrganizations(userDto.getAvailableOrganizations().stream()
 						.map(orgName -> organizationService.getOrganizations().stream()
 								.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
+				.notifyChatPing(savedUser.getNotifyChatPing())
+				.notifyTaskChatPing(savedUser.getNotifyTaskChatPing())
+				.notifyNewAssignedTask(savedUser.getNotifyNewAssignedTask())
+				.notifyTaskNewMessageAssigned(savedUser.getNotifyTaskNewMessageAssigned())
+				.isEnabled(savedUser.getIsEnabled())
+				.isAccountNonLocked(savedUser.getIsAccountNonLocked())
+				.isAccountNonExpired(savedUser.getIsAccountNonExpired())
+				.isCredentialsNonExpired(savedUser.getIsCredentialsNonExpired())
 				.build();
 		User saved = userRepository.save(user);
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
@@ -196,6 +205,7 @@ public class UserService {
 		}
 	}
 
+
 	public void resetPassword(String username) {
 		userRepository.findByUsername(username).ifPresent(user -> {
 			UUID license = licenseRepository.findAll().getFirst().getLicense();
@@ -204,4 +214,32 @@ public class UserService {
 			userRepository.save(user);
 		});
 	}
+
+
+	public UserNotificationSettingsDto getCurrentUserNotificationSettings() {
+		User user = getCurrentUser();
+		return new UserNotificationSettingsDto(
+				Boolean.TRUE.equals(user.getNotifyChatPing()),
+				Boolean.TRUE.equals(user.getNotifyTaskChatPing()),
+				Boolean.TRUE.equals(user.getNotifyNewAssignedTask()),
+				Boolean.TRUE.equals(user.getNotifyTaskNewMessageAssigned())
+		);
+	}
+
+
+	public UserNotificationSettingsDto updateCurrentUserNotificationSettings(UserNotificationSettingsDto dto) {
+		User user = getCurrentUser();
+		user.setNotifyChatPing(Boolean.TRUE.equals(dto.getNotifyChatPing()));
+		user.setNotifyTaskChatPing(Boolean.TRUE.equals(dto.getNotifyTaskChatPing()));
+		user.setNotifyNewAssignedTask(Boolean.TRUE.equals(dto.getNotifyNewAssignedTask()));
+		user.setNotifyTaskNewMessageAssigned(Boolean.TRUE.equals(dto.getNotifyTaskNewMessageAssigned()));
+		User saved = userRepository.save(user);
+		return new UserNotificationSettingsDto(
+				Boolean.TRUE.equals(saved.getNotifyChatPing()),
+				Boolean.TRUE.equals(saved.getNotifyTaskChatPing()),
+				Boolean.TRUE.equals(saved.getNotifyNewAssignedTask()),
+				Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned())
+		);
+	}
+
 }

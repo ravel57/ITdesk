@@ -1112,4 +1112,20 @@ public class WebApiController {
 		}
 	}
 
+
+	@GetMapping("/user/notification-settings")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getCurrentUserNotificationSettings() {
+		return ResponseEntity.ok().body(userService.getCurrentUserNotificationSettings());
+	}
+
+
+	@PatchMapping("/user/notification-settings")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> updateCurrentUserNotificationSettings(
+			@RequestBody UserNotificationSettingsDto dto
+	) {
+		return ResponseEntity.ok().body(userService.updateCurrentUserNotificationSettings(dto));
+	}
+
 }

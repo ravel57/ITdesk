@@ -63,6 +63,22 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@Builder.Default
 	protected Boolean isEnabled = true;
 
+	@Builder.Default
+	@Column(name = "notify_chat_ping", nullable = false)
+	protected Boolean notifyChatPing = false;
+
+	@Builder.Default
+	@Column(name = "notify_task_chat_ping", nullable = false)
+	protected Boolean notifyTaskChatPing = false;
+
+	@Builder.Default
+	@Column(name = "notify_new_assigned_task", nullable = false)
+	protected Boolean notifyNewAssignedTask = false;
+
+	@Builder.Default
+	@Column(name = "notify_task_new_message_assigned", nullable = false)
+	protected Boolean notifyTaskNewMessageAssigned = false;
+
 
 	@Override
 	public String getUsername() {

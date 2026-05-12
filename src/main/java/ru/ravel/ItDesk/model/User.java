@@ -79,6 +79,18 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@Column(name = "notify_task_new_message_assigned", nullable = false)
 	protected Boolean notifyTaskNewMessageAssigned = false;
 
+	@Builder.Default
+	@Column(name = "notify_sla_half_time_passed", nullable = false)
+	protected Boolean notifySlaHalfTimePassed = false;
+
+	@Builder.Default
+	@Column(name = "notify_sla_overdue", nullable = false)
+	protected Boolean notifySlaOverdue = false;
+
+	@Builder.Default
+	@Column(name = "notify_chat_unanswered_too_long", nullable = false)
+	protected Boolean notifyChatUnansweredTooLong = false;
+
 
 	@Override
 	public String getUsername() {

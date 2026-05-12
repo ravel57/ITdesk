@@ -13,4 +13,7 @@ public class UserNotificationSettingsDto {
 	private Boolean notifyTaskChatPing;
 	private Boolean notifyNewAssignedTask;
 	private Boolean notifyTaskNewMessageAssigned;
+	private Boolean notifySlaHalfTimePassed;
+	private Boolean notifySlaOverdue;
+	private Boolean notifyChatUnansweredTooLong;
 }

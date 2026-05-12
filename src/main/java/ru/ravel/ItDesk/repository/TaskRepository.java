@@ -45,5 +45,10 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 	boolean existsByTypeId(Long typeId);
 
+
 	List<Task> findAllByTypeId(Long typeId);
+
+
+	Optional<Task> findBySlaId(Long slaId);
+
 }

@@ -45,7 +45,7 @@ public class TaskHistoryService {
 		return TaskHistoryItemDto.builder()
 				.id(event.getId())
 				.triggerType(triggerType)
-				.title(getTitle(triggerType))
+				.title(getTitle(triggerType, payload, changes))
 				.description(getDescription(triggerType, payload, changes))
 				.createdAt(event.getCreatedAt())
 				.actorUserId(event.getActorUserId())
@@ -58,7 +58,19 @@ public class TaskHistoryService {
 	}
 
 
-	private String getTitle(TriggerType triggerType) {
+	private String getTitle(TriggerType triggerType, JsonNode payload, List<TaskHistoryChangeDto> changes) {
+		if (triggerType == TriggerType.TASK_UPDATED) {
+			TaskHistoryChangeDto frozenChange = findChange(changes, "frozen");
+			if (frozenChange != null) {
+				boolean newFrozen = isTrueValue(frozenChange.getNewValue());
+				return newFrozen ? "Заявка заморожена" : "Заявка разморожена";
+			}
+			TaskHistoryChangeDto slaPauseChange = findChange(changes, "slaPause");
+			if (slaPauseChange != null) {
+				boolean paused = isPausedValue(slaPauseChange.getNewValue());
+				return paused ? "SLA поставлен на паузу" : "SLA снят с паузы";
+			}
+		}
 		if (triggerType == null) {
 			return "Изменение заявки";
 		}
@@ -81,23 +93,18 @@ public class TaskHistoryService {
 
 
 	private String getDescription(TriggerType triggerType, JsonNode payload, List<TaskHistoryChangeDto> changes) {
-		if (changes != null && !changes.isEmpty()) {
-			if (changes.size() == 1) {
-				TaskHistoryChangeDto change = changes.getFirst();
-				return "%s: %s → %s".formatted(
-						change.getLabel(),
-						change.getOldValue(),
-						change.getNewValue()
-				);
+		if (triggerType == TriggerType.TASK_UPDATED) {
+			TaskHistoryChangeDto frozenChange = findChange(changes, "frozen");
+			if (frozenChange != null) {
+				boolean newFrozen = isTrueValue(frozenChange.getNewValue());
+				return newFrozen ? "SLA поставлен на паузу" : "SLA снят с паузы";
 			}
-
-			return "Изменено полей: " + changes.size();
+			TaskHistoryChangeDto slaPauseChange = findChange(changes, "slaPause");
+			if (slaPauseChange != null) {
+				boolean paused = isPausedValue(slaPauseChange.getNewValue());
+				return paused ? "SLA поставлен на паузу вручную" : "SLA снят с паузы вручную";
+			}
 		}
-
-		if (triggerType == null || payload == null || payload.isNull()) {
-			return "";
-		}
-
 		return switch (triggerType) {
 			case TASK_STATUS_CHANGED -> "Статус: %s → %s".formatted(
 					getName(payload.path("oldStatus")),
@@ -282,13 +289,69 @@ public class TaskHistoryService {
 		}
 		List<TaskHistoryChangeDto> changes = new ArrayList<>();
 		for (JsonNode node : changesNode) {
+			String field = node.path("field").asText("");
+			String label = node.path("label").asText("Поле");
+			String oldValue = node.path("oldValue").asText("—");
+			String newValue = node.path("newValue").asText("—");
+			if ("frozen".equals(field)) {
+				label = "Заморозка";
+				oldValue = formatBooleanValue(oldValue);
+				newValue = formatBooleanValue(newValue);
+			}
+			if ("slaPause".equals(field)) {
+				label = "SLA-пауза";
+			}
 			changes.add(change(
-					node.path("field").asText(""),
-					node.path("label").asText("Поле"),
-					node.path("oldValue").asText("—"),
-					node.path("newValue").asText("—")
+					field,
+					label,
+					oldValue,
+					newValue
 			));
 		}
 		return changes;
+	}
+
+
+	private TaskHistoryChangeDto findChange(List<TaskHistoryChangeDto> changes, String field) {
+		if (changes == null || changes.isEmpty()) {
+			return null;
+		}
+		return changes.stream()
+				.filter(change -> field.equals(change.getField()))
+				.findFirst()
+				.orElse(null);
+	}
+
+
+	private boolean isTrueValue(String value) {
+		if (value == null) {
+			return false;
+		}
+		String normalized = value.trim().toLowerCase();
+		return normalized.equals("true") || normalized.equals("да") || normalized.equals("заморожена") || normalized.equals("заморожено");
+	}
+
+
+	private String formatBooleanValue(String value) {
+		if (value == null || value.isBlank() || "null".equalsIgnoreCase(value)) {
+			return "Нет";
+		}
+		String normalized = value.trim().toLowerCase();
+		if ("true".equals(normalized)) {
+			return "Да";
+		}
+		if ("false".equals(normalized)) {
+			return "Нет";
+		}
+		return value;
+	}
+
+
+	private boolean isPausedValue(String value) {
+		if (value == null) {
+			return false;
+		}
+		String normalized = value.trim().toLowerCase();
+		return normalized.contains("поставлена") || normalized.contains("поставлен") || normalized.equals("paused") || normalized.equals("true") || normalized.equals("да");
 	}
 }

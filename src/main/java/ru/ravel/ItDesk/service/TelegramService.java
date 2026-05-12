@@ -200,24 +200,29 @@ public class TelegramService {
 							message.setReplyMessageId(messengerMessage.getId());
 						}
 						saveAttachments(update, message);
+						Message savedMessage;
 						if (client != null) {
 							if (messageRepository.existsByMessengerMessageIdAndClientId(update.message().messageId(), client.getId())) {
 								return;
 							}
-							client.getMessages().add(message);
-							clientRepository.save(client);
+							savedMessage = messageRepository.saveAndFlush(message);
+							if (client.getMessages() == null) {
+								client.setMessages(new ArrayList<>());
+							}
+							client.getMessages().add(savedMessage);
+							client = clientRepository.saveAndFlush(client);
 						} else {
 							client = Client.builder()
 									.firstname(update.message().from().firstName())
 									.lastname(update.message().from().lastName())
 									.telegramId(update.message().from().id())
-									.messages(List.of(message))
+									.messages(new ArrayList<>())
 									.messageFrom(MessageFrom.TELEGRAM)
 									.tgBot(tgBot)
 									.build();
 							boolean created = false;
 							try {
-								clientRepository.save(client);
+								client = clientRepository.saveAndFlush(client);
 								created = true;
 							} catch (DataIntegrityViolationException e) {
 								client = clientRepository
@@ -226,18 +231,31 @@ public class TelegramService {
 								if (messageRepository.existsByMessengerMessageIdAndClientId(update.message().messageId(), client.getId())) {
 									return;
 								}
-								client.getMessages().add(message);
-								clientRepository.save(client);
 							}
+							savedMessage = messageRepository.saveAndFlush(message);
+							if (client.getMessages() == null) {
+								client.setMessages(new ArrayList<>());
+							}
+							client.getMessages().add(savedMessage);
+							client = clientRepository.saveAndFlush(client);
 							if (created) {
-								eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
+								eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of(
+										"client", client,
+										"message", savedMessage
+								));
 							}
 						}
-						if (message.getFileUuid() != null) {
-							eventPublisher.publish(TriggerType.ATTACHMENT_ADDED, Map.of("client", client, "message", message));
+						if (savedMessage.getFileUuid() != null) {
+							eventPublisher.publish(TriggerType.ATTACHMENT_ADDED, Map.of(
+									"client", client,
+									"message", savedMessage
+							));
 						}
-						eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of("client", client, "message", message));
-						webSocketService.sendNewMessages(new ClientMessage(client, message));
+						eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of(
+								"client", client,
+								"message", savedMessage
+						));
+						webSocketService.sendNewMessages(new ClientMessage(client, savedMessage));
 					} else if (update.editedMessage() != null) {
 						TgBot tgBot = telegramRepository.findByToken(bot.getToken());
 						Client client = clientRepository

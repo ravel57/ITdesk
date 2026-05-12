@@ -47,6 +47,7 @@ public class ClientService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final Integer pageLimit = 100;
+	private final UserNotificationService userNotificationService;
 
 	@Value("${app.is-demo:false}")
 	private boolean isDemo;
@@ -113,6 +114,7 @@ public class ClientService {
 		}
 		sla.getPauses().add(pause);
 		slaRepository.save(sla);
+		publishSlaPauseHistory(sla, true, reason);
 	}
 
 
@@ -128,8 +130,10 @@ public class ClientService {
 		if (active == null) {
 			return;
 		}
+		String reason = active.getReason();
 		active.setEndedAt(ZonedDateTime.now());
 		slaRepository.save(sla);
+		publishSlaPauseHistory(sla, false, reason);
 	}
 
 
@@ -190,7 +194,7 @@ public class ClientService {
 		message.setIsSent(true);
 		message.setIsRead(true);
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
-		messageRepository.save(message);
+		Message savedMessage = messageRepository.saveAndFlush(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
 		if (!Boolean.TRUE.equals(message.getIsComment()) && !isDemo) {
 			try {
@@ -199,9 +203,9 @@ public class ClientService {
 					return false;
 				}
 				switch (client.getMessageFrom()) {
-					case TELEGRAM -> telegramService.sendMessage(client, message);
-					case EMAIL -> emailService.sendEmail(message, client);
-					case WHATSAPP -> whatsappService.sendMessage(message, client);
+					case TELEGRAM -> telegramService.sendMessage(client, savedMessage);
+					case EMAIL -> emailService.sendEmail(savedMessage, client);
+					case WHATSAPP -> whatsappService.sendMessage(savedMessage, client);
 				}
 			} catch (Exception e) {
 				logger.error(e.getMessage(), e);
@@ -210,7 +214,7 @@ public class ClientService {
 		} else {
 			// pings
 			Pattern pattern = Pattern.compile("@\\[(.+?)]");
-			Matcher matcher = pattern.matcher(Objects.requireNonNullElse(message.getText(), ""));
+			Matcher matcher = pattern.matcher(Objects.requireNonNullElse(savedMessage.getText(), ""));
 			if (client.getUnreadPingMessages() == null) {
 				client.setUnreadPingMessages(new HashMap<>());
 			}
@@ -222,26 +226,30 @@ public class ClientService {
 						.findFirst()
 						.ifPresent(u -> {
 							client.getUnreadPingMessages().put(u.getId(), true);
-							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, eventPayload("client", client, "message", message, "mentionedUser", u));
-							webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER, Objects.toString(message.getText(), ""), u.getId()));
+							eventPublisher.publish(TriggerType.MESSAGE_MENTIONED_USER, eventPayload("client", client, "message", savedMessage, "mentionedUser", u));
+							userNotificationService.send(new UserNotification(
+									UserNotificationEvent.MENTIONED_USER,
+									Objects.toString(savedMessage.getText(), ""),
+									u.getId()
+							));
 						});
 			}
 		}
-		webSocketService.sendNewMessages(new ClientMessage(client, message));
+		webSocketService.sendNewMessages(new ClientMessage(client, savedMessage));
 		if (client.getMessages() == null) {
 			client.setMessages(new ArrayList<>());
 		}
-		client.getMessages().add(message);
+		client.getMessages().add(savedMessage);
 		clientsRepository.save(client);
 		globalSearchService.indexClient(client);
-		globalSearchService.indexClientMessage(client, message);
-		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload("message", message, "client", client));
+		globalSearchService.indexClientMessage(client, savedMessage);
+		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload("message", savedMessage, "client", client));
 		return true;
 	}
 
 
 	@Transactional
-	public Client markReadAndReturnClient(@NotNull ClientUser clientUser) {
+	public Client markReadAndReturnClient(ClientUser clientUser) {
 		if (clientUser == null || clientUser.getClientId() == null || clientUser.getUserId() == null) {
 			logger.warn("mark-read skipped: clientId or userId is null, payload={}", clientUser);
 			return null;
@@ -452,11 +460,19 @@ public class ClientService {
 					.ifPresent(u -> {
 						task.getUnreadPingTasksMessages().put(u.getId(), true);
 						eventPublisher.publish(TriggerType.TASK_MESSAGE_MENTIONED_USER, eventPayload("task", task, "message", message, "mentionedUser", u));
-						webSocketService.userNotification(new UserNotification(UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT, Objects.toString(task.getName(), ""), u.getId()));
+						userNotificationService.send(new UserNotification(
+								UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT,
+								Objects.toString(task.getName(), ""),
+								u.getId()
+						));
 					});
 		}
 		if (task.getExecutor() != null) {
-			webSocketService.userNotification(new UserNotification(UserNotificationEvent.NEW_CHAT_MESSAGE, task.getName(), task.getExecutor().getId()));
+			userNotificationService.send(new UserNotification(
+					UserNotificationEvent.NEW_CHAT_MESSAGE,
+					task.getName(),
+					task.getExecutor().getId()
+			));
 		}
 		taskRepository.save(task);
 		Client client = clientsRepository.findByTaskId(taskId).orElse(null);
@@ -663,6 +679,42 @@ public class ClientService {
 
 	private boolean isOutgoingOperatorMessage(Message message) {
 		return Boolean.TRUE.equals(message.getIsSent()) && !Boolean.TRUE.equals(message.getIsComment());
+	}
+
+
+	private void publishSlaPauseHistory(Sla sla, boolean paused, String reason) {
+		if (sla == null || sla.getId() == null) {
+			return;
+		}
+		Task task = taskRepository.findBySlaId(sla.getId()).orElse(null);
+		if (task == null) {
+			return;
+		}
+		Client client = clientsRepository.findByTaskId(task.getId()).orElse(null);
+		List<Map<String, Object>> changes = new ArrayList<>();
+		changes.add(Map.of(
+				"field", "slaPause",
+				"label", "SLA-пауза",
+				"oldValue", paused ? "Снята с паузы" : "Поставлена на паузу",
+				"newValue", paused ? "Поставлена на паузу" : "Снята с паузы"
+		));
+		if (reason != null && !reason.isBlank()) {
+			changes.add(Map.of(
+					"field", "slaPauseReason",
+					"label", "Причина паузы",
+					"oldValue", "—",
+					"newValue", reason
+			));
+		}
+		eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
+				"task", task,
+				"client", client,
+				"changes", changes
+		));
+		if (client != null) {
+			globalSearchService.indexClient(client);
+			globalSearchService.indexTask(client, task);
+		}
 	}
 
 }

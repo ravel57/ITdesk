@@ -772,36 +772,45 @@ public class WebApiController {
 
 
 	@PostMapping("/task/{taskId}/sla/pause")
-	public ResponseEntity<SlaInfoDto> pauseTaskSla(
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> pauseTaskSla(
 			@PathVariable Long taskId,
 			@RequestParam(required = false) String reason
 	) {
-		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
-		if (taskOpt.isEmpty()) {
-			return ResponseEntity.notFound().build();
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
-		Sla sla = taskOpt.get().getSla();
-		if (sla == null) {
-			// SLA нет — смысла паузить нет
-			return ResponseEntity.badRequest().build();
+		try {
+			Task task = taskService.pauseTaskSla(taskId, reason);
+			if (task.getSla() == null) {
+				return ResponseEntity.badRequest().body("У заявки нет SLA");
+			}
+			return ResponseEntity.ok(buildInfo(task.getSla()));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(e.getMessage());
 		}
-		slaService.pause(sla, reason);
-		return ResponseEntity.ok(buildInfo(sla));
 	}
 
 
 	@PostMapping("/task/{taskId}/sla/resume")
-	public ResponseEntity<SlaInfoDto> resumeTaskSla(@PathVariable Long taskId) {
-		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
-		if (taskOpt.isEmpty()) {
-			return ResponseEntity.notFound().build();
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> resumeTaskSla(@PathVariable Long taskId) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
-		Sla sla = taskOpt.get().getSla();
-		if (sla == null) {
-			return ResponseEntity.badRequest().build();
+		try {
+			Task task = taskService.resumeTaskSla(taskId);
+			if (task.getSla() == null) {
+				return ResponseEntity.badRequest().body("У заявки нет SLA");
+			}
+			return ResponseEntity.ok(buildInfo(task.getSla()));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(e.getMessage());
 		}
-		slaService.resume(sla);
-		return ResponseEntity.ok(buildInfo(sla));
 	}
 
 

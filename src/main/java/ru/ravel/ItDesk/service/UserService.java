@@ -106,6 +106,9 @@ public class UserService {
 				.notifyTaskChatPing(savedUser.getNotifyTaskChatPing())
 				.notifyNewAssignedTask(savedUser.getNotifyNewAssignedTask())
 				.notifyTaskNewMessageAssigned(savedUser.getNotifyTaskNewMessageAssigned())
+				.notifySlaHalfTimePassed(savedUser.getNotifySlaHalfTimePassed())
+				.notifySlaOverdue(savedUser.getNotifySlaOverdue())
+				.notifyChatUnansweredTooLong(savedUser.getNotifyChatUnansweredTooLong())
 				.isEnabled(savedUser.getIsEnabled())
 				.isAccountNonLocked(savedUser.getIsAccountNonLocked())
 				.isAccountNonExpired(savedUser.getIsAccountNonExpired())
@@ -222,7 +225,10 @@ public class UserService {
 				Boolean.TRUE.equals(user.getNotifyChatPing()),
 				Boolean.TRUE.equals(user.getNotifyTaskChatPing()),
 				Boolean.TRUE.equals(user.getNotifyNewAssignedTask()),
-				Boolean.TRUE.equals(user.getNotifyTaskNewMessageAssigned())
+				Boolean.TRUE.equals(user.getNotifyTaskNewMessageAssigned()),
+				Boolean.TRUE.equals(user.getNotifySlaHalfTimePassed()),
+				Boolean.TRUE.equals(user.getNotifySlaOverdue()),
+				Boolean.TRUE.equals(user.getNotifyChatUnansweredTooLong())
 		);
 	}
 
@@ -233,12 +239,18 @@ public class UserService {
 		user.setNotifyTaskChatPing(Boolean.TRUE.equals(dto.getNotifyTaskChatPing()));
 		user.setNotifyNewAssignedTask(Boolean.TRUE.equals(dto.getNotifyNewAssignedTask()));
 		user.setNotifyTaskNewMessageAssigned(Boolean.TRUE.equals(dto.getNotifyTaskNewMessageAssigned()));
+		user.setNotifySlaHalfTimePassed(Boolean.TRUE.equals(dto.getNotifySlaHalfTimePassed()));
+		user.setNotifySlaOverdue(Boolean.TRUE.equals(dto.getNotifySlaOverdue()));
+		user.setNotifyChatUnansweredTooLong(Boolean.TRUE.equals(dto.getNotifyChatUnansweredTooLong()));
 		User saved = userRepository.save(user);
 		return new UserNotificationSettingsDto(
 				Boolean.TRUE.equals(saved.getNotifyChatPing()),
 				Boolean.TRUE.equals(saved.getNotifyTaskChatPing()),
 				Boolean.TRUE.equals(saved.getNotifyNewAssignedTask()),
-				Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned())
+				Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned()),
+				Boolean.TRUE.equals(saved.getNotifySlaHalfTimePassed()),
+				Boolean.TRUE.equals(saved.getNotifySlaOverdue()),
+				Boolean.TRUE.equals(saved.getNotifyChatUnansweredTooLong())
 		);
 	}
 

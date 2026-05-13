@@ -81,7 +81,7 @@ public class TaskHistoryService {
 			case TASK_PRIORITY_CHANGED -> "Изменен приоритет";
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> "Изменен исполнитель";
 			case TASK_DUE_DATE_CHANGED -> "Изменен дедлайн";
-			case TASK_CLOSED, TASK_COMPLETED -> "Заявка закрыта";
+			case TASK_CLOSED -> "Заявка закрыта";
 			case TASK_REOPENED -> "Заявка возвращена в работу";
 			case TASK_TAG_ADDED -> "Добавлен тег";
 			case TASK_TAG_REMOVED -> "Удален тег";
@@ -134,9 +134,19 @@ public class TaskHistoryService {
 					getName(payload.path("task"))
 			);
 
-			case TASK_CLOSED, TASK_COMPLETED -> "Заявка закрыта";
+			case TASK_CLOSED -> {
+				String reason = getReason(payload);
+				yield reason.isBlank()
+						? "Заявка закрыта"
+						: "Заявка закрыта. Причина: %s".formatted(reason);
+			}
 
-			case TASK_REOPENED -> "Заявка возвращена в работу";
+			case TASK_REOPENED -> {
+				String reason = getReason(payload);
+				yield reason.isBlank()
+						? "Заявка возвращена в работу"
+						: "Заявка возвращена в работу. Причина: %s".formatted(reason);
+			}
 
 			case TASK_UPDATED -> "Обновлены данные заявки";
 
@@ -267,6 +277,30 @@ public class TaskHistoryService {
 					"—"
 			));
 
+			case TASK_CLOSED -> {
+				String reason = getReason(payload);
+				yield reason.isBlank()
+						? List.of()
+						: List.of(change(
+						"statusChangeReason",
+						"Причина закрытия",
+						"—",
+						reason
+				));
+			}
+
+			case TASK_REOPENED -> {
+				String reason = getReason(payload);
+				yield reason.isBlank()
+						? List.of()
+						: List.of(change(
+						"statusChangeReason",
+						"Причина возврата в работу",
+						"—",
+						reason
+				));
+			}
+
 			default -> extractGenericChanges(payload);
 		};
 	}
@@ -354,4 +388,22 @@ public class TaskHistoryService {
 		String normalized = value.trim().toLowerCase();
 		return normalized.contains("поставлена") || normalized.contains("поставлен") || normalized.equals("paused") || normalized.equals("true") || normalized.equals("да");
 	}
+
+
+	private String getReason(JsonNode payload) {
+		if (payload == null || payload.isMissingNode() || payload.isNull()) {
+			return "";
+		}
+		String reason = payload.path("reason").asText("");
+		if (!reason.isBlank() && !"null".equalsIgnoreCase(reason)) {
+			return reason.trim();
+		}
+		JsonNode taskNode = payload.path("task");
+		reason = taskNode.path("statusChangeReason").asText("");
+		if (!reason.isBlank() && !"null".equalsIgnoreCase(reason)) {
+			return reason.trim();
+		}
+		return "";
+	}
+
 }

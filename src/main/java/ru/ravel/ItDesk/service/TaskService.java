@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -111,6 +112,7 @@ public class TaskService {
 		ZonedDateTime oldDeadline = olderTask.getDeadline();
 		Set<Tag> oldTags = new HashSet<>(Objects.requireNonNullElse(olderTask.getTags(), Collections.emptyList()));
 		List<Map<String, Object>> changes = new ArrayList<>();
+		String statusChangeReason = normalizeStatusChangeReason(task.getStatusChangeReason());
 		addChange(changes, "name", "Название", olderTask.getName(), task.getName());
 		addChange(changes, "description", "Описание", olderTask.getDescription(), task.getDescription());
 		addChange(changes, "type", "Тип", getTaskTypeName(olderTask.getType()), getTaskTypeName(task.getType()));
@@ -224,6 +226,12 @@ public class TaskService {
 					newFrozen ? "Поставлена на паузу" : "Снята с паузы"
 			);
 		}
+		boolean statusChanged = !Objects.equals(oldStatus, olderTask.getStatus());
+		boolean completedChanged = !Objects.equals(oldCompleted, olderTask.getCompleted());
+		boolean frozenChanged = oldFrozen != newFrozen;
+		if (statusChangeReason != null && (statusChanged || completedChanged || frozenChanged)) {
+			olderTask.setStatusChangeReason(statusChangeReason);
+		}
 		syncSlaPauseByFrozenState(olderTask);
 		olderTask.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(olderTask);
@@ -241,7 +249,8 @@ public class TaskService {
 					"task", savedTask,
 					"client", client,
 					"oldStatus", oldStatus,
-					"newStatus", savedTask.getStatus()
+					"newStatus", savedTask.getStatus(),
+					"reason", statusChangeReason
 			));
 		}
 		if (!Objects.equals(oldPriority, savedTask.getPriority())) {
@@ -277,19 +286,17 @@ public class TaskService {
 		}
 
 		if (!Objects.equals(oldCompleted, savedTask.getCompleted()) && Boolean.TRUE.equals(savedTask.getCompleted())) {
-			eventPublisher.publish(TriggerType.TASK_COMPLETED, eventPayload(
-					"task", savedTask,
-					"client", client
-			));
 			eventPublisher.publish(TriggerType.TASK_CLOSED, eventPayload(
 					"task", savedTask,
-					"client", client
+					"client", client,
+					"reason", statusChangeReason
 			));
 		}
-		if (Boolean.TRUE.equals(oldCompleted) && !Boolean.TRUE.equals(savedTask.getCompleted())) {
+		if (Boolean.TRUE.equals(oldCompleted) && !savedTask.getCompleted()) {
 			eventPublisher.publish(TriggerType.TASK_REOPENED, eventPayload(
 					"task", savedTask,
-					"client", client
+					"client", client,
+					"reason", statusChangeReason
 			));
 		}
 		Set<Tag> newTags = new HashSet<>(Objects.requireNonNullElse(savedTask.getTags(), Collections.emptyList()));
@@ -316,47 +323,71 @@ public class TaskService {
 
 
 	private void setSla(Client client, Task task) {
-		if (task == null) {
+		if (task == null || task.getPriority() == null) {
 			return;
 		}
 		Map<Organization, Map<Priority, SlaValue>> slaByPriority = organizationService.getSlaByPriority();
-		Organization organization = client.getOrganization();
-		SlaValue slaValue = null;
-		if (organization != null) {
-			Map<Priority, SlaValue> organizationSla = slaByPriority.entrySet().stream()
-					.filter(entry -> Objects.equals(entry.getKey().getId(), organization.getId()))
-					.map(Map.Entry::getValue)
-					.findFirst()
-					.orElse(null);
-			if (organizationSla != null && task.getPriority() != null) {
-				slaValue = organizationSla.entrySet().stream()
-						.filter(entry -> Objects.equals(entry.getKey().getId(), task.getPriority().getId()))
-						.map(Map.Entry::getValue)
-						.findFirst()
-						.orElse(null);
-			}
-		}
+		SlaValue slaValue = findSlaValue(
+				slaByPriority,
+				client == null ? null : client.getOrganization(),
+				task.getPriority()
+		);
 		if (slaValue == null) {
-			Map<Priority, SlaValue> defaultSla = slaByPriority.entrySet().stream()
-					.filter(entry -> entry.getKey() instanceof DefaultOrganization)
-					.map(Map.Entry::getValue)
-					.findFirst()
-					.orElse(null);
-			if (defaultSla != null && task.getPriority() != null) {
-				slaValue = defaultSla.entrySet().stream()
-						.filter(entry -> Objects.equals(entry.getKey().getId(), task.getPriority().getId()))
-						.map(Map.Entry::getValue)
-						.findFirst()
-						.orElse(null);
-			}
+			slaValue = findDefaultSlaValue(slaByPriority, task.getPriority());
 		}
-		Duration duration = slaValue == null ? Duration.ZERO : slaValue.toDuration();
-		Sla sla = Sla.builder()
-				.startDate(Objects.requireNonNullElse(task.getCreatedAt(), ZonedDateTime.now()))
-				.duration(duration)
-				.build();
+		if (slaValue == null || slaValue.toDuration().isZero() || slaValue.toDuration().isNegative()) {
+			task.setSla(null);
+			return;
+		}
+		Sla sla = task.getSla();
+		if (sla == null) {
+			sla = Sla.builder()
+					.startDate(Objects.requireNonNullElse(task.getCreatedAt(), ZonedDateTime.now()))
+					.build();
+		}
+		sla.setDuration(slaValue.toDuration());
 		slaRepository.save(sla);
 		task.setSla(sla);
+	}
+
+
+	private SlaValue findSlaValue(Map<Organization, Map<Priority, SlaValue>> slaByPriority, Organization organization, Priority priority) {
+		if (organization == null || priority == null) {
+			return null;
+		}
+		Map<Priority, SlaValue> organizationSla = slaByPriority.entrySet().stream()
+				.filter(entry -> Objects.equals(entry.getKey().getId(), organization.getId()))
+				.map(Map.Entry::getValue)
+				.findFirst()
+				.orElse(null);
+		if (organizationSla == null) {
+			return null;
+		}
+		return organizationSla.entrySet().stream()
+				.filter(entry -> Objects.equals(entry.getKey().getId(), priority.getId()))
+				.map(Map.Entry::getValue)
+				.findFirst()
+				.orElse(null);
+	}
+
+
+	private SlaValue findDefaultSlaValue(Map<Organization, Map<Priority, SlaValue>> slaByPriority, Priority priority) {
+		if (priority == null) {
+			return null;
+		}
+		Map<Priority, SlaValue> defaultSla = slaByPriority.entrySet().stream()
+				.filter(entry -> entry.getKey() instanceof DefaultOrganization)
+				.map(Map.Entry::getValue)
+				.findFirst()
+				.orElse(null);
+		if (defaultSla == null) {
+			return null;
+		}
+		return defaultSla.entrySet().stream()
+				.filter(entry -> Objects.equals(entry.getKey().getId(), priority.getId()))
+				.map(Map.Entry::getValue)
+				.findFirst()
+				.orElse(null);
 	}
 
 
@@ -862,7 +893,12 @@ public class TaskService {
 	}
 
 
-
-
+	private String normalizeStatusChangeReason(String reason) {
+		if (reason == null) {
+			return null;
+		}
+		String normalized = reason.trim();
+		return normalized.isBlank() ? null : normalized;
+	}
 
 }

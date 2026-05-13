@@ -91,4 +91,6 @@ public class Task {
 	@Builder.Default
 	// Long = User.id; Boolean = isPinged
 	private Map<Long, Boolean> unreadPingTasksMessages = new HashMap<>();
+
+	private String statusChangeReason;
 }

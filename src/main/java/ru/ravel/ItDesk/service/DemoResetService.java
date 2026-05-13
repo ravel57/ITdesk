@@ -9,10 +9,12 @@ import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.*;
 
+import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @ConditionalOnProperty(prefix = "app", name = "is-demo", havingValue = "true")
@@ -28,6 +30,9 @@ public class DemoResetService {
 	private final PriorityRepository priorityRepository;
 	private final StatusRepository statusRepository;
 	private final TaskRepository taskRepository;
+	private final TaskTypeRepository taskTypeRepository;
+	private final OrganizationSlaRepository organizationSlaRepository;
+	private final DefaultOrganizationRepository defaultOrganizationRepository;
 
 
 	@Transactional
@@ -74,7 +79,25 @@ public class DemoResetService {
 				.name("Организация 2")
 				.build();
 		organizationRepository.saveAll(List.of(organization1, organization2));
-		Priority defaultPriority = priorityRepository.findAll().stream()
+		DefaultOrganization.initializeInstance(defaultOrganizationRepository);
+		DefaultOrganization defaultOrganization = DefaultOrganization.getInstance();
+		List<Priority> priorities = priorityRepository.findAll();
+		List<Organization> slaOrganizations = List.of(
+				defaultOrganization,
+				organization1,
+				organization2
+		);
+		List<OrganizationSla> organizationSlas = slaOrganizations.stream()
+				.flatMap(organization -> priorities.stream()
+						.map(priority -> new OrganizationSla(
+								organization,
+								priority,
+								BigDecimal.valueOf(2),
+								SlaUnit.HOURS
+						)))
+				.toList();
+		organizationSlaRepository.saveAll(organizationSlas);
+		Priority defaultPriority = priorities.stream()
 				.filter(priority -> Boolean.TRUE.equals(priority.getDefaultSelection()))
 				.findFirst()
 				.orElseThrow();
@@ -82,12 +105,17 @@ public class DemoResetService {
 				.filter(status -> Boolean.TRUE.equals(status.getDefaultSelection()))
 				.findFirst()
 				.orElseThrow();
+		TaskType defaultTaskType = taskTypeRepository.findByType("Запрос")
+				.orElseGet(() -> taskTypeRepository.save(TaskType.builder()
+						.type("Запрос")
+						.build()));
 		Task task1 = Task.builder()
 				.name("Не работает почта")
 				.priority(defaultPriority)
 				.status(defaultStatus)
 				.createdAt(ZonedDateTime.now())
 				.description("")
+				.type(defaultTaskType)
 				.executor(user)
 				.build();
 		Task task2 = Task.builder()
@@ -97,6 +125,7 @@ public class DemoResetService {
 				.completed(true)
 				.createdAt(ZonedDateTime.now().minusDays(1))
 				.description("")
+				.type(defaultTaskType)
 				.build();
 		Task task3 = Task.builder()
 				.name("Заблокировалась учетная запись")
@@ -104,6 +133,7 @@ public class DemoResetService {
 				.status(defaultStatus)
 				.createdAt(ZonedDateTime.now())
 				.description("")
+				.type(defaultTaskType)
 				.build();
 		Task task4 = Task.builder()
 				.name("Восстановить Word файл")
@@ -111,6 +141,7 @@ public class DemoResetService {
 				.status(defaultStatus)
 				.createdAt(ZonedDateTime.now())
 				.description("")
+				.type(defaultTaskType)
 				.build();
 		Task task5 = Task.builder()
 				.name("Не работает удаленка")
@@ -119,6 +150,7 @@ public class DemoResetService {
 				.completed(true)
 				.createdAt(ZonedDateTime.now().minusDays(2))
 				.description("")
+				.type(defaultTaskType)
 				.build();
 		taskRepository.saveAll(List.of(task1, task2, task3, task4, task5));
 		List<Client> clients = List.of(

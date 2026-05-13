@@ -25,8 +25,7 @@ public class DefaultOrganization extends Organization {
 	public static void initializeInstance(@NotNull DefaultOrganizationRepository repository) {
 		List<DefaultOrganization> all = repository.findAll();
 		if (all.isEmpty()) {
-			instance = new DefaultOrganization();
-			repository.save(instance);
+			instance = repository.save(new DefaultOrganization());
 		} else {
 			instance = all.getFirst();
 		}

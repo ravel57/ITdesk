@@ -14,10 +14,7 @@ import ru.ravel.ItDesk.service.*;
 
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -1131,10 +1128,63 @@ public class WebApiController {
 
 	@PatchMapping("/user/notification-settings")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
-	public ResponseEntity<Object> updateCurrentUserNotificationSettings(
-			@RequestBody UserNotificationSettingsDto dto
-	) {
+	public ResponseEntity<Object> updateCurrentUserNotificationSettings(@RequestBody UserNotificationSettingsDto dto) {
 		return ResponseEntity.ok().body(userService.updateCurrentUserNotificationSettings(dto));
+	}
+
+
+	@PostMapping("/client/{clientId}/task/{taskId}/sla/pause")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> pauseClientTaskSla(@PathVariable Long clientId,@PathVariable Long taskId,@RequestParam(required = false) String reason) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		try {
+			Task task = taskService.pauseTaskSla(clientId, taskId, reason);
+			if (task.getSla() == null) {
+				return ResponseEntity.badRequest().body("У заявки нет SLA");
+			}
+			return ResponseEntity.ok(buildInfo(task.getSla()));
+		} catch (NoSuchElementException | IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(e.getMessage());
+		}
+	}
+
+
+	@PostMapping("/client/{clientId}/task/{taskId}/sla/resume")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> resumeClientTaskSla(@PathVariable Long clientId,@PathVariable Long taskId) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		try {
+			Task task = taskService.resumeTaskSla(clientId, taskId);
+			if (task.getSla() == null) {
+				return ResponseEntity.badRequest().body("У заявки нет SLA");
+			}
+			return ResponseEntity.ok(buildInfo(task.getSla()));
+		} catch (NoSuchElementException | IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(e.getMessage());
+		}
+	}
+
+
+	@GetMapping("/client/{clientId}/task/{taskId}/sla/info")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getClientTaskSlaInfo(@PathVariable Long clientId,@PathVariable Long taskId) {
+		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
+		if (taskOpt.isEmpty()) {
+			return ResponseEntity.notFound().build();
+		}
+		Task task = taskOpt.get();
+		if (task.getSla() == null) {
+			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L));
+		}
+		return ResponseEntity.ok(buildInfo(task.getSla()));
 	}
 
 }

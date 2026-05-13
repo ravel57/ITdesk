@@ -63,6 +63,9 @@ public class ClientService {
 					.orElse(null));
 			client.setUnreadMessagesCount(messages.stream()
 					.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
+					.filter(message -> Boolean.FALSE.equals(message.getIsSent()))
+					.filter(message -> !Boolean.TRUE.equals(message.getIsComment()))
+					.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
 					.count());
 			client.setFirstUnansweredMessageDate(getFirstUnansweredMessageDate(messages));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client.getId()), Collections.emptySet()));

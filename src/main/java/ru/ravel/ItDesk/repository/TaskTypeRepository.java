@@ -9,5 +9,7 @@ public interface TaskTypeRepository extends JpaRepository<TaskType, Long> {
 
 	Optional<TaskType> findByType(String type);
 
+
 	boolean existsByType(String type);
+
 }

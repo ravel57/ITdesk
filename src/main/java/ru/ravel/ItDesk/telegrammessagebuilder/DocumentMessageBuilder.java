@@ -9,6 +9,7 @@ import java.io.File;
 public class DocumentMessageBuilder extends MessageBuilder {
 
 	private File file;
+	private Integer replyMessageId;
 
 
 	public DocumentMessageBuilder(TelegramBot bot) {
@@ -25,11 +26,20 @@ public class DocumentMessageBuilder extends MessageBuilder {
 		return this;
 	}
 
+	public DocumentMessageBuilder replyMessage(Integer replyMessageId) {
+		this.replyMessageId = replyMessageId;
+		return this;
+	}
+
 	public Integer execute() throws NoSuchFieldException {
 		if (telegramId == null || file == null) {
 			throw new NoSuchFieldException();
 		}
 		SendDocument message = new SendDocument(telegramId, file);
+		if (replyMessageId != null) {
+			message.replyToMessageId(replyMessageId);
+		}
+
 		SendResponse response = bot.execute(message);
 		if (response.isOk()) {
 			return response.message().messageId();

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientMessage;
+import ru.ravel.ItDesk.dto.TaskMessageDto;
 import ru.ravel.ItDesk.model.*;
 
 import java.util.List;
@@ -48,6 +49,12 @@ public class WebSocketService {
 
 	public void userNotification(UserNotification userNotification) {
 		simpMessaging.convertAndSend("/topic/user-notification/", userNotification);
+	}
+
+
+	public void taskMessage(Long clientId, Long taskId, Message message) {
+		message.setLinkedTaskId(taskId);
+		simpMessaging.convertAndSend("/topic/task-messages/", new TaskMessageDto(clientId, taskId, message));
 	}
 
 }

@@ -88,6 +88,7 @@ public class TelegramService {
 						.document()
 						.telegramId(client.getTelegramId())
 						.file(file)
+						.replyMessage(message.getReplyMessageMessengerId())
 						.execute();
 				if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
 					BufferedImage bufferedImage = ImageIO.read(file);
@@ -113,6 +114,26 @@ public class TelegramService {
 		} catch (Exception e) {
 			logger.error(e.getMessage());
 			throw new TelegramException(new RuntimeException(e));
+		}
+	}
+
+
+	public boolean editMessage(@NotNull Client client, @NotNull Message message) throws TelegramException {
+		if (message.getMessengerMessageId() == null) {
+			return false;
+		}
+		TelegramBot bot = client.getTgBot().getBot();
+		try {
+			new MessageBuilder(bot)
+					.edit()
+					.telegramId(client.getTelegramId())
+					.messageId(message.getMessengerMessageId())
+					.text(message.getText())
+					.execute();
+			return true;
+		} catch (Exception e) {
+			logger.error(e.getMessage(), e);
+			throw new TelegramException(new RuntimeException("Message not edited"));
 		}
 	}
 
@@ -163,10 +184,7 @@ public class TelegramService {
 	private final ExceptionHandler exceptionHandler = e -> {
 		if (e.response() == null) {
 			logger.error(e.getMessage(), e);
-		} //else {
-//			e.response().errorCode();
-//			e.response().description();
-//		}
+		}
 	};
 
 

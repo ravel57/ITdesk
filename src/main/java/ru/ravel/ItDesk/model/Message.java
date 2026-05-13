@@ -46,6 +46,8 @@ public class Message implements Comparable<Message> {
 	@Builder.Default
 	private Boolean deleted = false;
 
+	private ZonedDateTime editedAt;
+
 	private String fileName;
 
 	private String fileType;

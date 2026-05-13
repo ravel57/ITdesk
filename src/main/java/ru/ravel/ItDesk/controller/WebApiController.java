@@ -43,6 +43,7 @@ public class WebApiController {
 	private final GlobalSearchService globalSearchService;
 	private final TaskHistoryService taskHistoryService;
 	private final TaskService taskService;
+	private final WebSocketService webSocketService;
 
 
 	@GetMapping("/clients")
@@ -85,11 +86,36 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> addTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody Message message) {
 		if (LicenseStarter.isLicenseActive) {
-			boolean isSuccess = clientService.addTaskMessage(taskId, message);
-			if (isSuccess) {
-				return ResponseEntity.ok().build();
-			} else {
+			try {
+				Message savedMessage = clientService.addTaskMessage(taskId, message);
+				webSocketService.taskMessage(clientId, taskId, savedMessage);
+				return ResponseEntity.ok(savedMessage);
+			} catch (Exception e) {
 				return ResponseEntity.status(HttpStatus.CONFLICT).build();
+			}
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/client/{clientId}/task/{taskId}/message/{messageId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> editTaskMessage(
+			@PathVariable Long clientId,
+			@PathVariable Long taskId,
+			@PathVariable Long messageId,
+			@RequestBody Message message
+	) {
+		if (LicenseStarter.isLicenseActive) {
+			try {
+				Message savedMessage = clientService.editTaskMessage(clientId, taskId, messageId, message);
+				webSocketService.taskMessage(clientId, taskId, savedMessage);
+				return ResponseEntity.ok(savedMessage);
+			} catch (IllegalArgumentException e) {
+				return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+			} catch (Exception e) {
+				return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
 			}
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -128,6 +154,26 @@ public class WebApiController {
 			}
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/client/{clientId}/message/{messageId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> editMessage(
+			@PathVariable Long clientId,
+			@PathVariable Long messageId,
+			@RequestBody Message message
+	) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		try {
+			return ResponseEntity.ok(clientService.editMessage(clientId, messageId, message));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+		} catch (Exception e) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
 		}
 	}
 
@@ -1135,7 +1181,7 @@ public class WebApiController {
 
 	@PostMapping("/client/{clientId}/task/{taskId}/sla/pause")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	public ResponseEntity<Object> pauseClientTaskSla(@PathVariable Long clientId,@PathVariable Long taskId,@RequestParam(required = false) String reason) {
+	public ResponseEntity<Object> pauseClientTaskSla(@PathVariable Long clientId, @PathVariable Long taskId, @RequestParam(required = false) String reason) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -1155,7 +1201,7 @@ public class WebApiController {
 
 	@PostMapping("/client/{clientId}/task/{taskId}/sla/resume")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	public ResponseEntity<Object> resumeClientTaskSla(@PathVariable Long clientId,@PathVariable Long taskId) {
+	public ResponseEntity<Object> resumeClientTaskSla(@PathVariable Long clientId, @PathVariable Long taskId) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -1175,7 +1221,7 @@ public class WebApiController {
 
 	@GetMapping("/client/{clientId}/task/{taskId}/sla/info")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	public ResponseEntity<Object> getClientTaskSlaInfo(@PathVariable Long clientId,@PathVariable Long taskId) {
+	public ResponseEntity<Object> getClientTaskSlaInfo(@PathVariable Long clientId, @PathVariable Long taskId) {
 		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
 		if (taskOpt.isEmpty()) {
 			return ResponseEntity.notFound().build();

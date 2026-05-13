@@ -370,7 +370,7 @@ public class ClientService {
 	}
 
 
-	public boolean deleteMessage(Long clientId, Long messageId) {
+	public boolean deleteMessage(Long clientId, Long messageId) throws IllegalArgumentException {
 		if (clientId == null || messageId == null) {
 			throw new IllegalArgumentException("clientId and messageId must not be null");
 		}
@@ -395,6 +395,67 @@ public class ClientService {
 		globalSearchService.deleteDocument("TASK_MESSAGE:" + message.getId());
 		eventPublisher.publish(TriggerType.MESSAGE_DELETED, eventPayload("client", client, "message", message));
 		return true;
+	}
+
+
+	@Transactional
+	public Message editMessage(Long clientId, Long messageId, @NotNull Message payload) throws IllegalArgumentException {
+		if (clientId == null || messageId == null) {
+			throw new IllegalArgumentException("clientId and messageId must not be null");
+		}
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Message message = messageRepository.findById(messageId).orElseThrow();
+		boolean belongsToClient = safeCollection(client.getMessages()).stream()
+				.anyMatch(m -> Objects.equals(m.getId(), messageId));
+		if (!belongsToClient) {
+			throw new IllegalArgumentException("message does not belong to client");
+		}
+		if (Boolean.TRUE.equals(message.getDeleted())) {
+			throw new IllegalStateException("deleted message cannot be edited");
+		}
+		String newText = Objects.toString(payload.getText(), "").trim();
+		if (newText.isBlank()) {
+			throw new IllegalArgumentException("message text must not be blank");
+		}
+		String oldText = message.getText();
+		message.setText(newText);
+		boolean shouldEditExternalMessage =
+				Boolean.TRUE.equals(message.getIsSent()) &&
+						!Boolean.TRUE.equals(message.getIsComment()) &&
+						message.getMessengerMessageId() != null &&
+						message.getFileUuid() == null &&
+						!isDemo;
+
+		if (shouldEditExternalMessage && client.getMessageFrom() != null) {
+			try {
+				switch (client.getMessageFrom()) {
+					case TELEGRAM -> telegramService.editMessage(client, message);
+					case EMAIL, WHATSAPP -> {
+					}
+				}
+			} catch (TelegramException e) {
+				message.setText(oldText);
+				throw new IllegalStateException("external message edit failed", e);
+			}
+		}
+		message.setEditedAt(ZonedDateTime.now());
+		Message savedMessage = messageRepository.saveAndFlush(message);
+		safeCollection(client.getMessages()).stream()
+				.filter(m -> Objects.equals(m.getId(), savedMessage.getId()))
+				.findFirst()
+				.ifPresent(m -> {
+					m.setText(savedMessage.getText());
+					m.setEditedAt(savedMessage.getEditedAt());
+				});
+		clientsRepository.save(client);
+		globalSearchService.indexClient(client);
+		globalSearchService.indexClientMessage(client, savedMessage);
+		eventPublisher.publish(
+				TriggerType.MESSAGE_EDITED,
+				eventPayload("client", client, "message", savedMessage)
+		);
+		webSocketService.editedMessage(new ClientMessage(client, savedMessage));
+		return savedMessage;
 	}
 
 
@@ -431,7 +492,8 @@ public class ClientService {
 	}
 
 
-	public boolean addTaskMessage(Long taskId, @NotNull Message message) {
+	@Transactional
+	public Message addTaskMessage(Long taskId, @NotNull Message message) {
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
@@ -440,17 +502,17 @@ public class ClientService {
 		message.setIsSent(Boolean.TRUE.equals(message.getIsSent()));
 		message.setIsRead(Boolean.TRUE.equals(message.getIsRead()));
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
-		messageRepository.save(message);
+		Message savedMessage = messageRepository.saveAndFlush(message);
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		if (task.getMessages() == null) {
 			task.setMessages(new ArrayList<>());
 		}
-		task.getMessages().add(message);
-		taskRepository.save(task);
+		task.getMessages().add(savedMessage);
+		task.setLastActivity(savedMessage.getDate());
 
 		// pings
 		Pattern pattern = Pattern.compile("@\\[(.+?)]");
-		Matcher matcher = pattern.matcher(Objects.requireNonNullElse(message.getText(), ""));
+		Matcher matcher = pattern.matcher(Objects.requireNonNullElse(savedMessage.getText(), ""));
 		if (task.getUnreadPingTasksMessages() == null) {
 			task.setUnreadPingTasksMessages(new HashMap<>());
 		}
@@ -462,7 +524,14 @@ public class ClientService {
 					.findFirst()
 					.ifPresent(u -> {
 						task.getUnreadPingTasksMessages().put(u.getId(), true);
-						eventPublisher.publish(TriggerType.TASK_MESSAGE_MENTIONED_USER, eventPayload("task", task, "message", message, "mentionedUser", u));
+						eventPublisher.publish(
+								TriggerType.TASK_MESSAGE_MENTIONED_USER,
+								eventPayload(
+										"task", task,
+										"message", savedMessage,
+										"mentionedUser", u
+								)
+						);
 						userNotificationService.send(new UserNotification(
 								UserNotificationEvent.MENTIONED_USER_IN_TASK_CHAT,
 								Objects.toString(task.getName(), ""),
@@ -477,11 +546,11 @@ public class ClientService {
 					task.getExecutor().getId()
 			));
 		}
-		taskRepository.save(task);
+		Task savedTask = taskRepository.saveAndFlush(task);
 		Client client = clientsRepository.findByTaskId(taskId).orElse(null);
-		globalSearchService.indexTask(client, task);
-		globalSearchService.indexTaskMessage(client, task, message);
-		return true;
+		globalSearchService.indexTask(client, savedTask);
+		globalSearchService.indexTaskMessage(client, savedTask, savedMessage);
+		return savedMessage;
 	}
 
 
@@ -718,6 +787,52 @@ public class ClientService {
 			globalSearchService.indexClient(client);
 			globalSearchService.indexTask(client, task);
 		}
+	}
+
+
+	@Transactional
+	public Message editTaskMessage(Long clientId, Long taskId, Long messageId, @NotNull Message payload) {
+		if (clientId == null || taskId == null || messageId == null) {
+			throw new IllegalArgumentException("clientId, taskId and messageId must not be null");
+		}
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
+		if (!Objects.equals(client.getId(), clientId)) {
+			throw new IllegalArgumentException("task does not belong to client");
+		}
+		Message message = safeCollection(task.getMessages()).stream()
+				.filter(m -> Objects.equals(m.getId(), messageId))
+				.findFirst()
+				.orElseThrow();
+		if (Boolean.TRUE.equals(message.getDeleted())) {
+			throw new IllegalStateException("deleted message cannot be edited");
+		}
+		String newText = Objects.toString(payload.getText(), "").trim();
+		if (newText.isBlank()) {
+			throw new IllegalArgumentException("message text must not be blank");
+		}
+		message.setText(newText);
+		message.setEditedAt(ZonedDateTime.now());
+		Message savedMessage = messageRepository.saveAndFlush(message);
+		safeCollection(task.getMessages()).stream()
+				.filter(m -> Objects.equals(m.getId(), savedMessage.getId()))
+				.findFirst()
+				.ifPresent(m -> {
+					m.setText(savedMessage.getText());
+					m.setEditedAt(savedMessage.getEditedAt());
+				});
+		Task savedTask = taskRepository.saveAndFlush(task);
+		globalSearchService.indexTask(client, savedTask);
+		globalSearchService.indexTaskMessage(client, savedTask, savedMessage);
+		eventPublisher.publish(
+				TriggerType.MESSAGE_EDITED,
+				eventPayload(
+						"client", client,
+						"task", savedTask,
+						"message", savedMessage
+				)
+		);
+		return savedMessage;
 	}
 
 }

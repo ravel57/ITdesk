@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.controller;
 
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -1231,6 +1232,22 @@ public class WebApiController {
 			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L));
 		}
 		return ResponseEntity.ok(buildInfo(task.getSla()));
+	}
+
+
+	@GetMapping("/session/current")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getCurrentSession(HttpSession session) {
+		return ResponseEntity.ok(Map.of(
+				"sessionId", session.getId()
+		));
+	}
+
+
+	@GetMapping("/user/current")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getCurrentUser() {
+		return ResponseEntity.ok(userService.getCurrentUser());
 	}
 
 }

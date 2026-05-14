@@ -2,7 +2,7 @@ package ru.ravel.ItDesk.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -17,10 +17,13 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
 import ru.ravel.ItDesk.service.AuthService;
-import ru.ravel.ItDesk.service.UserService;
-
+import ru.ravel.ItDesk.service.UserSessionService;
 
 @Configuration
 @EnableWebSecurity
@@ -29,11 +32,14 @@ class WebSecurityConfig {
 
 	private final AuthService authService;
 //	private final UserService userService;
+	private final UserSessionService userSessionService;
+	private final SingleSessionFilter singleSessionFilter;
 
 
-	public WebSecurityConfig(AuthService authService, @Lazy UserService userService) {
+	public WebSecurityConfig(AuthService authService, UserSessionService userSessionService, SingleSessionFilter singleSessionFilter) {
 		this.authService = authService;
-//		this.userService = userService;
+		this.userSessionService = userSessionService;
+		this.singleSessionFilter = singleSessionFilter;
 	}
 
 
@@ -73,38 +79,73 @@ class WebSecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
 		requestCache.setMatchingRequestParameterName(null);
-		return http.cors(AbstractHttpConfigurer::disable)
+
+		return http
+				.cors(AbstractHttpConfigurer::disable)
 				.csrf(AbstractHttpConfigurer::disable)
 				.authorizeHttpRequests(requests -> requests
-						.requestMatchers("/js/**", "/css/**", "/icons/**", "/fonts/**").permitAll()
-						.requestMatchers("/login", "/api/v1/login").permitAll()
-						.requestMatchers("/settings").authenticated()
+						.requestMatchers(
+								"/",
+								"/index.html",
+								"/favicon.ico",
+								"/login",
+								"/login-error",
+								"/session-expired",
+								"/assets/**",
+								"/js/**",
+								"/css/**",
+								"/icons/**",
+								"/fonts/**",
+								"/img/**",
+								"/statics/**",
+								"/api/v1/login",
+								"/api/v1/support/resave-message",
+								"/api/v1/support/reset-password",
+								"/actuator/**"
+						).permitAll()
+						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
+						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
 						.requestMatchers("/settings/profile").authenticated()
 						.requestMatchers("/settings/**").hasRole("ADMIN")
-						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
-						.requestMatchers("/ws/**").permitAll()
-						.requestMatchers("/actuator/**").permitAll()
-						.requestMatchers("/api/v1/support/resave-message").permitAll()
-						.requestMatchers("/api/v1/support/reset-password").permitAll()
+						.requestMatchers("/ws/**").authenticated()
 						.anyRequest().authenticated())
 				.sessionManagement(sessionManagement -> sessionManagement
 						.maximumSessions(1)
 						.maxSessionsPreventsLogin(false)
 						.sessionRegistry(sessionRegistry())
-						.expiredUrl("/session-expired"))
+						.expiredUrl("/login?expired"))
+				.exceptionHandling(exception -> exception
+						.defaultAuthenticationEntryPointFor(
+								new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+								PathPatternRequestMatcher.pathPattern("/api/**")
+						)
+				)
 				.formLogin(formLogin -> formLogin
 						.loginPage("/login")
 						.loginProcessingUrl("/perform_login")
-						.defaultSuccessUrl("/chats", true)
+						.successHandler((request, response, authentication) -> {
+							userSessionService.registerLogin(
+									authentication.getName(),
+									request.getSession()
+							);
+							response.sendRedirect("/chats");
+						})
 						.failureUrl("/login-error")
 						.permitAll())
 				.logout(logout -> logout
-						.logoutSuccessUrl("/logout")
+						.logoutSuccessUrl("/login")
 						.invalidateHttpSession(true)
 						.deleteCookies("JSESSIONID")
 //						.logoutSuccessHandler((request, response, authentication) -> userService.userOffline()) // FIXME
 						.permitAll())
 				.requestCache(cache -> cache.requestCache(requestCache))
+				.addFilterAfter(singleSessionFilter, UsernamePasswordAuthenticationFilter.class)
 				.build();
+	}
+
+
+	@Bean
+	public HttpSessionEventPublisher httpSessionEventPublisher() {
+		return new HttpSessionEventPublisher();
 	}
 }

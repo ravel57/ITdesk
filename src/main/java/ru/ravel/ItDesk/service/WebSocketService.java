@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientMessage;
+import ru.ravel.ItDesk.dto.ForceLogoutDto;
 import ru.ravel.ItDesk.dto.TaskMessageDto;
 import ru.ravel.ItDesk.model.*;
 
@@ -55,6 +56,14 @@ public class WebSocketService {
 	public void taskMessage(Long clientId, Long taskId, Message message) {
 		message.setLinkedTaskId(taskId);
 		simpMessaging.convertAndSend("/topic/task-messages/", new TaskMessageDto(clientId, taskId, message));
+	}
+
+
+	public void forceLogout(String username, String newSessionId) {
+		simpMessaging.convertAndSend(
+				"/topic/force-logout/",
+				new ForceLogoutDto(username, newSessionId)
+		);
 	}
 
 }

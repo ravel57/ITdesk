@@ -10,9 +10,26 @@ import org.springframework.web.bind.annotation.GetMapping;
 @CrossOrigin
 public class WebController {
 
-	@GetMapping("")
-	public String rootMapping() {
-		return "index";
+	@GetMapping({
+			"",
+			"/",
+			"/login",
+			"/login-error",
+			"/session-expired",
+			"/chats",
+			"/chats/**",
+			"/tasks",
+			"/tasks/**",
+			"/settings",
+			"/settings/**",
+			"/my-tasks",
+			"/chat",
+			"/history",
+			"/search",
+			"/help",
+			"/analytics"
+	})
+	public String spaMapping() {
+		return "forward:/index.html";
 	}
-
 }

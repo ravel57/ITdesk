@@ -18,6 +18,7 @@ import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 
@@ -36,7 +37,7 @@ public class UserService {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	@Getter
-	private final Set<User> usersOnline = new HashSet<>();
+	private final Set<Long> usersOnlineIds = ConcurrentHashMap.newKeySet();
 	private final TaskRepository taskRepository;
 	private final EventPublisher eventPublisher;
 
@@ -109,6 +110,10 @@ public class UserService {
 				.notifySlaHalfTimePassed(savedUser.getNotifySlaHalfTimePassed())
 				.notifySlaOverdue(savedUser.getNotifySlaOverdue())
 				.notifyChatUnansweredTooLong(savedUser.getNotifyChatUnansweredTooLong())
+				.notifyChatUnansweredTooLongMinutes(savedUser.getNotifyChatUnansweredTooLongMinutes())
+				.notifyDeadlineOverdueBeforeMinutes(savedUser.getNotifyDeadlineOverdueBeforeMinutes())
+				.notifyDeadlineOverdueBeforeMinutesEnabled(savedUser.getNotifyDeadlineOverdueBeforeMinutesEnabled())
+				.notifyDeadlineOverdue(savedUser.getNotifyDeadlineOverdue())
 				.isEnabled(savedUser.getIsEnabled())
 				.isAccountNonLocked(savedUser.getIsAccountNonLocked())
 				.isAccountNonExpired(savedUser.getIsAccountNonExpired())
@@ -131,24 +136,45 @@ public class UserService {
 
 	public User userOnline() {
 		User currentUser = getCurrentUser();
-		usersOnline.add(currentUser);
+		userOnline(currentUser.getId(), currentUser.getUsername());
 		return currentUser;
 	}
 
 
 	public void userOnline(Long id, String username) {
 		if (id != null) {
-			userRepository.findById(id).ifPresent(usersOnline::add);
+			usersOnlineIds.add(id);
 			return;
 		}
 		if (username != null && !username.isBlank()) {
-			userRepository.findByUsername(username).ifPresent(usersOnline::add);
+			userRepository.findByUsername(username)
+					.map(User::getId)
+					.ifPresent(usersOnlineIds::add);
 		}
 	}
 
 
 	public void userOffline(@NotNull User user) {
-		userRepository.findById(user.getId()).ifPresent(usersOnline::remove);
+		if (user.getId() != null) {
+			usersOnlineIds.remove(user.getId());
+		}
+	}
+
+
+	public void userOffline(Long id) {
+		if (id != null) {
+			usersOnlineIds.remove(id);
+		}
+	}
+
+
+	public void userOffline(String username) {
+		if (username == null || username.isBlank()) {
+			return;
+		}
+		userRepository.findByUsername(username)
+				.map(User::getId)
+				.ifPresent(usersOnlineIds::remove);
 	}
 
 
@@ -161,6 +187,7 @@ public class UserService {
 
 
 	public void deleteUser(Long userId) {
+		userOffline(userId);
 		if (getUsers().size() > 1) {
 			messageRepository.findAll().stream()
 					.filter(m -> m.getUser() != null && m.getUser().getId().equals(userId))
@@ -219,39 +246,80 @@ public class UserService {
 	}
 
 
+	private Integer normalizeChatUnansweredTooLongMinutes(Integer minutes) {
+		if (minutes == null || minutes < 1) {
+			return 30;
+		}
+		return minutes;
+	}
+
+
 	public UserNotificationSettingsDto getCurrentUserNotificationSettings() {
 		User user = getCurrentUser();
-		return new UserNotificationSettingsDto(
-				Boolean.TRUE.equals(user.getNotifyChatPing()),
-				Boolean.TRUE.equals(user.getNotifyTaskChatPing()),
-				Boolean.TRUE.equals(user.getNotifyNewAssignedTask()),
-				Boolean.TRUE.equals(user.getNotifyTaskNewMessageAssigned()),
-				Boolean.TRUE.equals(user.getNotifySlaHalfTimePassed()),
-				Boolean.TRUE.equals(user.getNotifySlaOverdue()),
-				Boolean.TRUE.equals(user.getNotifyChatUnansweredTooLong())
-		);
+		return UserNotificationSettingsDto.builder()
+				.notifyChatPing(Boolean.TRUE.equals(user.getNotifyChatPing()))
+				.notifyTaskChatPing(Boolean.TRUE.equals(user.getNotifyTaskChatPing()))
+				.notifyNewAssignedTask(Boolean.TRUE.equals(user.getNotifyNewAssignedTask()))
+				.notifyTaskNewMessageAssigned(Boolean.TRUE.equals(user.getNotifyTaskNewMessageAssigned()))
+				.notifySlaHalfTimePassed(Boolean.TRUE.equals(user.getNotifySlaHalfTimePassed()))
+				.notifySlaOverdue(Boolean.TRUE.equals(user.getNotifySlaOverdue()))
+				.notifyDeadlineOverdue(Boolean.TRUE.equals(user.getNotifyDeadlineOverdue()))
+				.notifyChatUnansweredTooLong(Boolean.TRUE.equals(user.getNotifyChatUnansweredTooLong()))
+				.notifyChatUnansweredTooLongMinutes(normalizePositiveMinutes(user.getNotifyChatUnansweredTooLongMinutes(), 30))
+				.notifyDeadlineOverdueBeforeMinutesEnabled(Boolean.TRUE.equals(user.getNotifyDeadlineOverdueBeforeMinutesEnabled()))
+				.notifyDeadlineOverdueBeforeMinutes(normalizePositiveMinutes(user.getNotifyDeadlineOverdueBeforeMinutes(), 30))
+				.build();
 	}
 
 
 	public UserNotificationSettingsDto updateCurrentUserNotificationSettings(UserNotificationSettingsDto dto) {
 		User user = getCurrentUser();
+		Integer slaOverdueBeforeMinutes = normalizePositiveMinutes(
+				dto.getNotifyDeadlineOverdueBeforeMinutes(),
+				30
+		);
+		Integer chatUnansweredTooLongMinutes = normalizePositiveMinutes(
+				dto.getNotifyChatUnansweredTooLongMinutes(),
+				30
+		);
 		user.setNotifyChatPing(Boolean.TRUE.equals(dto.getNotifyChatPing()));
 		user.setNotifyTaskChatPing(Boolean.TRUE.equals(dto.getNotifyTaskChatPing()));
 		user.setNotifyNewAssignedTask(Boolean.TRUE.equals(dto.getNotifyNewAssignedTask()));
 		user.setNotifyTaskNewMessageAssigned(Boolean.TRUE.equals(dto.getNotifyTaskNewMessageAssigned()));
 		user.setNotifySlaHalfTimePassed(Boolean.TRUE.equals(dto.getNotifySlaHalfTimePassed()));
 		user.setNotifySlaOverdue(Boolean.TRUE.equals(dto.getNotifySlaOverdue()));
+		user.setNotifyDeadlineOverdueBeforeMinutes(slaOverdueBeforeMinutes);
+		user.setNotifyDeadlineOverdueBeforeMinutesEnabled(Boolean.TRUE.equals(dto.getNotifyDeadlineOverdueBeforeMinutesEnabled()));
 		user.setNotifyChatUnansweredTooLong(Boolean.TRUE.equals(dto.getNotifyChatUnansweredTooLong()));
+		user.setNotifyChatUnansweredTooLongMinutes(chatUnansweredTooLongMinutes);
+		user.setNotifyDeadlineOverdue(Boolean.TRUE.equals(dto.getNotifyDeadlineOverdue()));
 		User saved = userRepository.save(user);
-		return new UserNotificationSettingsDto(
-				Boolean.TRUE.equals(saved.getNotifyChatPing()),
-				Boolean.TRUE.equals(saved.getNotifyTaskChatPing()),
-				Boolean.TRUE.equals(saved.getNotifyNewAssignedTask()),
-				Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned()),
-				Boolean.TRUE.equals(saved.getNotifySlaHalfTimePassed()),
-				Boolean.TRUE.equals(saved.getNotifySlaOverdue()),
-				Boolean.TRUE.equals(saved.getNotifyChatUnansweredTooLong())
-		);
+		return UserNotificationSettingsDto.builder()
+				.notifyChatPing(Boolean.TRUE.equals(saved.getNotifyChatPing()))
+				.notifyTaskChatPing(Boolean.TRUE.equals(saved.getNotifyTaskChatPing()))
+				.notifyNewAssignedTask(Boolean.TRUE.equals(saved.getNotifyNewAssignedTask()))
+				.notifyTaskNewMessageAssigned(Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned()))
+				.notifySlaHalfTimePassed(Boolean.TRUE.equals(saved.getNotifySlaHalfTimePassed()))
+				.notifySlaOverdue(Boolean.TRUE.equals(saved.getNotifySlaOverdue()))
+				.notifyDeadlineOverdue(Boolean.TRUE.equals(saved.getNotifyDeadlineOverdue()))
+				.notifyChatUnansweredTooLong(Boolean.TRUE.equals(saved.getNotifyChatUnansweredTooLong()))
+				.notifyChatUnansweredTooLongMinutes(normalizePositiveMinutes(saved.getNotifyChatUnansweredTooLongMinutes(), 30))
+				.notifyDeadlineOverdueBeforeMinutesEnabled(Boolean.TRUE.equals(saved.getNotifyDeadlineOverdueBeforeMinutesEnabled()))
+				.notifyDeadlineOverdueBeforeMinutes(normalizePositiveMinutes(saved.getNotifyDeadlineOverdueBeforeMinutes(), 30))
+				.build();
+	}
+
+
+	public Set<User> getUsersOnline() {
+		return new LinkedHashSet<>(userRepository.findAllById(usersOnlineIds));
+	}
+
+
+	private Integer normalizePositiveMinutes(Integer minutes, Integer defaultValue) {
+		if (minutes == null || minutes < 1) {
+			return defaultValue;
+		}
+		return minutes;
 	}
 
 }

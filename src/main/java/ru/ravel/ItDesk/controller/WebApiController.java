@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.*;
 
+
 @RestController
 @RequestMapping("/api/v1")
 @CrossOrigin
@@ -1066,9 +1067,21 @@ public class WebApiController {
 	public ResponseEntity<Object> getAnalyticsSummary(
 			@RequestParam(required = false) String from,
 			@RequestParam(required = false) String to,
-			@RequestParam(defaultValue = "DAY") String groupBy
+			@RequestParam(defaultValue = "DAY") String groupBy,
+			@RequestParam(required = false) String typeIds,
+			@RequestParam(required = false) String priorityIds,
+			@RequestParam(required = false) String executorIds,
+			@RequestParam(required = false) String tagIds
 	) {
-		return ResponseEntity.ok().body(analyticsService.getSummary(from, to, groupBy));
+		return ResponseEntity.ok().body(analyticsService.getSummary(
+				from,
+				to,
+				groupBy,
+				typeIds,
+				priorityIds,
+				executorIds,
+				tagIds
+		));
 	}
 
 

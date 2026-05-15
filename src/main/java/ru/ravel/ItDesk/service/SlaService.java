@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 
 
 @Service
@@ -45,13 +46,13 @@ public class SlaService {
 		if (sla == null || sla.getId() == null) {
 			return;
 		}
-		SlaPause active = slaPauseRepository.findFirstBySlaIdAndEndedAtIsNull(sla.getId())
-				.orElse(null);
-		if (active == null) {
+		List<SlaPause> activePauses = slaPauseRepository.findAllBySlaIdAndEndedAtIsNull(sla.getId());
+		if (activePauses.isEmpty()) {
 			return;
 		}
-		active.setEndedAt(ZonedDateTime.now());
-		slaPauseRepository.save(active);
+		ZonedDateTime now = ZonedDateTime.now();
+		activePauses.forEach(pause -> pause.setEndedAt(now));
+		slaPauseRepository.saveAll(activePauses);
 	}
 
 

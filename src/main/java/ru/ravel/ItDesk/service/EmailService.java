@@ -12,14 +12,13 @@ import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.http.MediaType;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.EmailAccount;
@@ -38,6 +37,7 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,7 +45,6 @@ import java.util.regex.Pattern;
 @Service
 public class EmailService {
 
-	private final ClientService clientService;
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
 	private final EmailAccountRepository emailAccountRepository;
@@ -56,6 +55,7 @@ public class EmailService {
 
 	private final Map<EmailAccount, Store> imapStores = new ConcurrentHashMap<>();
 	private final Map<EmailAccount, JavaMailSender> smtpSenders = new ConcurrentHashMap<>();
+	private final AtomicBoolean emailCheckRunning = new AtomicBoolean(false);
 
 	@Value("${minio.bucket-name}")
 	private String bucketName;
@@ -63,11 +63,10 @@ public class EmailService {
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 
-	public EmailService(@Lazy ClientService clientService, ClientRepository clientRepository,
+	public EmailService(ClientRepository clientRepository,
 						MessageRepository messageRepository, EmailAccountRepository emailAccountRepository,
 						MinioClient minioClient, MinioService minioService, WebSocketService webSocketService,
 						EventPublisher eventPublisher) {
-		this.clientService = clientService;
 		this.clientRepository = clientRepository;
 		this.messageRepository = messageRepository;
 		this.emailAccountRepository = emailAccountRepository;
@@ -126,17 +125,24 @@ public class EmailService {
 		}
 	}
 
-
-	@Async
-	@Scheduled(fixedRate = 30, timeUnit = TimeUnit.SECONDS)
+	@Transactional
+	@Scheduled(fixedDelay = 30, timeUnit = TimeUnit.SECONDS)
 	public void checkEmails() {
-		imapStores.forEach((emailAccount, store) -> {
-			try {
-				receiveEmails(store, emailAccount);
-			} catch (Exception e) {
-				logger.error(e.getMessage(), e);
-			}
-		});
+		if (!emailCheckRunning.compareAndSet(false, true)) {
+			logger.warn("Previous email check is still running, skip this run");
+			return;
+		}
+		try {
+			imapStores.forEach((emailAccount, store) -> {
+				try {
+					receiveEmails(store, emailAccount);
+				} catch (Exception e) {
+					logger.error(e.getMessage(), e);
+				}
+			});
+		} finally {
+			emailCheckRunning.set(false);
+		}
 	}
 
 
@@ -175,8 +181,8 @@ public class EmailService {
 			Message[] messages = emailFolder.search(new FlagTerm(new Flags(Flags.Flag.SEEN), false));
 			List<Message> emails = Arrays.stream(messages).toList();
 			for (Message emailMessage : emails) {
-				List<Client> clients = clientService.getClients().stream().filter(c -> c.getEmail() != null).toList();
 				String emailFrom = ((InternetAddress) emailMessage.getFrom()[0]).getAddress();
+				Client client = clientRepository.findFirstByEmail(emailFrom).orElse(null);
 				ru.ravel.ItDesk.model.Message message = ru.ravel.ItDesk.model.Message.builder()
 						.text(getTextFromMessage(emailMessage))
 						.date(ZonedDateTime.ofInstant(Instant.ofEpochMilli(emailMessage.getReceivedDate().getTime()), ZoneId.systemDefault()))
@@ -186,23 +192,33 @@ public class EmailService {
 						.build();
 				saveAttachments(emailMessage, message);
 				messageRepository.save(message);
-				Client client = clients.stream().filter(c -> c.getEmail().equals(emailFrom)).findFirst().orElse(null);
+				boolean newClient = false;
 				if (client != null) {
 					client.getMessages().add(message);
 				} else {
+					newClient = true;
 					client = Client.builder()
 							.email(emailFrom)
 							.firstname(emailFrom)
 							.messageFrom(MessageFrom.EMAIL)
-							.messages(List.of(message))
+							.messages(new ArrayList<>(List.of(message)))
 							.emailAccountSender(emailAccount)
 							.build();
-					eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
 				}
 				try {
-					clientRepository.save(client);
-				} catch (Exception e) {
-					clientRepository.save(client);
+					client = clientRepository.save(client);
+				} catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
+					if (client.getId() == null) {
+						throw e;
+					}
+					logger.warn("Client was updated concurrently, reloading client id={}", client.getId());
+					Client freshClient = clientRepository.findById(client.getId()).orElseThrow();
+					freshClient.getMessages().add(message);
+					client = clientRepository.save(freshClient);
+				}
+
+				if (newClient) {
+					eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
 				}
 				webSocketService.sendNewMessages(new ClientMessage(client, message));
 				emailMessage.setFlag(Flags.Flag.SEEN, true);

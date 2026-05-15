@@ -27,4 +27,6 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 			where t.id = :taskId
 			""")
 	Optional<Client> findByTaskId(@Param("taskId") Long taskId);
+
+	Optional<Client> findFirstByEmail(String email);
 }

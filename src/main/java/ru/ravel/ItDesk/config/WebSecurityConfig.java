@@ -50,21 +50,15 @@ class WebSecurityConfig {
 
 
 	@Bean
-	public PasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder(12);
-	}
-
-
-	@Bean
 	public SessionRegistry sessionRegistry() {
 		return new SessionRegistryImpl();
 	}
 
 
 	@Bean
-	public AuthenticationProvider authenticationProvider() {
+	public AuthenticationProvider authenticationProvider(PasswordEncoder passwordEncoder) {
 		DaoAuthenticationProvider provider = new DaoAuthenticationProvider(userDetailsService());
-		provider.setPasswordEncoder(passwordEncoder());
+		provider.setPasswordEncoder(passwordEncoder);
 		return provider;
 	}
 
@@ -133,10 +127,20 @@ class WebSecurityConfig {
 						.failureUrl("/login-error")
 						.permitAll())
 				.logout(logout -> logout
+						.logoutUrl("/logout")
+						.addLogoutHandler((request, response, authentication) -> {
+							if (authentication == null) {
+								return;
+							}
+							var session = request.getSession(false);
+							userSessionService.logout(
+									authentication.getName(),
+									session != null ? session.getId() : null
+							);
+						})
 						.logoutSuccessUrl("/login")
 						.invalidateHttpSession(true)
 						.deleteCookies("JSESSIONID")
-//						.logoutSuccessHandler((request, response, authentication) -> userService.userOffline()) // FIXME
 						.permitAll())
 				.requestCache(cache -> cache.requestCache(requestCache))
 				.addFilterAfter(singleSessionFilter, UsernamePasswordAuthenticationFilter.class)

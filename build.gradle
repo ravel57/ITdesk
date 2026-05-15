@@ -10,7 +10,7 @@ ext {
 }
 
 group = 'ru.ravel'
-version = '0.4'
+version = '0.5.0'
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_21
@@ -103,6 +103,7 @@ dependencies {
 //	plugins support
 	implementation 'org.apache.groovy:groovy:4.0.24'
 	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+	implementation 'org.apache.groovy:groovy-json:4.0.24'
 
 //	elasticsearch
 	implementation 'org.springframework.boot:spring-boot-starter-json'

@@ -91,6 +91,22 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@Column(name = "notify_chat_unanswered_too_long", nullable = false)
 	protected Boolean notifyChatUnansweredTooLong = false;
 
+	@Builder.Default
+	@Column(name = "notify_chat_unanswered_too_long_minutes", nullable = false)
+	protected Integer notifyChatUnansweredTooLongMinutes = 30;
+
+	@Builder.Default
+	@Column(name = "notify_deadline_overdue_before_minutes_enabled", nullable = false)
+	protected Boolean notifyDeadlineOverdueBeforeMinutesEnabled = false;
+
+	@Builder.Default
+	@Column(name = "notify_deadline_overdue_before_minutes", nullable = false)
+	protected Integer notifyDeadlineOverdueBeforeMinutes = 30;
+
+	@Builder.Default
+	@Column(name = "notify_deadline_overdue", nullable = false)
+	protected Boolean notifyDeadlineOverdue = false;
+
 
 	@Override
 	public String getUsername() {

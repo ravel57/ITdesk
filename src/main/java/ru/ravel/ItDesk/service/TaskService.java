@@ -1,6 +1,5 @@
 package ru.ravel.ItDesk.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -8,7 +7,6 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
 
-import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
 
@@ -29,6 +27,7 @@ public class TaskService {
 	private final SlaPauseRepository slaPauseRepository;
 
 	private static final String FREEZE_SLA_PAUSE_REASON = "Заявка заморожена";
+	private static final String CLOSED_SLA_PAUSE_REASON = "Заявка закрыта";
 	private static final String MANUAL_SLA_PAUSE_REASON = "Ручная пауза SLA";
 	private final UserNotificationService userNotificationService;
 
@@ -218,21 +217,25 @@ public class TaskService {
 					oldFrozen ? "Да" : "Нет",
 					newFrozen ? "Да" : "Нет"
 			);
-			addChange(
-					changes,
-					"slaPause",
-					"SLA-пауза",
-					oldFrozen ? "Поставлена на паузу" : "Снята с паузы",
-					newFrozen ? "Поставлена на паузу" : "Снята с паузы"
-			);
 		}
 		boolean statusChanged = !Objects.equals(oldStatus, olderTask.getStatus());
 		boolean completedChanged = !Objects.equals(oldCompleted, olderTask.getCompleted());
 		boolean frozenChanged = oldFrozen != newFrozen;
+		boolean oldSlaPausedByTaskState = oldFrozen || Boolean.TRUE.equals(oldCompleted);
+		boolean newSlaPausedByTaskState = newFrozen || Boolean.TRUE.equals(olderTask.getCompleted());
+		if (oldSlaPausedByTaskState != newSlaPausedByTaskState) {
+			addChange(
+					changes,
+					"slaPause",
+					"SLA-пауза",
+					oldSlaPausedByTaskState ? "Поставлена на паузу" : "Снята с паузы",
+					newSlaPausedByTaskState ? "Поставлена на паузу" : "Снята с паузы"
+			);
+		}
 		if (statusChangeReason != null && (statusChanged || completedChanged || frozenChanged)) {
 			olderTask.setStatusChangeReason(statusChangeReason);
 		}
-		syncSlaPauseByFrozenState(olderTask);
+		syncSlaPauseState(olderTask);
 		olderTask.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(olderTask);
 		globalSearchService.indexClient(client);
@@ -609,38 +612,69 @@ public class TaskService {
 	}
 
 
-	private void syncSlaPauseByFrozenState(Task task) {
+	private void syncSlaPauseState(Task task) {
 		if (task == null || task.getSla() == null || task.getSla().getId() == null) {
 			return;
 		}
 		boolean nowFrozen = Boolean.TRUE.equals(task.getFrozen());
+		boolean nowCompleted = Boolean.TRUE.equals(task.getCompleted());
 		if (nowFrozen) {
-			openSlaPause(task);
+			closeAllSlaPausesExceptReason(task, FREEZE_SLA_PAUSE_REASON);
+			if (!hasActiveSlaPauseByReason(task, FREEZE_SLA_PAUSE_REASON)) {
+				openSlaPause(
+						task,
+						FREEZE_SLA_PAUSE_REASON,
+						task.getFrozenFrom() != null ? task.getFrozenFrom() : ZonedDateTime.now()
+				);
+			}
 			return;
 		}
-		closeSlaPause(task);
+		if (nowCompleted) {
+			closeAllSlaPausesExceptReason(task, CLOSED_SLA_PAUSE_REASON);
+			if (!hasActiveSlaPauseByReason(task, CLOSED_SLA_PAUSE_REASON)) {
+				openSlaPause(
+						task,
+						CLOSED_SLA_PAUSE_REASON,
+						task.getClosedAt() != null ? task.getClosedAt() : ZonedDateTime.now()
+				);
+			}
+			return;
+		}
+		closeSlaPause(task, FREEZE_SLA_PAUSE_REASON);
+		closeSlaPause(task, CLOSED_SLA_PAUSE_REASON);
 	}
 
 
-	private void openSlaPause(Task task) {
+	private boolean hasActiveSlaPauseByReason(Task task, String reason) {
+		if (task == null || task.getSla() == null || task.getSla().getId() == null) {
+			return false;
+		}
+		return slaPauseRepository
+				.findFirstBySlaIdAndReasonAndEndedAtIsNullOrderByStartedAtDesc(task.getSla().getId(), reason)
+				.isPresent();
+	}
+
+
+	private void openSlaPause(Task task, String reason, ZonedDateTime startedAt) {
+		if (task == null || task.getSla() == null || task.getSla().getId() == null) {
+			return;
+		}
+
 		slaPauseRepository
 				.findFirstBySlaIdAndReasonAndEndedAtIsNullOrderByStartedAtDesc(
 						task.getSla().getId(),
-						FREEZE_SLA_PAUSE_REASON
+						reason
 				)
 				.ifPresentOrElse(
 						pause -> {
-							// Уже есть активная пауза заморозки.
+							// Уже есть активная пауза с этой причиной.
 						},
 						() -> {
-							ZonedDateTime startDate = task.getFrozenFrom() != null
-									? task.getFrozenFrom()
-									: ZonedDateTime.now();
 							SlaPause pause = SlaPause.builder()
 									.sla(task.getSla())
-									.startedAt(startDate)
+									.startedAt(startedAt != null ? startedAt : ZonedDateTime.now())
 									.endedAt(null)
-									.reason(FREEZE_SLA_PAUSE_REASON)
+									.reason(reason)
 									.build();
 							slaPauseRepository.save(pause);
 						}
@@ -648,16 +682,18 @@ public class TaskService {
 	}
 
 
-	private void closeSlaPause(Task task) {
-		slaPauseRepository
-				.findFirstBySlaIdAndReasonAndEndedAtIsNullOrderByStartedAtDesc(
-						task.getSla().getId(),
-						FREEZE_SLA_PAUSE_REASON
-				)
-				.ifPresent(pause -> {
-					pause.setEndedAt(ZonedDateTime.now());
-					slaPauseRepository.save(pause);
-				});
+	private void closeSlaPause(Task task, String reason) {
+		if (task == null || task.getSla() == null || task.getSla().getId() == null) {
+			return;
+		}
+		List<SlaPause> activePauses = slaPauseRepository
+				.findAllBySlaIdAndReasonAndEndedAtIsNullOrderByStartedAtDesc(task.getSla().getId(), reason);
+		if (activePauses.isEmpty()) {
+			return;
+		}
+		ZonedDateTime now = ZonedDateTime.now();
+		activePauses.forEach(pause -> pause.setEndedAt(now));
+		slaPauseRepository.saveAll(activePauses);
 	}
 
 
@@ -697,7 +733,7 @@ public class TaskService {
 					newFrozen ? "Поставлена на паузу" : "Снята с паузы"
 			);
 		}
-		syncSlaPauseByFrozenState(task);
+		syncSlaPauseState(task);
 		task.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(task);
 		if (client != null) {
@@ -722,7 +758,6 @@ public class TaskService {
 	}
 
 
-
 	@Transactional
 	public Task pauseTaskSla(Long clientId, Long taskId, String reason) {
 		if (clientId == null) {
@@ -738,6 +773,9 @@ public class TaskService {
 		}
 		if (Boolean.TRUE.equals(task.getFrozen())) {
 			throw new IllegalStateException("Нельзя вручную поставить SLA на паузу: заявка уже заморожена");
+		}
+		if (Boolean.TRUE.equals(task.getCompleted())) {
+			throw new IllegalStateException("Нельзя вручную поставить SLA на паузу: заявка закрыта");
 		}
 		boolean alreadyPaused = slaPauseRepository
 				.findFirstBySlaIdAndEndedAtIsNullOrderByStartedAtDesc(task.getSla().getId())
@@ -778,15 +816,18 @@ public class TaskService {
 		if (Boolean.TRUE.equals(task.getFrozen())) {
 			throw new IllegalStateException("Нельзя вручную снять SLA с паузы: заявка заморожена");
 		}
-		SlaPause activePause = slaPauseRepository
-				.findFirstBySlaIdAndEndedAtIsNullOrderByStartedAtDesc(task.getSla().getId())
-				.orElse(null);
-		if (activePause == null) {
+		if (Boolean.TRUE.equals(task.getCompleted())) {
+			throw new IllegalStateException("Нельзя вручную снять SLA с паузы: заявка закрыта");
+		}
+		List<SlaPause> activePauses = slaPauseRepository
+				.findAllBySlaIdAndEndedAtIsNull(task.getSla().getId());
+		if (activePauses.isEmpty()) {
 			return task;
 		}
-		String reason = activePause.getReason();
-		activePause.setEndedAt(ZonedDateTime.now());
-		slaPauseRepository.save(activePause);
+		String reason = activePauses.getFirst().getReason();
+		ZonedDateTime now = ZonedDateTime.now();
+		activePauses.forEach(pause -> pause.setEndedAt(now));
+		slaPauseRepository.saveAll(activePauses);
 		task.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(task);
 		publishManualSlaPauseHistory(client, savedTask, false, reason);
@@ -839,6 +880,9 @@ public class TaskService {
 		if (Boolean.TRUE.equals(task.getFrozen())) {
 			throw new IllegalStateException("Нельзя вручную поставить SLA на паузу: заявка заморожена");
 		}
+		if (Boolean.TRUE.equals(task.getCompleted())) {
+			throw new IllegalStateException("Нельзя вручную поставить SLA на паузу: заявка закрыта");
+		}
 		boolean alreadyPaused = slaPauseRepository
 				.findFirstBySlaIdAndEndedAtIsNullOrderByStartedAtDesc(task.getSla().getId())
 				.isPresent();
@@ -876,15 +920,19 @@ public class TaskService {
 		if (Boolean.TRUE.equals(task.getFrozen())) {
 			throw new IllegalStateException("Нельзя вручную снять SLA с паузы: заявка заморожена");
 		}
-		SlaPause activePause = slaPauseRepository
-				.findFirstBySlaIdAndEndedAtIsNullOrderByStartedAtDesc(task.getSla().getId())
-				.orElse(null);
-		if (activePause == null) {
+		if (Boolean.TRUE.equals(task.getCompleted())) {
+			throw new IllegalStateException("Нельзя вручную снять SLA с паузы: заявка закрыта");
+		}
+		List<SlaPause> activePauses = slaPauseRepository
+				.findAllBySlaIdAndEndedAtIsNull(task.getSla().getId());
+		if (activePauses.isEmpty()) {
 			return task;
 		}
-		String reason = activePause.getReason();
-		activePause.setEndedAt(ZonedDateTime.now());
-		slaPauseRepository.save(activePause);
+		String reason = activePauses.getFirst().getReason();
+		ZonedDateTime now = ZonedDateTime.now();
+		activePauses.forEach(pause -> pause.setEndedAt(now));
+		slaPauseRepository.saveAll(activePauses);
+
 		task.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(task);
 		Client client = clientsRepository.findByTaskId(savedTask.getId()).orElse(null);
@@ -899,6 +947,24 @@ public class TaskService {
 		}
 		String normalized = reason.trim();
 		return normalized.isBlank() ? null : normalized;
+	}
+
+
+	private void closeAllSlaPausesExceptReason(Task task, String reasonToKeep) {
+		if (task == null || task.getSla() == null || task.getSla().getId() == null) {
+			return;
+		}
+		List<SlaPause> activePauses = slaPauseRepository
+				.findAllBySlaIdAndEndedAtIsNull(task.getSla().getId());
+		List<SlaPause> pausesToClose = activePauses.stream()
+				.filter(pause -> !Objects.equals(pause.getReason(), reasonToKeep))
+				.toList();
+		if (pausesToClose.isEmpty()) {
+			return;
+		}
+		ZonedDateTime now = ZonedDateTime.now();
+		pausesToClose.forEach(pause -> pause.setEndedAt(now));
+		slaPauseRepository.saveAll(pausesToClose);
 	}
 
 }

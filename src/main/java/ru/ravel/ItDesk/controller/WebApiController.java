@@ -1132,6 +1132,16 @@ public class WebApiController {
 	}
 
 
+	@PatchMapping("/task-types/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> resortTaskTypes(@RequestBody List<TaskType> taskTypes) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		return ResponseEntity.ok(taskService.resortTaskTypes(taskTypes));
+	}
+
+
 	@PostMapping("/task-types")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> createTaskType(@RequestBody TaskType taskType) {
@@ -1161,6 +1171,20 @@ public class WebApiController {
 			return ResponseEntity.ok(taskService.updateTaskType(id, taskType));
 		} catch (IllegalArgumentException e) {
 			return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
+		}
+	}
+
+
+	@PatchMapping("/task-types/set-default")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> taskTypeSetDefaultSelection(@RequestBody TaskType taskType) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		try {
+			return ResponseEntity.ok(taskService.taskTypeSetDefaultSelection(taskType));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
 		}
 	}
 

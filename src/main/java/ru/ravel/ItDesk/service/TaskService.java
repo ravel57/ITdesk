@@ -35,7 +35,7 @@ public class TaskService {
 
 	@Transactional(readOnly = true)
 	public List<TaskType> getTaskTypes() {
-		return taskTypeRepository.findAll();
+		return taskTypeRepository.findAll().stream().sorted().toList();
 	}
 
 
@@ -482,11 +482,18 @@ public class TaskService {
 		if (taskTypeRepository.existsByType(type)) {
 			throw new IllegalArgumentException("Тип заявки уже существует: %s".formatted(type));
 		}
-		return taskTypeRepository.save(TaskType.builder()
+		boolean makeDefault = Boolean.TRUE.equals(taskType.getDefaultSelection()) || !hasDefaultTaskType();
+		TaskType savedTaskType = taskTypeRepository.save(TaskType.builder()
 				.type(type)
+				.orderNumber(getTaskTypes().size() + 1)
+				.defaultSelection(makeDefault)
 				.checklistTemplate(normalizeChecklist(taskType.getChecklistTemplate()))
 				.autoApplyChecklist(!Boolean.FALSE.equals(taskType.getAutoApplyChecklist()))
 				.build());
+		if (makeDefault) {
+			return taskTypeSetDefaultSelection(savedTaskType);
+		}
+		return savedTaskType;
 	}
 
 
@@ -509,7 +516,28 @@ public class TaskService {
 		taskType.setType(type);
 		taskType.setChecklistTemplate(normalizeChecklist(request.getChecklistTemplate()));
 		taskType.setAutoApplyChecklist(!Boolean.FALSE.equals(request.getAutoApplyChecklist()));
-		return taskTypeRepository.save(taskType);
+		TaskType savedTaskType = taskTypeRepository.save(taskType);
+		if (Boolean.TRUE.equals(request.getDefaultSelection())) {
+			return taskTypeSetDefaultSelection(savedTaskType);
+		}
+		return savedTaskType;
+	}
+
+
+	@Transactional
+	public List<TaskType> resortTaskTypes(List<TaskType> newOrderedTaskTypes) {
+		if (newOrderedTaskTypes == null) {
+			return getTaskTypes();
+		}
+		List<TaskType> taskTypes = taskTypeRepository.findAll();
+		for (TaskType taskType : taskTypes) {
+			int orderNumber = newOrderedTaskTypes.indexOf(taskType);
+			if (orderNumber >= 0) {
+				taskType.setOrderNumber(orderNumber);
+			}
+		}
+		taskTypeRepository.saveAll(taskTypes);
+		return taskTypes.stream().sorted().toList();
 	}
 
 
@@ -542,7 +570,14 @@ public class TaskService {
 					))
 			));
 		}
+		boolean wasDefault = Boolean.TRUE.equals(taskType.getDefaultSelection());
 		taskTypeRepository.delete(taskType);
+		if (wasDefault) {
+			taskTypeRepository.findAll().stream()
+					.sorted()
+					.findFirst()
+					.ifPresent(this::taskTypeSetDefaultSelection);
+		}
 	}
 
 
@@ -581,10 +616,19 @@ public class TaskService {
 
 
 	private TaskType getDefaultTaskType() {
-		return taskTypeRepository.findByType("Запрос")
-				.orElseGet(() -> taskTypeRepository.save(TaskType.builder()
-						.type("Запрос")
-						.build()));
+		return taskTypeRepository.findAll().stream()
+				.filter(taskType -> Boolean.TRUE.equals(taskType.getDefaultSelection()))
+				.sorted()
+				.findFirst()
+				.orElseGet(() -> taskTypeRepository.findByType("Запрос")
+						.map(this::taskTypeSetDefaultSelection)
+						.orElseGet(() -> taskTypeSetDefaultSelection(taskTypeRepository.save(TaskType.builder()
+								.type("Запрос")
+								.orderNumber(getTaskTypes().size() + 1)
+								.defaultSelection(true)
+								.autoApplyChecklist(true)
+								.checklistTemplate(new ArrayList<>())
+								.build()))));
 	}
 
 
@@ -982,6 +1026,29 @@ public class TaskService {
 		ZonedDateTime now = ZonedDateTime.now();
 		pausesToClose.forEach(pause -> pause.setEndedAt(now));
 		slaPauseRepository.saveAll(pausesToClose);
+	}
+
+
+	@Transactional
+	public TaskType taskTypeSetDefaultSelection(TaskType selectedTaskType) {
+		if (selectedTaskType == null || selectedTaskType.getId() == null) {
+			throw new IllegalArgumentException("taskType.id must not be null");
+		}
+		Long selectedId = selectedTaskType.getId();
+		TaskType existingTaskType = taskTypeRepository.findById(selectedId)
+				.orElseThrow(() -> new IllegalArgumentException("Тип заявки не найден: %d".formatted(selectedId)));
+		List<TaskType> taskTypes = taskTypeRepository.findAll().stream()
+				.peek(taskType -> taskType.setDefaultSelection(Objects.equals(taskType.getId(), selectedId)))
+				.toList();
+		taskTypeRepository.saveAll(taskTypes);
+		existingTaskType.setDefaultSelection(true);
+		return existingTaskType;
+	}
+
+
+	private boolean hasDefaultTaskType() {
+		return taskTypeRepository.findAll().stream()
+				.anyMatch(taskType -> Boolean.TRUE.equals(taskType.getDefaultSelection()));
 	}
 
 }

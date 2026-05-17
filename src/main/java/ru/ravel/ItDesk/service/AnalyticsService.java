@@ -15,6 +15,7 @@ import ru.ravel.ItDesk.repository.TaskRepository;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -33,6 +34,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import ru.ravel.ItDesk.model.AppSettings;
+
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +48,7 @@ public class AnalyticsService {
 	private final TaskRepository taskRepository;
 	private final AutomationOutboxRepository automationOutboxRepository;
 	private final SlaService slaService;
+	private final AppSettingsService appSettingsService;
 
 
 	@Transactional(readOnly = true)
@@ -57,9 +61,10 @@ public class AnalyticsService {
 			String executorIds,
 			String tagIds
 	) {
-		ZonedDateTime now = ZonedDateTime.now();
-		ZonedDateTime safeTo = Objects.requireNonNullElse(parseZonedDateTime(to), now);
-		ZonedDateTime safeFrom = Objects.requireNonNullElse(parseZonedDateTime(from), safeTo.minusDays(7));
+		ZoneId analyticsZone = getAnalyticsZone();
+		ZonedDateTime now = ZonedDateTime.now(analyticsZone);
+		ZonedDateTime safeTo = Objects.requireNonNullElse(parseZonedDateTime(to, analyticsZone), now);
+		ZonedDateTime safeFrom = Objects.requireNonNullElse(parseZonedDateTime(from, analyticsZone), safeTo.minusDays(7));
 		String safeGroupBy = Objects.toString(groupBy, "DAY").toUpperCase(Locale.ROOT);
 		AnalyticsFilters filters = new AnalyticsFilters(
 				parseIds(typeIds),
@@ -84,7 +89,7 @@ public class AnalyticsService {
 				.filter(task -> isBetween(task.getClosedAt(), safeFrom, safeTo))
 				.toList();
 		List<Message> clientMessages = getMessagesForAnalytics(clients, tasks, filters);
-		List<AnalyticsEvent> reopenedEvents = getAutomationEvents(TriggerType.TASK_REOPENED, safeFrom, safeTo, tasksById).stream()
+		List<AnalyticsEvent> reopenedEvents = getAutomationEvents(TriggerType.TASK_REOPENED, safeFrom, safeTo, tasksById, analyticsZone).stream()
 				.filter(event -> event.task() != null ? matchesFilters(event.task(), filters) : !filters.hasAny())
 				.toList();
 
@@ -105,9 +110,9 @@ public class AnalyticsService {
 			}
 			if (isIncomingMessage(message)) {
 				newAppeals++;
-				incrementHourlyLoad(hourlyLoadMap, message.getDate(), "incomingMessages");
+				incrementHourlyLoad(hourlyLoadMap, message.getDate(), analyticsZone, "incomingMessages");
 			} else if (isOutgoingOperatorMessage(message)) {
-				incrementHourlyLoad(hourlyLoadMap, message.getDate(), "outgoingMessages");
+				incrementHourlyLoad(hourlyLoadMap, message.getDate(), analyticsZone, "outgoingMessages");
 			}
 		}
 
@@ -115,7 +120,7 @@ public class AnalyticsService {
 			incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "totalTasks");
 
 			if (isBetween(task.getCreatedAt(), safeFrom, safeTo)) {
-				incrementHourlyLoad(hourlyLoadMap, task.getCreatedAt(), "createdTasks");
+				incrementHourlyLoad(hourlyLoadMap, task.getCreatedAt(), analyticsZone, "createdTasks");
 				incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "createdTasks");
 			}
 		}
@@ -163,8 +168,8 @@ public class AnalyticsService {
 		for (Task task : closedTasksInPeriod) {
 			ZonedDateTime closedAt = task.getClosedAt();
 			if (closedAt != null) {
-				closedByPeriodMap.merge(getPeriodLabel(closedAt, safeGroupBy), 1L, Long::sum);
-				incrementHourlyLoad(hourlyLoadMap, closedAt, "closedTasks");
+				closedByPeriodMap.merge(getPeriodLabel(closedAt, safeGroupBy, analyticsZone), 1L, Long::sum);
+				incrementHourlyLoad(hourlyLoadMap, closedAt, analyticsZone, "closedTasks");
 			}
 			if (task.getExecutor() != null) {
 				incrementOperatorLoad(operatorLoadMap, task.getExecutor(), "closedTasks");
@@ -177,8 +182,8 @@ public class AnalyticsService {
 
 		for (AnalyticsEvent reopenedEvent : reopenedEvents) {
 			ZonedDateTime eventDate = reopenedEvent.date();
-			reopenedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy), 1L, Long::sum);
-			incrementHourlyLoad(hourlyLoadMap, eventDate, "reopenedTasks");
+			reopenedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
+			incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "reopenedTasks");
 
 			Task task = reopenedEvent.task();
 			if (task == null) {
@@ -194,6 +199,7 @@ public class AnalyticsService {
 		result.put("from", safeFrom);
 		result.put("to", safeTo);
 		result.put("groupBy", safeGroupBy);
+		result.put("timezone", analyticsZone.getId());
 		result.put("filters", filters.toMap());
 		result.put("newAppeals", newAppeals);
 		result.put("openTasks", (long) openTasks.size());
@@ -359,9 +365,11 @@ public class AnalyticsService {
 
 
 	private boolean isBetween(ZonedDateTime date, ZonedDateTime from, ZonedDateTime to) {
-		return date != null
-				&& !date.isBefore(from)
-				&& !date.isAfter(to);
+		if (date == null || from == null || to == null) {
+			return false;
+		}
+		ZonedDateTime zonedDate = date.withZoneSameInstant(from.getZone());
+		return !zonedDate.isBefore(from) && !zonedDate.isAfter(to);
 	}
 
 
@@ -492,11 +500,12 @@ public class AnalyticsService {
 	}
 
 
-	private void incrementHourlyLoad(Map<Integer, Map<String, Object>> hourlyLoadMap, ZonedDateTime date, String metric) {
-		if (date == null) {
+	private void incrementHourlyLoad(Map<Integer, Map<String, Object>> hourlyLoadMap, ZonedDateTime date, ZoneId zone, String metric) {
+		if (date == null || zone == null) {
 			return;
 		}
-		Map<String, Object> row = hourlyLoadMap.get(date.getHour());
+		int hour = date.withZoneSameInstant(zone).getHour();
+		Map<String, Object> row = hourlyLoadMap.get(hour);
 		if (row == null) {
 			return;
 		}
@@ -530,12 +539,9 @@ public class AnalyticsService {
 			}
 		}
 		if (!filters.tagIds().isEmpty()) {
-			boolean hasMatchingTag = safeCollection(task.getTags()).stream()
+			return safeCollection(task.getTags()).stream()
 					.map(this::getEntityId)
 					.anyMatch(filters.tagIds()::contains);
-			if (!hasMatchingTag) {
-				return false;
-			}
 		}
 		return true;
 	}
@@ -560,7 +566,7 @@ public class AnalyticsService {
 	}
 
 
-	private List<AnalyticsEvent> getAutomationEvents(TriggerType triggerType, ZonedDateTime from, ZonedDateTime to, Map<Long, Task> tasksById) {
+	private List<AnalyticsEvent> getAutomationEvents(TriggerType triggerType, ZonedDateTime from, ZonedDateTime to, Map<Long, Task> tasksById, ZoneId zone) {
 		List<AnalyticsEvent> result = new ArrayList<>();
 		List<?> events;
 
@@ -575,7 +581,7 @@ public class AnalyticsService {
 			if (!Objects.equals(triggerType.name(), eventType)) {
 				continue;
 			}
-			ZonedDateTime eventDate = getEventDate(event);
+			ZonedDateTime eventDate = getEventDate(event, zone);
 			if (!isBetween(eventDate, from, to)) {
 				continue;
 			}
@@ -605,29 +611,33 @@ public class AnalyticsService {
 
 
 	private Task asTask(Object value, Map<Long, Task> tasksById) {
-		if (value == null) {
-			return null;
-		}
-		if (value instanceof Task task) {
-			return task;
-		}
-		if (value instanceof Map<?, ?> map) {
-			Object taskValue = map.get("task");
-			if (taskValue != null) {
-				Task task = asTask(taskValue, tasksById);
-				if (task != null) {
-					return task;
+		switch (value) {
+			case null -> {
+				return null;
+			}
+			case Task task -> {
+				return task;
+			}
+			case Map<?, ?> map -> {
+				Object taskValue = map.get("task");
+				if (taskValue != null) {
+					Task task = asTask(taskValue, tasksById);
+					if (task != null) {
+						return task;
+					}
 				}
+				Long taskId = asLongOrNull(map.get("taskId"));
+				if (taskId == null && taskValue instanceof Map<?, ?> taskMap) {
+					taskId = asLongOrNull(taskMap.get("id"));
+				}
+				return taskId == null ? null : tasksById.get(taskId);
 			}
-			Long taskId = asLongOrNull(map.get("taskId"));
-			if (taskId == null && taskValue instanceof Map<?, ?> taskMap) {
-				taskId = asLongOrNull(taskMap.get("id"));
+			case CharSequence text -> {
+				Long taskId = findTaskId(text.toString());
+				return taskId == null ? null : tasksById.get(taskId);
 			}
-			return taskId == null ? null : tasksById.get(taskId);
-		}
-		if (value instanceof CharSequence text) {
-			Long taskId = findTaskId(text.toString());
-			return taskId == null ? null : tasksById.get(taskId);
+			default -> {
+			}
 		}
 		Long id = getEntityId(value);
 		return id == null ? null : tasksById.get(id);
@@ -671,7 +681,7 @@ public class AnalyticsService {
 	}
 
 
-	private ZonedDateTime getEventDate(Object event) {
+	private ZonedDateTime getEventDate(Object event, ZoneId zone) {
 		Object value = firstGetterValue(event,
 				"getCreatedAt",
 				"getCreatedDate",
@@ -680,7 +690,7 @@ public class AnalyticsService {
 				"getDate",
 				"getTimestamp"
 		);
-		return asZonedDateTime(value);
+		return asZonedDateTime(value, zone);
 	}
 
 
@@ -708,26 +718,16 @@ public class AnalyticsService {
 	}
 
 
-	private ZonedDateTime asZonedDateTime(Object value) {
-		if (value == null) {
-			return null;
-		}
-		if (value instanceof ZonedDateTime zonedDateTime) {
-			return zonedDateTime;
-		}
-		if (value instanceof Instant instant) {
-			return instant.atZone(ZoneId.systemDefault());
-		}
-		if (value instanceof LocalDateTime localDateTime) {
-			return localDateTime.atZone(ZoneId.systemDefault());
-		}
-		if (value instanceof Date date) {
-			return date.toInstant().atZone(ZoneId.systemDefault());
-		}
-		if (value instanceof CharSequence text) {
-			return parseZonedDateTime(text.toString());
-		}
-		return null;
+	private ZonedDateTime asZonedDateTime(Object value, ZoneId zone) {
+		return switch (value) {
+			case null -> null;
+			case ZonedDateTime zonedDateTime -> zonedDateTime.withZoneSameInstant(zone);
+			case Instant instant -> instant.atZone(zone);
+			case LocalDateTime localDateTime -> localDateTime.atZone(zone);
+			case Date date -> date.toInstant().atZone(zone);
+			case CharSequence text -> parseZonedDateTime(text.toString(), zone);
+			default -> null;
+		};
 	}
 
 
@@ -757,12 +757,19 @@ public class AnalyticsService {
 	}
 
 
-	private String getPeriodLabel(ZonedDateTime date, String groupBy) {
+	private String getPeriodLabel(ZonedDateTime date, String groupBy, ZoneId zone) {
+		if (date == null) {
+			return "";
+		}
+		ZonedDateTime zonedDate = date.withZoneSameInstant(zone);
 		if ("WEEK".equalsIgnoreCase(groupBy)) {
-			ZonedDateTime startOfWeek = date.minusDays(date.getDayOfWeek().getValue() - 1L).toLocalDate().atStartOfDay(date.getZone());
+			ZonedDateTime startOfWeek = zonedDate
+					.minusDays(zonedDate.getDayOfWeek().getValue() - 1L)
+					.toLocalDate()
+					.atStartOfDay(zone);
 			return startOfWeek.toLocalDate().toString();
 		}
-		return date.toLocalDate().toString();
+		return zonedDate.toLocalDate().toString();
 	}
 
 
@@ -802,16 +809,25 @@ public class AnalyticsService {
 	}
 
 
-	private ZonedDateTime parseZonedDateTime(String value) {
+	private ZonedDateTime parseZonedDateTime(String value, ZoneId zone) {
 		if (value == null || value.isBlank()) {
 			return null;
 		}
+		String normalized = value.trim();
 		try {
-			return ZonedDateTime.parse(value);
+			return ZonedDateTime.parse(normalized).withZoneSameInstant(zone);
 		} catch (Exception ignored) {
 		}
 		try {
-			return Instant.parse(value).atZone(ZoneId.systemDefault());
+			return Instant.parse(normalized).atZone(zone);
+		} catch (Exception ignored) {
+		}
+		try {
+			return LocalDateTime.parse(normalized).atZone(zone);
+		} catch (Exception ignored) {
+		}
+		try {
+			return LocalDate.parse(normalized).atStartOfDay(zone);
 		} catch (Exception ignored) {
 			return null;
 		}
@@ -839,6 +855,20 @@ public class AnalyticsService {
 			result.put("executorIds", executorIds);
 			result.put("tagIds", tagIds);
 			return result;
+		}
+	}
+
+
+	private ZoneId getAnalyticsZone() {
+		try {
+			AppSettings settings = appSettingsService.getGeneralSettings();
+			String timezone = settings == null ? null : settings.getTimezone();
+			if (timezone == null || timezone.isBlank()) {
+				return ZoneId.systemDefault();
+			}
+			return ZoneId.of(timezone);
+		} catch (Exception ignored) {
+			return ZoneId.systemDefault();
 		}
 	}
 }

@@ -19,6 +19,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SlaService {
 
+	public static final String AUTO_NON_WORKING_TIME_PAUSE_REASON = "Авто-пауза SLA: нерабочее время";
+
 	private final SlaRepository slaRepository;
 	private final SlaPauseRepository slaPauseRepository;
 
@@ -55,6 +57,60 @@ public class SlaService {
 		slaPauseRepository.saveAll(activePauses);
 	}
 
+	@Transactional
+	public void pauseForNonWorkingTime(Sla sla) {
+		if (sla == null || sla.getId() == null) {
+			return;
+		}
+
+		boolean alreadyPaused = slaPauseRepository.existsBySlaIdAndEndedAtIsNull(sla.getId());
+
+		if (alreadyPaused) {
+			return;
+		}
+
+		SlaPause pause = SlaPause.builder()
+				.sla(sla)
+				.startedAt(ZonedDateTime.now())
+				.endedAt(null)
+				.reason(AUTO_NON_WORKING_TIME_PAUSE_REASON)
+				.build();
+
+		slaPauseRepository.saveAndFlush(pause);
+	}
+
+	@Transactional
+	public void resumeNonWorkingTimePause(Sla sla) {
+		if (sla == null || sla.getId() == null) {
+			return;
+		}
+
+		List<SlaPause> activeAutoPauses = slaPauseRepository.findAllBySlaIdAndReasonAndEndedAtIsNull(
+				sla.getId(),
+				AUTO_NON_WORKING_TIME_PAUSE_REASON
+		);
+
+		if (activeAutoPauses.isEmpty()) {
+			return;
+		}
+
+		ZonedDateTime now = ZonedDateTime.now();
+
+		activeAutoPauses.forEach(pause -> pause.setEndedAt(now));
+		slaPauseRepository.saveAll(activeAutoPauses);
+	}
+
+	@Transactional(readOnly = true)
+	public boolean isNonWorkingTimePaused(Sla sla) {
+		if (sla == null || sla.getId() == null) {
+			return false;
+		}
+
+		return slaPauseRepository.existsBySlaIdAndReasonAndEndedAtIsNull(
+				sla.getId(),
+				AUTO_NON_WORKING_TIME_PAUSE_REASON
+		);
+	}
 
 	@Transactional(readOnly = true)
 	public boolean isPaused(Sla sla) {
@@ -72,9 +128,9 @@ public class SlaService {
 		}
 		ZonedDateTime now = ZonedDateTime.now();
 		long seconds = slaPauseRepository.findAllBySlaId(sla.getId()).stream()
-				.mapToLong(p -> {
-					ZonedDateTime end = p.getEndedAt() == null ? now : p.getEndedAt();
-					return Math.max(0, Duration.between(p.getStartedAt(), end).getSeconds());
+				.mapToLong(pause -> {
+					ZonedDateTime end = pause.getEndedAt() == null ? now : pause.getEndedAt();
+					return Math.max(0, Duration.between(pause.getStartedAt(), end).getSeconds());
 				})
 				.sum();
 		return Duration.ofSeconds(seconds);

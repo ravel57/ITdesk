@@ -29,6 +29,7 @@ public class TaskService {
 	private static final String FREEZE_SLA_PAUSE_REASON = "Заявка заморожена";
 	private static final String CLOSED_SLA_PAUSE_REASON = "Заявка закрыта";
 	private static final String MANUAL_SLA_PAUSE_REASON = "Ручная пауза SLA";
+	private static final String AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON = "Авто-пауза SLA: нерабочее время";
 	private final UserNotificationService userNotificationService;
 
 
@@ -824,6 +825,15 @@ public class TaskService {
 		if (activePauses.isEmpty()) {
 			return task;
 		}
+		boolean hasAutoNonWorkingTimePause = activePauses.stream()
+				.anyMatch(pause -> Objects.equals(
+						pause.getReason(),
+						AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON
+				));
+
+		if (hasAutoNonWorkingTimePause) {
+			throw new IllegalStateException("Нельзя вручную снять SLA с авто-паузы: сейчас нерабочее время");
+		}
 		String reason = activePauses.getFirst().getReason();
 		ZonedDateTime now = ZonedDateTime.now();
 		activePauses.forEach(pause -> pause.setEndedAt(now));
@@ -928,11 +938,18 @@ public class TaskService {
 		if (activePauses.isEmpty()) {
 			return task;
 		}
+		boolean hasAutoNonWorkingTimePause = activePauses.stream()
+				.anyMatch(pause -> Objects.equals(
+						pause.getReason(),
+						AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON
+				));
+		if (hasAutoNonWorkingTimePause) {
+			throw new IllegalStateException("Нельзя вручную снять SLA с авто-паузы: сейчас нерабочее время");
+		}
 		String reason = activePauses.getFirst().getReason();
 		ZonedDateTime now = ZonedDateTime.now();
 		activePauses.forEach(pause -> pause.setEndedAt(now));
 		slaPauseRepository.saveAll(activePauses);
-
 		task.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(task);
 		Client client = clientsRepository.findByTaskId(savedTask.getId()).orElse(null);

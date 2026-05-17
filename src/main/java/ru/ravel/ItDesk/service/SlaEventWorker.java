@@ -20,16 +20,26 @@ public class SlaEventWorker {
 
 	private final TaskRepository taskRepository;
 	private final SlaService slaService;
+	private final WorkingTimeService workingTimeService;
 	private final EventPublisher eventPublisher;
 	private final AutomationOutboxRepository outboxRepository;
 
 	@Scheduled(fixedDelayString = "${app.sla.worker.delay-ms:60000}")
 	public void checkSla() {
+		WorkingTimeService.WorkingTimeState workingTimeState = workingTimeService.getCurrentState();
 		List<Task> tasks = taskRepository.findAllActiveWithSla();
 		for (Task task : tasks) {
 			Sla sla = task.getSla();
 			if (sla == null) {
 				continue;
+			}
+			if (!workingTimeState.enabled()) {
+				slaService.resumeNonWorkingTimePause(sla);
+			} else if (!workingTimeState.workingNow()) {
+				slaService.pauseForNonWorkingTime(sla);
+				continue;
+			} else {
+				slaService.resumeNonWorkingTimePause(sla);
 			}
 			if (slaService.isPaused(sla)) {
 				continue;

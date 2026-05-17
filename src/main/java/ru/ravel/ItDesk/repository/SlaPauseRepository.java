@@ -13,6 +13,8 @@ public interface SlaPauseRepository extends JpaRepository<SlaPause, Long> {
 
 	Optional<SlaPause> findFirstBySlaIdAndEndedAtIsNull(Long slaId);
 
+	boolean existsBySlaIdAndReasonAndEndedAtIsNull(Long slaId, String reason);
+
 	List<SlaPause> findAllBySlaId(Long slaId);
 
 	Optional<SlaPause> findFirstBySlaIdAndEndedAtIsNullOrderByStartedAtDesc(Long slaId);
@@ -22,5 +24,7 @@ public interface SlaPauseRepository extends JpaRepository<SlaPause, Long> {
 	List<SlaPause> findAllBySlaIdAndEndedAtIsNull(Long slaId);
 
 	List<SlaPause> findAllBySlaIdAndReasonAndEndedAtIsNullOrderByStartedAtDesc(Long slaId,String reason);
+
+	List<SlaPause> findAllBySlaIdAndReasonAndEndedAtIsNull(Long slaId, String reason);
 
 }

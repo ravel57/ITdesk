@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
 import java.util.regex.Pattern;
+import ru.ravel.ItDesk.model.AppSettings;
 
 
 /**
@@ -37,6 +38,8 @@ public class AutomationScriptRuntime {
 
 	private final ObjectMapper mapper;
 	private final AutomationActionExecutor actionExecutor;
+	private final AppSettingsService appSettingsService;
+	private static final ThreadLocal<AutomationTimeSettings> CURRENT_TIME_SETTINGS = ThreadLocal.withInitial(AutomationTimeSettings::defaultSettings);
 
 	// ------------------------- PUBLIC API -------------------------
 
@@ -47,11 +50,173 @@ public class AutomationScriptRuntime {
 		if (expression == null || expression.isBlank()) {
 			return true;
 		}
-		Lexer lx = new Lexer(expression);
-		Parser parser = new Parser(lx);
-		ExprNode ast = parser.parseExpression();
-		return asBool(ast.eval(payloadRoot));
+		CURRENT_TIME_SETTINGS.set(resolveAutomationTimeSettings());
+		try {
+			Lexer lx = new Lexer(expression);
+			Parser parser = new Parser(lx);
+			ExprNode ast = parser.parseExpression();
+			return asBool(ast.eval(payloadRoot));
+		} finally {
+			CURRENT_TIME_SETTINGS.remove();
+		}
 	}
+
+
+	private AutomationTimeSettings resolveAutomationTimeSettings() {
+		try {
+			AppSettings settings = appSettingsService.getGeneralSettings();
+			ZoneId zoneId = parseZoneId(settings.getTimezone());
+			LocalTime start = parseLocalTime(settings.getWorkdayStart(), LocalTime.of(9, 0));
+			LocalTime end = parseLocalTime(settings.getWorkdayEnd(), LocalTime.of(18, 0));
+			Set<DayOfWeek> workingDays = EnumSet.noneOf(DayOfWeek.class);
+			if (Boolean.TRUE.equals(settings.getMondayEnabled())) {
+				workingDays.add(DayOfWeek.MONDAY);
+			}
+			if (Boolean.TRUE.equals(settings.getTuesdayEnabled())) {
+				workingDays.add(DayOfWeek.TUESDAY);
+			}
+			if (Boolean.TRUE.equals(settings.getWednesdayEnabled())) {
+				workingDays.add(DayOfWeek.WEDNESDAY);
+			}
+			if (Boolean.TRUE.equals(settings.getThursdayEnabled())) {
+				workingDays.add(DayOfWeek.THURSDAY);
+			}
+			if (Boolean.TRUE.equals(settings.getFridayEnabled())) {
+				workingDays.add(DayOfWeek.FRIDAY);
+			}
+			if (Boolean.TRUE.equals(settings.getSaturdayEnabled())) {
+				workingDays.add(DayOfWeek.SATURDAY);
+			}
+			if (Boolean.TRUE.equals(settings.getSundayEnabled())) {
+				workingDays.add(DayOfWeek.SUNDAY);
+			}
+			return new AutomationTimeSettings(
+					zoneId,
+					Boolean.TRUE.equals(settings.getWorkingTimeEnabled()),
+					start,
+					end,
+					workingDays
+			);
+		} catch (Exception ignored) {
+			return AutomationTimeSettings.defaultSettings();
+		}
+	}
+
+
+	private static ZoneId parseZoneId(String timezone) {
+		if (timezone == null || timezone.isBlank()) {
+			return ZoneId.systemDefault();
+		}
+		try {
+			return ZoneId.of(timezone);
+		} catch (Exception ignored) {
+			return ZoneId.systemDefault();
+		}
+	}
+
+
+	private static LocalTime parseLocalTime(String value, LocalTime fallback) {
+		if (value == null || value.isBlank()) {
+			return fallback;
+		}
+		try {
+			return LocalTime.parse(value);
+		} catch (Exception ignored) {
+			return fallback;
+		}
+	}
+
+
+	private static AutomationTimeSettings automationTimeSettings() {
+		AutomationTimeSettings settings = CURRENT_TIME_SETTINGS.get();
+		return settings == null ? AutomationTimeSettings.defaultSettings() : settings;
+	}
+
+
+	private static ZoneId automationZone() {
+		return automationTimeSettings().zoneId();
+	}
+
+
+	private static ZonedDateTime automationNow() {
+		return ZonedDateTime.now(automationZone());
+	}
+
+
+	private static ZonedDateTime inAutomationZone(ZonedDateTime dateTime) {
+		if (dateTime == null) {
+			return null;
+		}
+		return dateTime.withZoneSameInstant(automationZone());
+	}
+
+
+	private static boolean isWorkingHoursBySettings(ZonedDateTime dateTime) {
+		if (dateTime == null) {
+			dateTime = automationNow();
+		}
+		AutomationTimeSettings settings = automationTimeSettings();
+		if (!settings.workingTimeEnabled()) {
+			return true;
+		}
+		ZonedDateTime localDateTime = inAutomationZone(dateTime);
+		if (localDateTime == null) {
+			return true;
+		}
+		if (!settings.workingDays().contains(localDateTime.getDayOfWeek())) {
+			return false;
+		}
+		LocalTime current = localDateTime.toLocalTime();
+		return !current.isBefore(settings.workdayStart())
+				&& current.isBefore(settings.workdayEnd());
+	}
+
+
+	private static boolean isWorkingDayBySettings(ZonedDateTime dateTime) {
+		if (dateTime == null) {
+			dateTime = automationNow();
+		}
+
+		AutomationTimeSettings settings = automationTimeSettings();
+
+		if (!settings.workingTimeEnabled()) {
+			return true;
+		}
+
+		ZonedDateTime localDateTime = inAutomationZone(dateTime);
+
+		if (localDateTime == null) {
+			return true;
+		}
+
+		return settings.workingDays().contains(localDateTime.getDayOfWeek());
+	}
+
+
+	private record AutomationTimeSettings(
+			ZoneId zoneId,
+			boolean workingTimeEnabled,
+			LocalTime workdayStart,
+			LocalTime workdayEnd,
+			Set<DayOfWeek> workingDays
+	) {
+		static AutomationTimeSettings defaultSettings() {
+			return new AutomationTimeSettings(
+					ZoneId.systemDefault(),
+					true,
+					LocalTime.of(9, 0),
+					LocalTime.of(18, 0),
+					EnumSet.of(
+							DayOfWeek.MONDAY,
+							DayOfWeek.TUESDAY,
+							DayOfWeek.WEDNESDAY,
+							DayOfWeek.THURSDAY,
+							DayOfWeek.FRIDAY
+					)
+			);
+		}
+	}
+
 
 	/**
 	 * Выполнить действия (как в UI поле "Действие").
@@ -1016,7 +1181,7 @@ public class AutomationScriptRuntime {
 				if (from == null) {
 					yield null;
 				}
-				yield Duration.between(from, ZonedDateTime.now()).toDays();
+				yield Duration.between(from, automationNow()).toDays();
 			}
 
 			case MINUTES_SINCE -> {
@@ -1024,7 +1189,7 @@ public class AutomationScriptRuntime {
 				if (from == null) {
 					yield null;
 				}
-				yield Duration.between(from, ZonedDateTime.now()).toMinutes();
+				yield Duration.between(from, automationNow()).toMinutes();
 			}
 
 			case HAS_TAG -> {
@@ -1068,13 +1233,11 @@ public class AutomationScriptRuntime {
 			case IS_WHATSAPP -> messageFromEquals(root, target, "WHATSAPP");
 
 			case IS_TODAY -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
+				ZonedDateTime dateTime = inAutomationZone(toZonedDateTime(target));
 				if (dateTime == null) {
 					yield false;
 				}
-
-				ZonedDateTime now = ZonedDateTime.now(dateTime.getZone());
-				yield dateTime.toLocalDate().equals(now.toLocalDate());
+				yield dateTime.toLocalDate().equals(automationNow().toLocalDate());
 			}
 
 			case IS_BEFORE -> {
@@ -1107,56 +1270,40 @@ public class AutomationScriptRuntime {
 
 			case IS_FALSE -> !asBool(target);
 
-			case NOW -> ZonedDateTime.now();
+			case NOW -> automationNow();
 
 			case HOUR -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
+				ZonedDateTime dateTime = inAutomationZone(toZonedDateTime(target));
 				yield dateTime == null ? null : dateTime.getHour();
 			}
 
 			case DAY_OF_WEEK -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
+				ZonedDateTime dateTime = inAutomationZone(toZonedDateTime(target));
 				yield dateTime == null ? null : dateTime.getDayOfWeek().getValue();
 			}
 
 			case IS_WEEKEND -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
+				ZonedDateTime dateTime = inAutomationZone(toZonedDateTime(target));
 				if (dateTime == null) {
-					yield false;
+					dateTime = automationNow();
 				}
-
-				DayOfWeek day = dateTime.getDayOfWeek();
-				yield day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
+				yield !isWorkingDayBySettings(dateTime);
 			}
 
 			case IS_WORKING_HOURS -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
+				ZonedDateTime dateTime = inAutomationZone(toZonedDateTime(target));
 				if (dateTime == null) {
-					dateTime = ZonedDateTime.now();
+					dateTime = automationNow();
 				}
-
-				DayOfWeek day = dateTime.getDayOfWeek();
-				LocalTime time = dateTime.toLocalTime();
-
-				boolean workingDay = day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY;
-				boolean workingTime = !time.isBefore(LocalTime.of(9, 0)) && time.isBefore(LocalTime.of(18, 0));
-
-				yield workingDay && workingTime;
+				yield isWorkingHoursBySettings(dateTime);
 			}
 
 			case IS_AFTER_HOURS -> {
-				ZonedDateTime dateTime = toZonedDateTime(target);
+				ZonedDateTime dateTime = inAutomationZone(toZonedDateTime(target));
 				if (dateTime == null) {
-					dateTime = ZonedDateTime.now();
+					dateTime = automationNow();
 				}
-
-				DayOfWeek day = dateTime.getDayOfWeek();
-				LocalTime time = dateTime.toLocalTime();
-
-				boolean weekend = day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
-				boolean afterHours = time.isBefore(LocalTime.of(9, 0)) || !time.isBefore(LocalTime.of(18, 0));
-
-				yield weekend || afterHours;
+				yield !isWorkingHoursBySettings(dateTime);
 			}
 		};
 	}
@@ -1439,7 +1586,7 @@ public class AutomationScriptRuntime {
 					try {
 						return ZonedDateTime.ofInstant(
 								Instant.ofEpochMilli(node.asLong()),
-								ZoneId.systemDefault()
+								automationZone()
 						);
 					} catch (Exception ignored) {
 						return null;
@@ -1458,7 +1605,7 @@ public class AutomationScriptRuntime {
 				} catch (Exception ignored) {
 				}
 				try {
-					return LocalDateTime.parse(s).atZone(ZoneId.systemDefault());
+					return LocalDateTime.parse(s).atZone(automationZone());
 				} catch (Exception ignored) {
 				}
 				return null;
@@ -1468,7 +1615,7 @@ public class AutomationScriptRuntime {
 				try {
 					return ZonedDateTime.ofInstant(
 							Instant.ofEpochMilli(n.longValue()),
-							ZoneId.systemDefault()
+							automationZone()
 					);
 				} catch (Exception ignored) {
 					return null;

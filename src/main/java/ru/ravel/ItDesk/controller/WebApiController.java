@@ -46,6 +46,7 @@ public class WebApiController {
 	private final TaskHistoryService taskHistoryService;
 	private final TaskService taskService;
 	private final WebSocketService webSocketService;
+	private final AppSettingsService appSettingsService;
 
 
 	@GetMapping("/clients")
@@ -1044,8 +1045,8 @@ public class WebApiController {
 
 	@GetMapping("/export/to-excel")
 	@PreAuthorize("hasAnyRole('ADMIN')")
-	public ResponseEntity<byte[]> exportToExcel() {
-		return exportService.exportToExcel();
+	public ResponseEntity<byte[]> exportToExcel(@RequestParam Map<String, String> params) {
+		return exportService.exportToExcel(params);
 	}
 
 
@@ -1261,6 +1262,26 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getCurrentUser() {
 		return ResponseEntity.ok(userService.getCurrentUser());
+	}
+
+
+	@GetMapping("/settings/general")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getGeneralSettings() {
+		return ResponseEntity.ok(appSettingsService.getGeneralSettings());
+	}
+
+	@PatchMapping("/settings/general")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> updateGeneralSettings(@RequestBody AppSettings settings) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		try {
+			return ResponseEntity.ok(appSettingsService.updateGeneralSettings(settings));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.badRequest().body(e.getMessage());
+		}
 	}
 
 }

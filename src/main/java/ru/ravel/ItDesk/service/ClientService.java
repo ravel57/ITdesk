@@ -180,7 +180,7 @@ public class ClientService {
 	}
 
 
-	public boolean sendMessage(Long clientId, Message message) {
+	public Message sendMessage(Long clientId, Message message) {
 		if (message == null) {
 			throw new IllegalArgumentException("message must not be null");
 		}
@@ -188,7 +188,7 @@ public class ClientService {
 	}
 
 
-	public boolean sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
+	public Message sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
@@ -197,22 +197,28 @@ public class ClientService {
 		message.setIsSent(true);
 		message.setIsRead(true);
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
-		Message savedMessage = messageRepository.saveAndFlush(message);
 		Client client = clientsRepository.findById(clientId).orElseThrow();
+		hydrateReplyData(message, client.getMessages());
+		Message savedMessage = messageRepository.saveAndFlush(message);
+		hydrateReplyData(savedMessage, client.getMessages());
 		if (!Boolean.TRUE.equals(message.getIsComment()) && !isDemo) {
 			try {
 				if (client.getMessageFrom() == null) {
-					logger.warn("message send skipped: client messageFrom is null, clientId={}", client.getId());
-					return false;
-				}
-				switch (client.getMessageFrom()) {
-					case TELEGRAM -> telegramService.sendMessage(client, savedMessage);
-					case EMAIL -> emailService.sendEmail(savedMessage, client);
-					case WHATSAPP -> whatsappService.sendMessage(savedMessage, client);
+					logger.warn("message external delivery skipped: client messageFrom is null, clientId={}", client.getId());
+				} else {
+					switch (client.getMessageFrom()) {
+						case TELEGRAM -> telegramService.sendMessage(client, savedMessage);
+						case EMAIL -> emailService.sendEmail(savedMessage, client);
+						case WHATSAPP -> whatsappService.sendMessage(savedMessage, client);
+					}
 				}
 			} catch (Exception e) {
-				logger.error(e.getMessage(), e);
-				return false;
+				logger.error(
+						"message external delivery failed, but local message was saved: clientId={}, messageId={}",
+						client.getId(),
+						savedMessage.getId(),
+						e
+				);
 			}
 		} else {
 			// pings
@@ -238,16 +244,23 @@ public class ClientService {
 						});
 			}
 		}
-		webSocketService.sendNewMessages(new ClientMessage(client, savedMessage));
 		if (client.getMessages() == null) {
 			client.setMessages(new ArrayList<>());
 		}
-		client.getMessages().add(savedMessage);
-		clientsRepository.save(client);
-		globalSearchService.indexClient(client);
-		globalSearchService.indexClientMessage(client, savedMessage);
-		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload("message", savedMessage, "client", client));
-		return true;
+		boolean alreadyExists = client.getMessages().stream()
+				.anyMatch(existingMessage -> Objects.equals(existingMessage.getId(), savedMessage.getId()));
+		if (!alreadyExists) {
+			client.getMessages().add(savedMessage);
+		}
+		Client savedClient = clientsRepository.saveAndFlush(client);
+		globalSearchService.indexClient(savedClient);
+		globalSearchService.indexClientMessage(savedClient, savedMessage);
+		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload(
+				"message", savedMessage,
+				"client", savedClient
+		));
+		webSocketService.sendNewMessages(new ClientMessage(savedClient, savedMessage));
+		return savedMessage;
 	}
 
 
@@ -554,6 +567,30 @@ public class ClientService {
 	}
 
 
+	private void hydrateReplyData(Message message, Collection<Message> messages) {
+		if (message == null || message.getReplyMessageId() == null) {
+			return;
+		}
+		Message replyMessage = safeCollection(messages).stream()
+				.filter(item -> Objects.equals(item.getId(), message.getReplyMessageId()))
+				.findFirst()
+				.orElse(null);
+		if (replyMessage == null) {
+			return;
+		}
+		message.setReplyMessageText(Objects.toString(replyMessage.getText(), ""));
+		if (message.getReplyFileType() == null) {
+			message.setReplyFileType(replyMessage.getFileType());
+		}
+		if (message.getReplyUuid() == null && replyMessage.getFileUuid() != null && !replyMessage.getFileUuid().isBlank()) {
+			try {
+				message.setReplyUuid(UUID.fromString(replyMessage.getFileUuid()));
+			} catch (Exception ignored) {
+			}
+		}
+	}
+
+
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
@@ -654,6 +691,22 @@ public class ClientService {
 	}
 
 
+	public List<FileDto> getTaskFiles(Long clientId, Long taskId) {
+		if (clientId == null || taskId == null) {
+			return Collections.emptyList();
+		}
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Task task = safeCollection(client.getTasks()).stream()
+				.filter(t -> Objects.equals(t.getId(), taskId))
+				.findFirst()
+				.orElseThrow();
+		return safeCollection(task.getMessages()).stream()
+				.filter(m -> m.getFileUuid() != null)
+				.map(m -> new FileDto(m.getFileUuid(), m.getFileName(), m.getFileType()))
+				.toList();
+	}
+
+
 	private static Map<String, Object> eventPayload(Object... values) {
 		if (values.length % 2 != 0) {
 			throw new IllegalArgumentException("eventPayload requires key-value pairs");
@@ -675,12 +728,66 @@ public class ClientService {
 	}
 
 	@Transactional
-	public void answerRequired(Long clientId, Long messageId, AnswerRequired answerRequired) {
-		Message message = messageRepository.findById(messageId).orElseThrow();
-		message.setAnswerRequired(
-				Objects.requireNonNullElse(answerRequired, AnswerRequired.NOT_SET)
+	public Map<String, Object> answerRequired(Long clientId, Long messageId, AnswerRequiredRequest request) {
+		if (clientId == null || messageId == null || request == null) {
+			throw new IllegalArgumentException("clientId, messageId and request must not be null");
+		}
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		AnswerRequired answerRequired = Objects.requireNonNullElse(
+				request.getAnswerRequired(),
+				AnswerRequired.NOT_SET
 		);
-		messageRepository.save(message);
+		List<Message> conversationMessages = safeCollection(client.getMessages()).stream()
+				.filter(message -> message.getDate() != null)
+				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
+				.filter(message -> !Boolean.TRUE.equals(message.getIsComment()))
+				.sorted()
+				.toList();
+		int selectedIndex = -1;
+		for (int i = 0; i < conversationMessages.size(); i++) {
+			if (Objects.equals(conversationMessages.get(i).getId(), messageId)) {
+				selectedIndex = i;
+				break;
+			}
+		}
+		if (selectedIndex < 0) {
+			throw new NoSuchElementException("Message not found in client messages");
+		}
+		Message selectedMessage = conversationMessages.get(selectedIndex);
+		if (!isIncomingMessage(selectedMessage)) {
+			throw new IllegalArgumentException("Answer required can be changed only for incoming client message");
+		}
+		int startIndex = 0;
+		for (int i = selectedIndex - 1; i >= 0; i--) {
+			if (isOutgoingOperatorMessage(conversationMessages.get(i))) {
+				startIndex = i + 1;
+				break;
+			}
+		}
+		int endIndex = conversationMessages.size() - 1;
+		for (int i = selectedIndex + 1; i < conversationMessages.size(); i++) {
+			if (isOutgoingOperatorMessage(conversationMessages.get(i))) {
+				endIndex = i - 1;
+				break;
+			}
+		}
+		List<Message> groupMessages = new ArrayList<>();
+		for (int i = startIndex; i <= endIndex; i++) {
+			Message message = conversationMessages.get(i);
+			if (isIncomingMessage(message)) {
+				message.setAnswerRequired(AnswerRequired.NOT_SET);
+				groupMessages.add(message);
+			}
+		}
+		selectedMessage.setAnswerRequired(answerRequired);
+		messageRepository.saveAll(groupMessages);
+		ZonedDateTime firstUnansweredMessageDate = getFirstUnansweredMessageDate(client.getMessages());
+		client.setFirstUnansweredMessageDate(firstUnansweredMessageDate);
+		clientsRepository.save(client);
+		globalSearchService.indexClient(client);
+		Map<String, Object> response = new HashMap<>();
+		response.put("firstUnansweredMessageDate", firstUnansweredMessageDate);
+		return response;
 	}
 
 
@@ -742,7 +849,7 @@ public class ClientService {
 		if (lastMarkedMessage == null || lastMarkedMessage.getAnswerRequired() != AnswerRequired.ANSWER_REQUIRED) {
 			return null;
 		}
-		return unansweredIncomingMessages.getFirst().getDate();
+		return lastMarkedMessage.getDate();
 	}
 
 	private boolean isIncomingMessage(Message message) {

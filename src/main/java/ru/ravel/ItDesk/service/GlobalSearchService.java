@@ -31,6 +31,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
 
 @Service
 @RequiredArgsConstructor
@@ -48,21 +58,24 @@ public class GlobalSearchService {
 
 
 	public List<GlobalSearchResultDto> search(String query) {
+		return search(query, Set.of());
+	}
+
+
+	public List<GlobalSearchResultDto> search(String query, Set<String> entityTypes) {
 		if (query == null || query.isBlank()) {
 			return List.of();
 		}
-
 		String normalizedQuery = normalizeSearchQuery(query);
-
 		if (normalizedQuery.isBlank()) {
 			return List.of();
 		}
-
+		Set<String> allowedEntityTypes = normalizeEntityTypes(entityTypes);
 		try {
 			ensureIndexExists();
 			SearchResponse<GlobalSearchDocument> response = elasticsearchClient.search(request -> request
 							.index(indexName)
-							.size(50)
+							.size(200)
 							.query(q -> q
 									.bool(b -> b
 											.should(s -> s
@@ -70,7 +83,7 @@ public class GlobalSearchService {
 															.query(query)
 															.type(TextQueryType.BestFields)
 															.fields(
-																	"title^4",
+																	"title^5",
 																	"subtitle^2",
 																	"text",
 																	"entityType"
@@ -82,7 +95,7 @@ public class GlobalSearchService {
 															.query(normalizedQuery)
 															.type(TextQueryType.BestFields)
 															.fields(
-																	"title^4",
+																	"title^5",
 																	"subtitle^2",
 																	"text",
 																	"entityType"
@@ -98,6 +111,15 @@ public class GlobalSearchService {
 			return response.hits().hits().stream()
 					.filter(hit -> hit.source() != null)
 					.map(hit -> toResult(hit.source(), hit.score()))
+					.filter(result -> allowedEntityTypes.isEmpty() || allowedEntityTypes.contains(result.getEntityType()))
+					.sorted(Comparator
+							.comparingInt((GlobalSearchResultDto result) -> getEntityTypePriority(result.getEntityType()))
+							.thenComparing(
+									result -> Objects.requireNonNullElse(result.getScore(), 0.0),
+									Comparator.reverseOrder()
+							)
+					)
+					.limit(50)
 					.toList();
 		} catch (IOException | ElasticsearchException e) {
 			throw new IllegalStateException("Global search failed", e);
@@ -288,15 +310,27 @@ public class GlobalSearchService {
 
 
 	private GlobalSearchDocument toTaskDocument(Client client, Task task) {
+		String taskNumber = String.valueOf(task.getId());
+		String taskTitle = nullToEmpty(task.getName()).trim();
 		return GlobalSearchDocument.builder()
 				.id("TASK:" + task.getId())
 				.entityType("TASK")
 				.entityId(task.getId())
 				.clientId(client == null ? null : client.getId())
 				.taskId(task.getId())
-				.title(nullToEmpty(task.getName()))
+				.title(taskTitle.isBlank()
+						? "Заявка №%s".formatted(taskNumber)
+						: "Заявка №%s · %s".formatted(taskNumber, taskTitle))
 				.subtitle("Заявка")
 				.text(String.join(" ",
+						"заявка",
+						"№" + taskNumber,
+						"#" + taskNumber,
+						"id" + taskNumber,
+						"task" + taskNumber,
+						"task-" + taskNumber,
+						"номер " + taskNumber,
+						taskNumber,
 						nullToEmpty(task.getName()),
 						nullToEmpty(task.getDescription()),
 						task.getStatus() == null ? "" : nullToEmpty(task.getStatus().getName()),
@@ -311,7 +345,8 @@ public class GlobalSearchService {
 				.meta(Map.of(
 						"completed", Boolean.TRUE.equals(task.getCompleted()),
 						"status", task.getStatus() == null ? "" : nullToEmpty(task.getStatus().getName()),
-						"priority", task.getPriority() == null ? "" : nullToEmpty(task.getPriority().getName())
+						"priority", task.getPriority() == null ? "" : nullToEmpty(task.getPriority().getName()),
+						"number", taskNumber
 				))
 				.build();
 	}
@@ -478,6 +513,46 @@ public class GlobalSearchService {
 				.replaceAll("\\s+", " ")
 				.trim();
 		return normalized.isBlank() ? query.trim() : normalized;
+	}
+
+
+	private Set<String> normalizeEntityTypes(Set<String> entityTypes) {
+		if (entityTypes == null || entityTypes.isEmpty()) {
+			return Set.of();
+		}
+		Set<String> allowed = Set.of(
+				"USER",
+				"CLIENT",
+				"TASK",
+				"CLIENT_MESSAGE",
+				"TASK_MESSAGE"
+		);
+		Set<String> result = new HashSet<>();
+		entityTypes.forEach(type -> {
+			if (type == null) {
+				return;
+			}
+			String normalized = type.trim().toUpperCase(Locale.ROOT);
+			if (allowed.contains(normalized)) {
+				result.add(normalized);
+			}
+		});
+		return result;
+	}
+
+
+	private int getEntityTypePriority(String entityType) {
+		if (entityType == null) {
+			return 100;
+		}
+		return switch (entityType) {
+			case "USER" -> 0;
+			case "CLIENT" -> 1;
+			case "TASK" -> 2;
+			case "CLIENT_MESSAGE" -> 3;
+			case "TASK_MESSAGE" -> 4;
+			default -> 100;
+		};
 	}
 
 }

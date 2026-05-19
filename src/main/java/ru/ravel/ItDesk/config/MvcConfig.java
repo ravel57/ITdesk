@@ -28,6 +28,7 @@ class MvcConfig implements WebMvcConfigurer {
 		registry.addViewController("/phone").setViewName(spa);
 		registry.addViewController("/help").setViewName(spa);
 		registry.addViewController("/my-tasks").setViewName(spa);
+		registry.addViewController("/orgs").setViewName(spa);
 	}
 
 }

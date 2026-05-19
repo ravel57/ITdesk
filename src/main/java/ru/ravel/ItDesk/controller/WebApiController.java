@@ -85,6 +85,16 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/client/{clientId}/task/{taskId}/files")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getTaskFiles(
+			@PathVariable Long clientId,
+			@PathVariable Long taskId
+	) {
+		return ResponseEntity.ok().body(clientService.getTaskFiles(clientId, taskId));
+	}
+
+
 	@PostMapping("/client/{clientId}/task/{taskId}/message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> addTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody Message message) {
@@ -148,16 +158,14 @@ public class WebApiController {
 	@PostMapping("/client/{clientId}/message")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
-		if (LicenseStarter.isLicenseActive) {
-			boolean isMessageDelivered = clientService.sendMessage(clientId, message);
-			if (isMessageDelivered) {
-				return ResponseEntity.ok().body(true);
-			} else {
-				return ResponseEntity.status(HttpStatus.CONFLICT).build();
-			}
-		} else {
+		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
+		Message savedMessage = clientService.sendMessage(clientId, message);
+		if (savedMessage == null) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+		return ResponseEntity.ok(savedMessage);
 	}
 
 
@@ -186,14 +194,12 @@ public class WebApiController {
 	public ResponseEntity<Object> answerRequired(
 			@PathVariable Long clientId,
 			@PathVariable Long messageId,
-			@RequestBody AnswerRequired answerRequired
+			@RequestBody AnswerRequiredRequest request
 	) {
-		if (LicenseStarter.isLicenseActive) {
-			clientService.answerRequired(clientId, messageId, answerRequired);
-			return ResponseEntity.ok().body(true);
-		} else {
+		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
+		return ResponseEntity.ok(clientService.answerRequired(clientId, messageId, request));
 	}
 
 
@@ -447,6 +453,35 @@ public class WebApiController {
 		if (LicenseStarter.isLicenseActive) {
 			organizationService.deleteOrganization(organizationId);
 			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@PatchMapping("/organizations/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> resortOrganizations(@RequestBody List<Organization> organizations) {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(organizationService.resortOrganizations(organizations));
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+	}
+
+
+	@GetMapping("/organization/{organizationId}/visits")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getOrganizationVisits(@PathVariable Long organizationId) {
+		return ResponseEntity.ok().body(organizationService.getVisitHistory(organizationId));
+	}
+
+
+	@PostMapping("/organization/{organizationId}/visits")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> addOrganizationVisit(@PathVariable Long organizationId, @RequestBody OrganizationVisit visit) {
+		if (LicenseStarter.isLicenseActive) {
+			return ResponseEntity.ok().body(organizationService.addVisit(organizationId, visit));
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -1088,8 +1123,26 @@ public class WebApiController {
 
 	@GetMapping("/global-search")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
-	public ResponseEntity<Object> globalSearch(@RequestParam String query) {
-		return ResponseEntity.ok().body(globalSearchService.search(query));
+	public ResponseEntity<Object> globalSearch(
+			@RequestParam String query,
+			@RequestParam(required = false) String types
+	) {
+		return ResponseEntity.ok().body(globalSearchService.search(query, parseGlobalSearchTypes(types)));
+	}
+
+
+	private Set<String> parseGlobalSearchTypes(String types) {
+		if (types == null || types.isBlank()) {
+			return Set.of();
+		}
+		Set<String> result = new HashSet<>();
+		for (String type : types.split(",")) {
+			if (type.isBlank()) {
+				continue;
+			}
+			result.add(type.trim());
+		}
+		return result;
 	}
 
 

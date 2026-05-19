@@ -9,7 +9,9 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +25,7 @@ public class OrganizationService {
 	private final DefaultOrganizationRepository defaultOrganizationRepository;
 	private final ClientRepository clientRepository;
 	private final OrganizationSlaRepository organizationSlaRepository;
+	private final OrganizationVisitRepository organizationVisitRepository;
 
 
 	public List<Organization> getOrganizations() {
@@ -33,12 +36,15 @@ public class OrganizationService {
 	}
 
 
-	public Organization newOrganization(Organization organization) {
+	public Organization newOrganization(@NotNull Organization organization) {
+		normalizeOrganizationSettings(organization);
+		organization.setOrderNumber(getOrganizations().size() + 1);
 		return organizationRepository.save(organization);
 	}
 
 
 	public Organization updateOrganization(Organization organization) {
+		normalizeOrganizationSettings(organization);
 		return organizationRepository.save(organization);
 	}
 
@@ -87,6 +93,46 @@ public class OrganizationService {
 	}
 
 
+	private void normalizeOrganizationSettings(Organization organization) {
+		if (organization.getActive() == null) {
+			organization.setActive(true);
+		}
+		if (organization.getOrderNumber() == null) {
+			organization.setOrderNumber(0);
+		}
+		if (organization.getPriorityLevel() == null || organization.getPriorityLevel().isBlank()) {
+			organization.setPriorityLevel("NORMAL");
+		}
+		if (organization.getUseVisitsLimit() == null) {
+			organization.setUseVisitsLimit(false);
+		}
+		if (organization.getMonthlyVisitsLimit() == null || organization.getMonthlyVisitsLimit() < 0) {
+			organization.setMonthlyVisitsLimit(0);
+		}
+		if (organization.getVisitsUsed() == null || organization.getVisitsUsed() < 0) {
+			organization.setVisitsUsed(0);
+		}
+		if (organization.getVisitResetDay() == null) {
+			organization.setVisitResetDay(1);
+		}
+		if (organization.getVisitResetDay() < 1) {
+			organization.setVisitResetDay(1);
+		}
+		if (organization.getVisitResetDay() > 31) {
+			organization.setVisitResetDay(31);
+		}
+		if (organization.getIncludedRemoteSupport() == null) {
+			organization.setIncludedRemoteSupport(true);
+		}
+		if (organization.getSlaWorkCalendar() == null || organization.getSlaWorkCalendar().isBlank()) {
+			organization.setSlaWorkCalendar("GENERAL_SETTINGS");
+		}
+		if (organization.getPauseSlaOnWaitingClient() == null) {
+			organization.setPauseSlaOnWaitingClient(true);
+		}
+	}
+
+
 	@Transactional
 	public void setSla(@NotNull OrganizationPriorityDuration dto) {
 		Organization organization;
@@ -113,8 +159,67 @@ public class OrganizationService {
 				value,
 				unit
 		);
-
 		organizationSlaRepository.save(organizationSla);
+	}
+
+
+	@Transactional
+	public List<Organization> resortOrganizations(@NotNull List<Organization> newOrderedOrganizations) {
+		List<Organization> organizations = organizationRepository.findAll().stream()
+				.filter(organization -> !(organization instanceof DefaultOrganization))
+				.toList();
+
+		for (Organization organization : organizations) {
+			organization.setOrderNumber(newOrderedOrganizations.indexOf(organization));
+		}
+
+		organizationRepository.saveAll(organizations);
+		return organizations.stream().sorted().toList();
+	}
+
+	public List<OrganizationVisit> getVisitHistory(Long organizationId) {
+		return organizationVisitRepository.findAllByOrganizationIdOrderByVisitDateDescIdDesc(organizationId);
+	}
+
+
+	@Transactional
+	public Map<String, Object> addVisit(Long organizationId, OrganizationVisit visit) {
+		Organization organization = organizationRepository.findLockedById(organizationId).orElseThrow();
+
+		normalizeOrganizationSettings(organization);
+
+		boolean countedInPackage = visit.getCountedInPackage() == null || visit.getCountedInPackage();
+
+		int currentVisitsUsed = organization.getVisitsUsed() == null ? 0 : organization.getVisitsUsed();
+		int monthlyVisitsLimit = organization.getMonthlyVisitsLimit() == null ? 0 : organization.getMonthlyVisitsLimit();
+		int visitsUsedAfter = countedInPackage ? currentVisitsUsed + 1 : currentVisitsUsed;
+
+		organization.setVisitsUsed(visitsUsedAfter);
+
+		visit.setOrganization(organization);
+
+		if (visit.getVisitDate() == null) {
+			visit.setVisitDate(LocalDateTime.now());
+		}
+		if (visit.getCreatedAt() == null) {
+			visit.setCreatedAt(LocalDateTime.now());
+		}
+		if (visit.getType() == null || visit.getType().isBlank()) {
+			visit.setType("Выезд");
+		}
+		visit.setCountedInPackage(countedInPackage);
+		visit.setVisitsUsedAfter(visitsUsedAfter);
+		visit.setMonthlyVisitsLimitSnapshot(monthlyVisitsLimit);
+		visit.setOverLimit(countedInPackage && monthlyVisitsLimit > 0 && visitsUsedAfter > monthlyVisitsLimit);
+
+		Organization savedOrganization = organizationRepository.save(organization);
+		OrganizationVisit savedVisit = organizationVisitRepository.save(visit);
+
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put("organization", savedOrganization);
+		result.put("visit", savedVisit);
+
+		return result;
 	}
 
 }

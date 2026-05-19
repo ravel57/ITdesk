@@ -193,7 +193,7 @@ public class UserNotificationService {
 		if (lastMarkedMessage == null || lastMarkedMessage.getAnswerRequired() != AnswerRequired.ANSWER_REQUIRED) {
 			return null;
 		}
-		return unansweredIncomingMessages.getFirst().getDate();
+		return lastMarkedMessage.getDate();
 	}
 
 

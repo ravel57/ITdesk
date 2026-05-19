@@ -3,13 +3,11 @@ package ru.ravel.ItDesk.model;
 import jakarta.persistence.*;
 import lombok.*;
 import org.jetbrains.annotations.NotNull;
-import ru.ravel.ItDesk.dto.DurationConverter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 
 
 @Entity
@@ -29,15 +27,96 @@ public class Organization implements Comparable<Organization>, Serializable {
 
 	protected String name;
 
+	@Column(nullable = false, columnDefinition = "int default 0")
+	protected Integer orderNumber;
+
 	@Builder.Default
-	protected Integer orderNumber = 1;
+	protected Boolean active = true;
+
+	protected String inn;
+
+	protected String kpp;
+
+	protected String externalId;
+
+	protected String mainAddress;
+
+	@Builder.Default
+	protected String priorityLevel = "NORMAL";
+
+	protected String managerName;
+
+	protected String managerPhone;
+
+	protected String managerEmail;
+
+	protected String contractNumber;
+
+	protected LocalDate contractStartDate;
+
+	protected LocalDate contractEndDate;
+
+	protected String tariffName;
+
+	protected String servicePackageName;
+
+	@Column(precision = 19, scale = 2)
+	protected BigDecimal monthlyFee;
+
+	@Column(columnDefinition = "TEXT")
+	protected String description;
+
+	@Builder.Default
+	protected Boolean useVisitsLimit = false;
+
+	@Builder.Default
+	protected Integer monthlyVisitsLimit = 0;
+
+	@Builder.Default
+	protected Integer visitsUsed = 0;
+
+	@Column(precision = 19, scale = 2)
+	protected BigDecimal extraVisitPrice;
+
+	@Column(precision = 19, scale = 2)
+	protected BigDecimal urgentVisitPrice;
+
+	@Builder.Default
+	protected Integer visitResetDay = 1;
+
+	@Builder.Default
+	protected Boolean includedRemoteSupport = true;
+
+	@Column(columnDefinition = "TEXT")
+	protected String visitComment;
+
+	protected String slaAgreementName;
+
+	protected Integer slaFirstResponseMinutes;
+
+	protected Integer slaResolutionHours;
+
+	@Builder.Default
+	protected String slaWorkCalendar = "GENERAL_SETTINGS";
+
+	@Builder.Default
+	protected Boolean pauseSlaOnWaitingClient = true;
+
+	@Column(columnDefinition = "TEXT")
+	protected String slaComment;
+
+	@Column(columnDefinition = "TEXT")
+	protected String serviceAddresses;
+
+	@Column(columnDefinition = "TEXT")
+	protected String communicationChannels;
+
+	@Column(columnDefinition = "TEXT")
+	protected String internalComment;
+
 
 	@Override
 	public int compareTo(@NotNull Organization o) {
-		if (this.orderNumber != null && o.orderNumber != null) {
-			return orderNumber.compareTo(o.orderNumber);
-		} else  {
-			return 0;
-		}
+		return orderNumber.compareTo(o.orderNumber);
 	}
 }

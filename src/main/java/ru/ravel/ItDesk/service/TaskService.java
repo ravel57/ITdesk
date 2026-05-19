@@ -74,7 +74,8 @@ public class TaskService {
 		globalSearchService.indexTask(client, savedTask);
 		eventPublisher.publish(TriggerType.TASK_CREATED, eventPayload(
 				"task", savedTask,
-				"client", client
+				"client", client,
+				"changes", buildTaskCreatedChanges(savedTask)
 		));
 		if (savedTask.getExecutor() != null) {
 			userNotificationService.send(new UserNotification(
@@ -423,6 +424,61 @@ public class TaskService {
 		changes.add(change);
 	}
 
+
+
+	private static List<Map<String, Object>> buildTaskCreatedChanges(Task task) {
+		List<Map<String, Object>> changes = new ArrayList<>();
+		if (task == null) {
+			return changes;
+		}
+		addCreatedField(changes, "name", "Название", task.getName());
+		addCreatedField(changes, "description", "Описание", task.getDescription());
+		addCreatedField(changes, "type", "Тип", getTaskTypeName(task.getType()));
+		addCreatedField(changes, "checklist", "Чек-лист", checklistToHistoryValue(task.getChecklist()));
+		addCreatedField(changes, "deadline", "Дедлайн", task.getDeadline());
+		addCreatedField(changes, "executor", "Исполнитель", getUserDisplayName(task.getExecutor()));
+		addCreatedField(changes, "priority", "Приоритет", getName(task.getPriority()));
+		addCreatedField(changes, "status", "Статус", getName(task.getStatus()));
+		addCreatedField(changes, "tags", "Теги", tagsToHistoryValue(task.getTags()));
+		addCreatedField(changes, "linkedMessageId", "Связанное сообщение", task.getLinkedMessageId());
+		if (Boolean.TRUE.equals(task.getCompleted())) {
+			addCreatedField(changes, "completed", "Закрыта", "Да");
+		}
+		if (Boolean.TRUE.equals(task.getFrozen())) {
+			addCreatedField(changes, "frozen", "Заморозка", "Да");
+			addCreatedField(changes, "frozenUntil", "Заморожена до", task.getFrozenUntil());
+		}
+		return changes;
+	}
+
+
+	private static void addCreatedField(List<Map<String, Object>> changes, String field, String label, Object value) {
+		String normalizedValue = Objects.toString(value, "").trim();
+		if (normalizedValue.isBlank()) {
+			return;
+		}
+		Map<String, Object> change = new LinkedHashMap<>();
+		change.put("field", field);
+		change.put("label", label);
+		change.put("oldValue", "—");
+		change.put("newValue", normalizedValue);
+		changes.add(change);
+	}
+
+
+	private static String tagsToHistoryValue(List<Tag> tags) {
+		if (tags == null || tags.isEmpty()) {
+			return "";
+		}
+		return tags.stream()
+				.filter(Objects::nonNull)
+				.map(Tag::getName)
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(name -> !name.isBlank())
+				.toList()
+				.toString();
+	}
 
 	private static String getName(Object object) {
 		return switch (object) {

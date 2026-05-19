@@ -185,42 +185,79 @@ public class EmailService {
 				Client client = clientRepository.findFirstByEmail(emailFrom).orElse(null);
 				ru.ravel.ItDesk.model.Message message = ru.ravel.ItDesk.model.Message.builder()
 						.text(getTextFromMessage(emailMessage))
-						.date(ZonedDateTime.ofInstant(Instant.ofEpochMilli(emailMessage.getReceivedDate().getTime()), ZoneId.systemDefault()))
+						.date(ZonedDateTime.ofInstant(
+								Instant.ofEpochMilli(emailMessage.getReceivedDate().getTime()),
+								ZoneId.systemDefault()
+						))
 						.isComment(false)
 						.isRead(false)
 						.isSent(false)
 						.build();
 				saveAttachments(emailMessage, message);
-				messageRepository.save(message);
+				ru.ravel.ItDesk.model.Message savedMessage = messageRepository.saveAndFlush(message);
 				boolean newClient = false;
 				if (client != null) {
-					client.getMessages().add(message);
+					if (client.getMessages() == null) {
+						client.setMessages(new ArrayList<>());
+					}
+					if (client.getMessageFrom() == null) {
+						client.setMessageFrom(MessageFrom.EMAIL);
+					}
+					if (client.getEmailAccountSender() == null) {
+						client.setEmailAccountSender(emailAccount);
+					}
+					client.getMessages().add(savedMessage);
 				} else {
 					newClient = true;
 					client = Client.builder()
 							.email(emailFrom)
 							.firstname(emailFrom)
 							.messageFrom(MessageFrom.EMAIL)
-							.messages(new ArrayList<>(List.of(message)))
+							.messages(new ArrayList<>(List.of(savedMessage)))
 							.emailAccountSender(emailAccount)
 							.build();
 				}
 				try {
-					client = clientRepository.save(client);
+					client = clientRepository.saveAndFlush(client);
 				} catch (org.springframework.orm.ObjectOptimisticLockingFailureException e) {
 					if (client.getId() == null) {
 						throw e;
 					}
 					logger.warn("Client was updated concurrently, reloading client id={}", client.getId());
 					Client freshClient = clientRepository.findById(client.getId()).orElseThrow();
-					freshClient.getMessages().add(message);
-					client = clientRepository.save(freshClient);
+					if (freshClient.getMessages() == null) {
+						freshClient.setMessages(new ArrayList<>());
+					}
+					boolean alreadyExists = freshClient.getMessages().stream()
+							.anyMatch(existingMessage -> Objects.equals(existingMessage.getId(), savedMessage.getId()));
+					if (!alreadyExists) {
+						freshClient.getMessages().add(savedMessage);
+					}
+					if (freshClient.getMessageFrom() == null) {
+						freshClient.setMessageFrom(MessageFrom.EMAIL);
+					}
+					if (freshClient.getEmailAccountSender() == null) {
+						freshClient.setEmailAccountSender(emailAccount);
+					}
+					client = clientRepository.saveAndFlush(freshClient);
 				}
-
 				if (newClient) {
-					eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", client, "message", message));
+					eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of(
+							"client", client,
+							"message", savedMessage
+					));
 				}
-				webSocketService.sendNewMessages(new ClientMessage(client, message));
+				if (savedMessage.getFileUuid() != null) {
+					eventPublisher.publish(TriggerType.ATTACHMENT_ADDED, Map.of(
+							"client", client,
+							"message", savedMessage
+					));
+				}
+				eventPublisher.publish(TriggerType.MESSAGE_INCOMING, Map.of(
+						"client", client,
+						"message", savedMessage
+				));
+				webSocketService.sendNewMessages(new ClientMessage(client, savedMessage));
 				emailMessage.setFlag(Flags.Flag.SEEN, true);
 			}
 			emailFolder.close(false);

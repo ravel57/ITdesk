@@ -72,17 +72,13 @@ public class ExportService {
 			Sheet sheet = workbook.createSheet("Заявки");
 			Styles styles = createStyles(workbook);
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
-			int rowNum = 0;
-			rowNum = createReportHeader(sheet, rowNum, filters, rows.size(), styles);
-			rowNum++;
-			int tableHeaderRow = rowNum;
-			Row headerRow = sheet.createRow(rowNum++);
 			String[] columns = {
 					"№",
 					"ID заявки",
 					"Дата создания",
 					"Дата последней активности",
 					"Дата закрытия",
+					"Причина закрытия",
 					"Статус",
 					"Приоритет",
 					"Тип",
@@ -96,6 +92,12 @@ public class ExportService {
 					"Название",
 					"Описание"
 			};
+
+			int rowNum = 0;
+			rowNum = createReportHeader(sheet, rowNum, filters, rows.size(), styles, columns.length);
+			rowNum++;
+			int tableHeaderRow = rowNum;
+			Row headerRow = sheet.createRow(rowNum++);
 			for (int i = 0; i < columns.length; i++) {
 				Cell cell = headerRow.createCell(i);
 				cell.setCellValue(columns[i]);
@@ -112,6 +114,7 @@ public class ExportService {
 				writeCell(row, col++, formatDate(task.getCreatedAt(), formatter), styles.cellStyle());
 				writeCell(row, col++, formatDate(task.getLastActivity(), formatter), styles.cellStyle());
 				writeCell(row, col++, formatDate(task.getClosedAt(), formatter), styles.cellStyle());
+				writeCell(row, col++, getCloseReason(task), styles.wrapCellStyle());
 				writeCell(row, col++, getStatusName(task.getStatus()), styles.cellStyle());
 				writeCell(row, col++, getPriorityName(task.getPriority()), styles.cellStyle());
 				writeCell(row, col++, getTaskTypeName(task.getType()), styles.cellStyle());
@@ -217,7 +220,8 @@ public class ExportService {
 	}
 
 
-	private int createReportHeader(Sheet sheet, int rowNum, ExportFilters filters, int rowsCount, Styles styles) {
+	private int createReportHeader(Sheet sheet, int rowNum, ExportFilters filters, int rowsCount, Styles styles, int columnsCount) {
+		int lastColumn = Math.max(1, columnsCount - 1);
 		Row titleRow = sheet.createRow(rowNum++);
 		Cell titleCell = titleRow.createCell(0);
 		titleCell.setCellValue("Отчет по заявкам");
@@ -233,7 +237,7 @@ public class ExportService {
 		Cell filtersTitleCell = filtersTitleRow.createCell(0);
 		filtersTitleCell.setCellValue("Примененные фильтры");
 		filtersTitleCell.setCellStyle(styles.sectionStyle());
-		sheet.addMergedRegion(new CellRangeAddress(filtersTitleRow.getRowNum(), filtersTitleRow.getRowNum(), 0, 16));
+		sheet.addMergedRegion(new CellRangeAddress(filtersTitleRow.getRowNum(), filtersTitleRow.getRowNum(), 0, lastColumn));
 
 		Map<String, String> filterLabels = filters.toDisplayMap();
 		for (Map.Entry<String, String> entry : filterLabels.entrySet()) {
@@ -368,6 +372,14 @@ public class ExportService {
 				.map(Tag::getName)
 				.filter(Objects::nonNull)
 				.collect(Collectors.joining(", "));
+	}
+
+
+	private String getCloseReason(Task task) {
+		if (task == null || !Boolean.TRUE.equals(task.getCompleted())) {
+			return "";
+		}
+		return Objects.toString(task.getStatusChangeReason(), "").trim();
 	}
 
 

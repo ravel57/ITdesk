@@ -54,7 +54,6 @@ public class WebSocketService {
 
 
 	public void taskMessage(Long clientId, Long taskId, Message message) {
-		message.setLinkedTaskId(taskId);
 		simpMessaging.convertAndSend("/topic/task-messages/", new TaskMessageDto(clientId, taskId, message));
 	}
 

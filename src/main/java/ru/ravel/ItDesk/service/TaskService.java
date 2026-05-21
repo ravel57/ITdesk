@@ -7,7 +7,7 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
 
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.util.*;
 
 
@@ -25,6 +25,7 @@ public class TaskService {
 	private final EventPublisher eventPublisher;
 	private final WebSocketService webSocketService;
 	private final SlaPauseRepository slaPauseRepository;
+	private final AppSettingsRepository appSettingsRepository;
 
 	private static final String FREEZE_SLA_PAUSE_REASON = "Заявка заморожена";
 	private static final String CLOSED_SLA_PAUSE_REASON = "Заявка закрыта";
@@ -107,10 +108,15 @@ public class TaskService {
 		Priority oldPriority = olderTask.getPriority();
 		Status oldStatus = olderTask.getStatus();
 		Status statusBeforeUpdate = olderTask.getStatus();
+		Status requestedStatus = task.getStatus();
+		boolean requestedStatusIsFrozen = isSameStatus(requestedStatus, frozenStatus);
+		boolean requestedStatusIsCompleted = isSameStatus(requestedStatus, completedStatus);
+		boolean requestedStatusActuallyChanged = requestedStatus != null && !isSameStatus(oldStatus, requestedStatus);
 		boolean oldFrozen = Boolean.TRUE.equals(olderTask.getFrozen());
 		User oldExecutor = olderTask.getExecutor();
 		Boolean oldCompleted = olderTask.getCompleted();
 		ZonedDateTime oldDeadline = olderTask.getDeadline();
+		ZonedDateTime oldFrozenUntil = olderTask.getFrozenUntil();
 		Set<Tag> oldTags = new HashSet<>(Objects.requireNonNullElse(olderTask.getTags(), Collections.emptyList()));
 		List<Map<String, Object>> changes = new ArrayList<>();
 		String statusChangeReason = normalizeStatusChangeReason(task.getStatusChangeReason());
@@ -151,6 +157,18 @@ public class TaskService {
 				olderTask.setFrozenFrom(null);
 				olderTask.setFrozenUntil(null);
 			}
+		} else if (oldFrozen && requestedStatus != null && !requestedStatusIsFrozen) {
+			olderTask.setFrozen(false);
+			olderTask.setFrozenFrom(null);
+			olderTask.setFrozenUntil(null);
+		} else if (!oldFrozen && requestedStatusIsFrozen) {
+			// Нельзя молча переводить заявку в статус «Заморожена» без срока заморозки.
+			// Заморозка должна приходить отдельным действием с frozen=true и frozenUntil.
+			task.setStatus(oldStatus);
+			requestedStatus = oldStatus;
+			requestedStatusIsFrozen = isSameStatus(requestedStatus, frozenStatus);
+			requestedStatusIsCompleted = isSameStatus(requestedStatus, completedStatus);
+			requestedStatusActuallyChanged = false;
 		}
 		olderTask.setCompleted(Boolean.TRUE.equals(task.getCompleted()));
 		if (!Objects.equals(oldCompleted, task.getCompleted())) {
@@ -171,15 +189,20 @@ public class TaskService {
 		} else {
 			olderTask.setStatus(task.getStatus());
 		}
-		if (task.getPreviousStatus() != null && !Objects.equals(task.getPreviousStatus(), completedStatus) && !Objects.equals(task.getPreviousStatus(), frozenStatus)) {
+		if (requestedStatusActuallyChanged
+				&& task.getPreviousStatus() != null
+				&& !isSameStatus(task.getPreviousStatus(), completedStatus)
+				&& !isSameStatus(task.getPreviousStatus(), frozenStatus)) {
 			olderTask.setPreviousStatus(task.getPreviousStatus());
 		}
 		if (Boolean.TRUE.equals(olderTask.getFrozen())) {
-			if (!Objects.equals(statusBeforeUpdate, frozenStatus) && !Objects.equals(statusBeforeUpdate, completedStatus)) {
-				olderTask.setPreviousStatus(statusBeforeUpdate);
-			} else if (!Objects.equals(olderTask.getStatus(), frozenStatus)
-					&& !Objects.equals(olderTask.getStatus(), completedStatus)) {
-				olderTask.setPreviousStatus(olderTask.getStatus());
+			if (requestedStatusActuallyChanged) {
+				if (!isSameStatus(statusBeforeUpdate, frozenStatus) && !isSameStatus(statusBeforeUpdate, completedStatus)) {
+					olderTask.setPreviousStatus(statusBeforeUpdate);
+				} else if (!isSameStatus(olderTask.getStatus(), frozenStatus)
+						&& !isSameStatus(olderTask.getStatus(), completedStatus)) {
+					olderTask.setPreviousStatus(olderTask.getStatus());
+				}
 			}
 			olderTask.setStatus(frozenStatus);
 			olderTask.setFrozen(true);
@@ -220,7 +243,16 @@ public class TaskService {
 					newFrozen ? "Да" : "Нет"
 			);
 		}
-		boolean statusChanged = !Objects.equals(oldStatus, olderTask.getStatus());
+		if (!Objects.equals(oldFrozenUntil, olderTask.getFrozenUntil())) {
+			addChange(
+					changes,
+					"frozenUntil",
+					"Заморожена до",
+					oldFrozenUntil,
+					olderTask.getFrozenUntil()
+			);
+		}
+		boolean statusChanged = !isSameStatus(oldStatus, olderTask.getStatus());
 		boolean completedChanged = !Objects.equals(oldCompleted, olderTask.getCompleted());
 		boolean frozenChanged = oldFrozen != newFrozen;
 		boolean oldSlaPausedByTaskState = oldFrozen || Boolean.TRUE.equals(oldCompleted);
@@ -249,7 +281,7 @@ public class TaskService {
 					"changes", changes
 			));
 		}
-		if (!Objects.equals(oldStatus, savedTask.getStatus())) {
+		if (!isSameStatus(oldStatus, savedTask.getStatus())) {
 			eventPublisher.publish(TriggerType.TASK_STATUS_CHANGED, eventPayload(
 					"task", savedTask,
 					"client", client,
@@ -340,7 +372,11 @@ public class TaskService {
 		if (slaValue == null) {
 			slaValue = findDefaultSlaValue(slaByPriority, task.getPriority());
 		}
-		if (slaValue == null || slaValue.toDuration().isZero() || slaValue.toDuration().isNegative()) {
+		Duration slaDuration = slaValue == null
+				? Duration.ZERO
+				: slaValue.toDuration(getWorkdayDuration());
+
+		if (slaDuration.isZero() || slaDuration.isNegative()) {
 			task.setSla(null);
 			return;
 		}
@@ -350,9 +386,65 @@ public class TaskService {
 					.startDate(Objects.requireNonNullElse(task.getCreatedAt(), ZonedDateTime.now()))
 					.build();
 		}
-		sla.setDuration(slaValue.toDuration());
+		sla.setDuration(slaDuration);
 		slaRepository.save(sla);
 		task.setSla(sla);
+	}
+
+
+	private Duration getWorkdayDuration() {
+		return appSettingsRepository.findAll().stream()
+				.findFirst()
+				.map(AppSettings::getWorkdayDuration)
+				.orElse(Duration.ofHours(24));
+	}
+
+
+	private boolean shouldBlockManualResumeBecauseOfAutoNonWorkingTime() {
+		AppSettings settings = appSettingsRepository.findAll().stream()
+				.findFirst()
+				.orElse(null);
+		if (settings == null || !Boolean.TRUE.equals(settings.getWorkingTimeEnabled())) {
+			return false;
+		}
+		try {
+			ZoneId zoneId = settings.getTimezone() == null || settings.getTimezone().isBlank()
+					? ZoneId.systemDefault()
+					: ZoneId.of(settings.getTimezone());
+			ZonedDateTime now = ZonedDateTime.now(zoneId);
+			if (!isWorkingDayEnabled(settings, now.getDayOfWeek())) {
+				return true;
+			}
+			LocalTime start = LocalTime.parse(settings.getWorkdayStart());
+			LocalTime end = LocalTime.parse(settings.getWorkdayEnd());
+			return !isInsideWorkingTime(now.toLocalTime(), start, end);
+		} catch (Exception e) {
+			return true;
+		}
+	}
+
+
+	private boolean isInsideWorkingTime(LocalTime time, LocalTime start, LocalTime end) {
+		if (start.equals(end)) {
+			return true;
+		}
+		if (end.isAfter(start)) {
+			return !time.isBefore(start) && time.isBefore(end);
+		}
+		return !time.isBefore(start) || time.isBefore(end);
+	}
+
+
+	private boolean isWorkingDayEnabled(AppSettings settings, DayOfWeek dayOfWeek) {
+		return switch (dayOfWeek) {
+			case MONDAY -> Boolean.TRUE.equals(settings.getMondayEnabled());
+			case TUESDAY -> Boolean.TRUE.equals(settings.getTuesdayEnabled());
+			case WEDNESDAY -> Boolean.TRUE.equals(settings.getWednesdayEnabled());
+			case THURSDAY -> Boolean.TRUE.equals(settings.getThursdayEnabled());
+			case FRIDAY -> Boolean.TRUE.equals(settings.getFridayEnabled());
+			case SATURDAY -> Boolean.TRUE.equals(settings.getSaturdayEnabled());
+			case SUNDAY -> Boolean.TRUE.equals(settings.getSundayEnabled());
+		};
 	}
 
 
@@ -488,6 +580,18 @@ public class TaskService {
 			case Tag tag -> tag.getName();
 			default -> Objects.toString(object, "");
 		};
+	}
+
+
+	private static boolean isSameStatus(Status left, Status right) {
+		if (left == null || right == null) {
+			return false;
+		}
+		if (left.getId() != null && right.getId() != null) {
+			return Objects.equals(left.getId(), right.getId());
+		}
+		return Objects.equals(left, right)
+				|| Objects.equals(getName(left), getName(right));
 	}
 
 
@@ -848,7 +952,7 @@ public class TaskService {
 					"changes", changes
 			));
 		}
-		if (!Objects.equals(oldStatus, savedTask.getStatus())) {
+		if (!isSameStatus(oldStatus, savedTask.getStatus())) {
 			eventPublisher.publish(TriggerType.TASK_STATUS_CHANGED, eventPayload(
 					"task", savedTask,
 					"client", client,
@@ -931,7 +1035,7 @@ public class TaskService {
 						AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON
 				));
 
-		if (hasAutoNonWorkingTimePause) {
+		if (hasAutoNonWorkingTimePause && shouldBlockManualResumeBecauseOfAutoNonWorkingTime()) {
 			throw new IllegalStateException("Нельзя вручную снять SLA с авто-паузы: сейчас нерабочее время");
 		}
 		String reason = activePauses.getFirst().getReason();
@@ -1043,7 +1147,7 @@ public class TaskService {
 						pause.getReason(),
 						AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON
 				));
-		if (hasAutoNonWorkingTimePause) {
+		if (hasAutoNonWorkingTimePause && shouldBlockManualResumeBecauseOfAutoNonWorkingTime()) {
 			throw new IllegalStateException("Нельзя вручную снять SLA с авто-паузы: сейчас нерабочее время");
 		}
 		String reason = activePauses.getFirst().getReason();

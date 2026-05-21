@@ -21,14 +21,30 @@ public class SlaValue {
 	@Enumerated(EnumType.STRING)
 	private SlaUnit unit;
 
+
 	public Duration toDuration() {
-		if (value == null) return Duration.ZERO;
-		// храним с точностью до 2 знаков, поэтому переводим в минуты аккуратно
+		return toDuration(Duration.ofHours(24));
+	}
+
+
+	public Duration toDuration(Duration workdayDuration) {
+		if (value == null || unit == null) return Duration.ZERO;
 		double v = value.doubleValue();
 		return switch (unit) {
 			case MINUTES -> Duration.ofMinutes(Math.round(v));
 			case HOURS -> Duration.ofMinutes(Math.round(v * 60.0));
-			case DAYS -> Duration.ofMinutes(Math.round(v * 24.0 * 60.0));
+			case DAYS -> {
+				Duration normalizedWorkdayDuration = normalizeWorkdayDuration(workdayDuration);
+				yield Duration.ofMinutes(Math.round(v * normalizedWorkdayDuration.toMinutes()));
+			}
 		};
+	}
+
+
+	private Duration normalizeWorkdayDuration(Duration workdayDuration) {
+		if (workdayDuration == null || workdayDuration.isZero() || workdayDuration.isNegative()) {
+			return Duration.ofHours(24);
+		}
+		return workdayDuration;
 	}
 }

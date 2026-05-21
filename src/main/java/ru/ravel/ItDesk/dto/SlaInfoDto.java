@@ -13,4 +13,6 @@ public class SlaInfoDto {
 	ZonedDateTime deadline;
 	Long remainingSeconds;
 	Long pausedSeconds;
+	Double slaWorkingDays;
+	Long workdaySeconds;
 }

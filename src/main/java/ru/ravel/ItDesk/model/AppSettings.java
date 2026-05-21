@@ -3,6 +3,10 @@ package ru.ravel.ItDesk.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.Duration;
+import java.time.LocalTime;
+
+
 @Entity
 @Data
 @AllArgsConstructor
@@ -59,4 +63,20 @@ public class AppSettings {
 	@Column(nullable = false)
 	@Builder.Default
 	private Boolean sundayEnabled = false;
+
+
+	public Duration getWorkdayDuration() {
+		LocalTime start = LocalTime.parse(workdayStart);
+		LocalTime end = LocalTime.parse(workdayEnd);
+		if (end.equals(start)) {
+			return Duration.ofHours(24);
+		}
+		if (end.isAfter(start)) {
+			return Duration.between(start, end);
+		}
+		return Duration.between(start, LocalTime.MAX)
+				.plusNanos(1)
+				.plus(Duration.between(LocalTime.MIN, end));
+	}
+
 }

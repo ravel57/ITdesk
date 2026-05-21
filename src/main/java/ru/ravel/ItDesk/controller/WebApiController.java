@@ -10,10 +10,12 @@ import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.repository.AppSettingsRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.service.*;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
 
@@ -47,6 +49,7 @@ public class WebApiController {
 	private final TaskService taskService;
 	private final WebSocketService webSocketService;
 	private final AppSettingsService appSettingsService;
+	private final AppSettingsRepository appSettingsRepository;
 
 
 	@GetMapping("/clients")
@@ -903,7 +906,7 @@ public class WebApiController {
 		}
 		Sla sla = taskOpt.get().getSla();
 		if (sla == null) {
-			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L));
+			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L, 0.0, 0L));
 		}
 		return ResponseEntity.ok(buildInfo(sla));
 	}
@@ -914,8 +917,37 @@ public class WebApiController {
 		ZonedDateTime deadline = slaService.deadline(sla);
 		long pausedSeconds = slaService.getPausedDuration(sla).getSeconds();
 		long remainingSeconds = slaService.remaining(sla).getSeconds();
-		return new SlaInfoDto(paused, deadline, remainingSeconds, pausedSeconds);
+		long workdaySeconds = getWorkdaySeconds();
+		double slaWorkingDays = getSlaWorkingDays(sla, workdaySeconds);
+		return new SlaInfoDto(
+				paused,
+				deadline,
+				remainingSeconds,
+				pausedSeconds,
+				slaWorkingDays,
+				workdaySeconds
+		);
 	}
+
+
+	private long getWorkdaySeconds() {
+		return appSettingsRepository.findAll().stream()
+				.findFirst()
+				.map(AppSettings::getWorkdayDuration)
+				.map(Duration::getSeconds)
+				.filter(seconds -> seconds > 0)
+				.orElse(Duration.ofHours(24).getSeconds());
+	}
+
+
+	private double getSlaWorkingDays(Sla sla, long workdaySeconds) {
+		if (sla == null || sla.getDuration() == null || workdaySeconds <= 0) {
+			return 0.0;
+		}
+		double workingDays = (double) sla.getDuration().getSeconds() / (double) workdaySeconds;
+		return Math.round(workingDays * 100.0) / 100.0;
+	}
+
 
 
 	@PostMapping("/sla")
@@ -1320,7 +1352,7 @@ public class WebApiController {
 		}
 		Task task = taskOpt.get();
 		if (task.getSla() == null) {
-			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L));
+			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L, 0.0, 0L));
 		}
 		return ResponseEntity.ok(buildInfo(task.getSla()));
 	}

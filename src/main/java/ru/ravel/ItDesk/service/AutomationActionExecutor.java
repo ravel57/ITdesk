@@ -186,7 +186,7 @@ public class AutomationActionExecutor {
 		public Long create(String title) {
 			Long clientId = resolveClientId(ctx);
 			if (clientId == null || title == null || title.isBlank()) return null;
-			Task task = taskService.newTask(clientId, Task.builder()
+			Task task = taskService.newTaskForSystem(clientId, Task.builder()
 					.priority(priorityRepository.findByDefaultSelectionTrue().orElseThrow())
 					.status(statusRepository.findByDefaultSelectionTrue().orElseThrow())
 					.name(title)

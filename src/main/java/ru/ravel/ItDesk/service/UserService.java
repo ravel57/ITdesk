@@ -44,9 +44,17 @@ public class UserService {
 
 
 	public List<User> getUsers() {
-		List<User> users = userRepository.findAll();
-		users.remove(SystemUser.getInstance());
-		return users;
+		return userRepository.findAll().stream()
+				.filter(user -> !Objects.equals(user, SystemUser.getInstance()))
+				.filter(User::isEnabled)
+				.toList();
+	}
+
+
+	public List<User> getAllUsersIncludingDisabled() {
+		return userRepository.findAll().stream()
+				.filter(user -> !Objects.equals(user, SystemUser.getInstance()))
+				.toList();
 	}
 
 
@@ -128,7 +136,8 @@ public class UserService {
 			throw new AccessDeniedException("Пользователь не авторизован");
 		}
 		String username = authentication.getName();
-		return getUsers().stream()
+		return getAllUsersIncludingDisabled().stream()
+				.filter(User::isEnabled)
 				.filter(it -> it.getUsername().equals(username))
 				.findFirst()
 				.orElseThrow();
@@ -188,18 +197,32 @@ public class UserService {
 
 
 	public void deleteUser(Long userId) {
-		userOffline(userId);
-		if (getUsers().size() > 1) {
-			messageRepository.findAll().stream()
-					.filter(m -> m.getUser() != null && m.getUser().getId().equals(userId))
-					.forEach(m -> m.setUser(null));
-			taskRepository.findAll().stream()
-					.filter(t -> t.getExecutor() != null)
-					.forEach(t -> t.setExecutor(null));
-			userRepository.deleteById(userId);
-		} else {
+		if (userId == null) {
+			throw new IllegalArgumentException("userId must not be null");
+		}
+		User user = userRepository.findById(userId).orElseThrow();
+		if (!user.isEnabled()) {
+			userOffline(userId);
+			return;
+		}
+		long enabledUsersCount = getUsers().stream()
+				.filter(User::isEnabled)
+				.count();
+		if (enabledUsersCount <= 1) {
 			throw new RuntimeException("users will be empty");
 		}
+		userOffline(userId);
+		user.setIsEnabled(false);
+		user.setIsAccountNonLocked(false);
+		taskRepository.findAll().stream()
+				.filter(task -> task.getExecutor() != null)
+				.filter(task -> Objects.equals(task.getExecutor().getId(), userId))
+				.forEach(task -> {
+					task.setExecutor(null);
+					taskRepository.save(task);
+				});
+		userRepository.save(user);
+		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", user));
 	}
 
 
@@ -359,25 +382,7 @@ public class UserService {
 
 
 	public List<Client> filterClientsByCurrentUser(Collection<Client> clients) {
-		if (clients == null) {
-			return List.of();
-		}
-		User currentUser = getCurrentUser();
-		if (isAdmin(currentUser)) {
-			return clients.stream()
-					.filter(Objects::nonNull)
-					.toList();
-		}
-		if (!isOperator(currentUser)) {
-			return List.of();
-		}
-		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
-		return clients.stream()
-				.filter(Objects::nonNull)
-				.filter(client -> client.getOrganization() != null)
-				.filter(client -> client.getOrganization().getId() != null)
-				.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
-				.toList();
+		return filterClientsByUser(clients, getCurrentUser());
 	}
 
 
@@ -490,6 +495,36 @@ public class UserService {
 			return defaultValue;
 		}
 		return minutes;
+	}
+
+
+	public User getUserByUsername(String username) {
+		if (username == null || username.isBlank()) {
+			throw new NoSuchElementException("username is empty");
+		}
+		return userRepository.findByUsername(username).orElseThrow();
+	}
+
+
+	public List<Client> filterClientsByUser(Collection<Client> clients, User user) {
+		if (clients == null) {
+			return List.of();
+		}
+		if (isAdmin(user)) {
+			return clients.stream()
+					.filter(Objects::nonNull)
+					.toList();
+		}
+		if (!isOperator(user)) {
+			return List.of();
+		}
+		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(user);
+		return clients.stream()
+				.filter(Objects::nonNull)
+				.filter(client -> client.getOrganization() != null)
+				.filter(client -> client.getOrganization().getId() != null)
+				.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
+				.toList();
 	}
 
 }

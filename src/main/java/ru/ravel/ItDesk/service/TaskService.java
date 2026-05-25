@@ -60,33 +60,20 @@ public class TaskService {
 			throw new IllegalArgumentException("task must not be null");
 		}
 		Client client = getClientForCurrentUser(clientId);
-		prepareTaskBeforeSave(task);
-		setSla(client, task);
-		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
-			messageRepository.saveAll(task.getMessages());
+		return createTaskForClient(client, task);
+	}
+
+
+	@Transactional
+	public Task newTaskForSystem(Long clientId, Task task) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
 		}
-		task.setLastActivity(ZonedDateTime.now());
-		Task savedTask = taskRepository.save(task);
-		if (client.getTasks() == null) {
-			client.setTasks(new ArrayList<>());
+		if (task == null) {
+			throw new IllegalArgumentException("task must not be null");
 		}
-		client.getTasks().add(savedTask);
-		clientsRepository.save(client);
-		globalSearchService.indexClient(client);
-		globalSearchService.indexTask(client, savedTask);
-		eventPublisher.publish(TriggerType.TASK_CREATED, eventPayload(
-				"task", savedTask,
-				"client", client,
-				"changes", buildTaskCreatedChanges(savedTask)
-		));
-		if (savedTask.getExecutor() != null) {
-			userNotificationService.send(new UserNotification(
-					UserNotificationEvent.NEW_TASK,
-					savedTask.getName(),
-					savedTask.getExecutor().getId()
-			));
-		}
-		return savedTask;
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		return createTaskForClient(client, task);
 	}
 
 
@@ -1232,6 +1219,37 @@ public class TaskService {
 		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
 		userService.assertCurrentUserCanAccessClient(client);
 		return client;
+	}
+
+
+	private Task createTaskForClient(Client client, Task task) {
+		prepareTaskBeforeSave(task);
+		setSla(client, task);
+		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
+			messageRepository.saveAll(task.getMessages());
+		}
+		task.setLastActivity(ZonedDateTime.now());
+		Task savedTask = taskRepository.save(task);
+		if (client.getTasks() == null) {
+			client.setTasks(new ArrayList<>());
+		}
+		client.getTasks().add(savedTask);
+		clientsRepository.save(client);
+		globalSearchService.indexClient(client);
+		globalSearchService.indexTask(client, savedTask);
+		eventPublisher.publish(TriggerType.TASK_CREATED, eventPayload(
+				"task", savedTask,
+				"client", client,
+				"changes", buildTaskCreatedChanges(savedTask)
+		));
+		if (savedTask.getExecutor() != null) {
+			userNotificationService.send(new UserNotification(
+					UserNotificationEvent.NEW_TASK,
+					savedTask.getName(),
+					savedTask.getExecutor().getId()
+			));
+		}
+		return savedTask;
 	}
 
 }

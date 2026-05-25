@@ -70,4 +70,13 @@ public class WebSocketService {
 		simpMessaging.convertAndSend("/topic/clients-updated/", true);
 	}
 
+
+	public void sendClientsToUser(String username, List<Client> clients) {
+		if (username == null || username.isBlank()) {
+			return;
+		}
+
+		simpMessaging.convertAndSendToUser(username, "/topic/clients/", clients);
+	}
+
 }

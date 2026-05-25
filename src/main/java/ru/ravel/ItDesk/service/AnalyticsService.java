@@ -112,13 +112,10 @@ public class AnalyticsService {
 
 			for (TaskRepository.AnalyticsTaskRow row : taskRows) {
 				checkAnalyticsCancelled(cancellationToken);
-
 				if (row.getId() != null) {
 					taskRowsById.put(row.getId(), row);
 				}
-
 				Collection<?> tags = tagsByTaskId.getOrDefault(row.getId(), List.of());
-
 				incrementBreakdowns(
 						taskTypeBreakdownMap,
 						priorityBreakdownMap,
@@ -130,7 +127,6 @@ public class AnalyticsService {
 						tags,
 						"totalTasks"
 				);
-
 				if (isBetween(row.getCreatedAt(), safeFrom, safeTo)) {
 					incrementHourlyLoad(hourlyLoadMap, row.getCreatedAt(), analyticsZone, "createdTasks");
 					incrementBreakdowns(
@@ -145,14 +141,11 @@ public class AnalyticsService {
 							"createdTasks"
 					);
 				}
-
 				if (!Boolean.TRUE.equals(row.getCompleted())) {
 					openTasks++;
-
 					if (row.getExecutor() != null) {
 						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "openTasks");
 					}
-
 					incrementBreakdowns(
 							taskTypeBreakdownMap,
 							priorityBreakdownMap,
@@ -164,14 +157,11 @@ public class AnalyticsService {
 							tags,
 							"openTasks"
 					);
-
 					if (isTaskDeadlineOverdue(row.getDeadline(), now)) {
 						overdueDeadlines++;
-
 						if (row.getExecutor() != null) {
 							incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueDeadlines");
 						}
-
 						incrementBreakdowns(
 								taskTypeBreakdownMap,
 								priorityBreakdownMap,
@@ -184,11 +174,9 @@ public class AnalyticsService {
 								"overdueDeadlines"
 						);
 					}
-
 					if (isTaskDeadlineWarning(row.getDeadline(), now, DEFAULT_DEADLINE_WARNING_MINUTES)) {
 						deadlineWarnings++;
 					}
-
 					if (row.getExecutor() == null) {
 						unassignedTasks++;
 						incrementBreakdowns(
@@ -203,38 +191,8 @@ public class AnalyticsService {
 								"unassignedTasks"
 						);
 					}
-
-					continue;
-				}
-
-				if (isBetween(row.getClosedAt(), safeFrom, safeTo)) {
-					closedTasks++;
-
-					closedByPeriodMap.merge(getPeriodLabel(row.getClosedAt(), safeGroupBy, analyticsZone), 1L, Long::sum);
-					incrementHourlyLoad(hourlyLoadMap, row.getClosedAt(), analyticsZone, "closedTasks");
-
-					if (row.getExecutor() != null) {
-						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "closedTasks");
-					}
-
-					incrementBreakdowns(
-							taskTypeBreakdownMap,
-							priorityBreakdownMap,
-							executorBreakdownMap,
-							tagBreakdownMap,
-							row.getType(),
-							row.getPriority(),
-							row.getExecutor(),
-							tags,
-							"closedTasks"
-					);
-
-					if (row.getCreatedAt() != null && row.getClosedAt() != null && !row.getClosedAt().isBefore(row.getCreatedAt())) {
-						closeTimeSeconds.add(getWorkingSeconds(row.getCreatedAt(), row.getClosedAt(), workingTime, cancellationToken));
-					}
 				}
 			}
-
 			long overdueSla = countOverdueSla(
 					now,
 					filters,
@@ -246,13 +204,10 @@ public class AnalyticsService {
 					tagBreakdownMap,
 					cancellationToken
 			);
-
 			List<AnalyticsMessageRow> clientMessages = getClientMessageRows(safeFrom, safeTo, cancellationToken);
-
 			long newAppeals = 0L;
 			for (AnalyticsMessageRow message : clientMessages) {
 				checkAnalyticsCancelled(cancellationToken);
-
 				if (isIncomingMessageRequiringAnswer(message)) {
 					newAppeals++;
 					incrementHourlyLoad(hourlyLoadMap, message.date(), analyticsZone, "incomingMessages");
@@ -260,9 +215,85 @@ public class AnalyticsService {
 					incrementHourlyLoad(hourlyLoadMap, message.date(), analyticsZone, "outgoingMessages");
 				}
 			}
-
 			long unansweredMessages = countUnansweredMessages(clientMessages, cancellationToken);
 			long avgFirstResponseSeconds = averageSeconds(getFirstResponseSeconds(clientMessages, workingTime, cancellationToken));
+
+			List<AnalyticsEvent> closedEvents = getAutomationEvents(
+					TriggerType.TASK_CLOSED,
+					safeFrom,
+					safeTo,
+					analyticsZone,
+					cancellationToken
+			);
+			Set<Long> closedTaskIdsFromEvents = new HashSet<>();
+			for (AnalyticsEvent closedEvent : closedEvents) {
+				checkAnalyticsCancelled(cancellationToken);
+				TaskRepository.AnalyticsTaskRow taskRow = closedEvent.taskId() == null ? null : taskRowsById.get(closedEvent.taskId());
+				if (filters.hasAny() && taskRow == null) {
+					continue;
+				}
+				closedTasks++;
+				if (closedEvent.taskId() != null) {
+					closedTaskIdsFromEvents.add(closedEvent.taskId());
+				}
+				ZonedDateTime eventDate = closedEvent.date();
+				closedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
+				incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "closedTasks");
+				if (taskRow == null) {
+					continue;
+				}
+				if (taskRow.getExecutor() != null) {
+					incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "closedTasks");
+				}
+				incrementBreakdowns(
+						taskTypeBreakdownMap,
+						priorityBreakdownMap,
+						executorBreakdownMap,
+						tagBreakdownMap,
+						taskRow.getType(),
+						taskRow.getPriority(),
+						taskRow.getExecutor(),
+						tagsByTaskId.getOrDefault(taskRow.getId(), List.of()),
+						"closedTasks"
+				);
+
+				if (taskRow.getCreatedAt() != null && eventDate != null && !eventDate.isBefore(taskRow.getCreatedAt())) {
+					closeTimeSeconds.add(getWorkingSeconds(taskRow.getCreatedAt(), eventDate, workingTime, cancellationToken));
+				}
+			}
+
+			for (TaskRepository.AnalyticsTaskRow row : taskRows) {
+				checkAnalyticsCancelled(cancellationToken);
+				if (!Boolean.TRUE.equals(row.getCompleted())) {
+					continue;
+				}
+				if (row.getId() != null && closedTaskIdsFromEvents.contains(row.getId())) {
+					continue;
+				}
+				if (!isBetween(row.getClosedAt(), safeFrom, safeTo)) {
+					continue;
+				}
+				closedTasks++;
+				closedByPeriodMap.merge(getPeriodLabel(row.getClosedAt(), safeGroupBy, analyticsZone), 1L, Long::sum);
+				incrementHourlyLoad(hourlyLoadMap, row.getClosedAt(), analyticsZone, "closedTasks");
+				if (row.getExecutor() != null) {
+					incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "closedTasks");
+				}
+				incrementBreakdowns(
+						taskTypeBreakdownMap,
+						priorityBreakdownMap,
+						executorBreakdownMap,
+						tagBreakdownMap,
+						row.getType(),
+						row.getPriority(),
+						row.getExecutor(),
+						tagsByTaskId.getOrDefault(row.getId(), List.of()),
+						"closedTasks"
+				);
+				if (row.getCreatedAt() != null && row.getClosedAt() != null && !row.getClosedAt().isBefore(row.getCreatedAt())) {
+					closeTimeSeconds.add(getWorkingSeconds(row.getCreatedAt(), row.getClosedAt(), workingTime, cancellationToken));
+				}
+			}
 
 			List<AnalyticsEvent> reopenedEvents = getAutomationEvents(
 					TriggerType.TASK_REOPENED,
@@ -271,30 +302,23 @@ public class AnalyticsService {
 					analyticsZone,
 					cancellationToken
 			);
-
 			long reopenedTasks = 0L;
 			for (AnalyticsEvent reopenedEvent : reopenedEvents) {
 				checkAnalyticsCancelled(cancellationToken);
-
 				TaskRepository.AnalyticsTaskRow taskRow = reopenedEvent.taskId() == null ? null : taskRowsById.get(reopenedEvent.taskId());
-
 				if (filters.hasAny() && taskRow == null) {
 					continue;
 				}
-
 				reopenedTasks++;
 				ZonedDateTime eventDate = reopenedEvent.date();
 				reopenedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
 				incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "reopenedTasks");
-
 				if (taskRow == null) {
 					continue;
 				}
-
 				if (taskRow.getExecutor() != null) {
 					incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "reopenedTasks");
 				}
-
 				incrementBreakdowns(
 						taskTypeBreakdownMap,
 						priorityBreakdownMap,

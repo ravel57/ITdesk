@@ -17,10 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.GlobalSearchDocument;
 import ru.ravel.ItDesk.dto.GlobalSearchResultDto;
-import ru.ravel.ItDesk.model.Client;
-import ru.ravel.ItDesk.model.Message;
-import ru.ravel.ItDesk.model.Task;
-import ru.ravel.ItDesk.model.User;
+import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
@@ -50,6 +47,7 @@ public class GlobalSearchService {
 	private final ClientRepository clientRepository;
 	private final TaskRepository taskRepository;
 	private final UserRepository userRepository;
+	private final KnowledgeService knowledgeService;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -152,6 +150,11 @@ public class GlobalSearchService {
 					.filter(task -> documents.stream().noneMatch(doc -> doc.getId().equals("TASK:" + task.getId())))
 					.forEach(task -> documents.add(toTaskDocument(null, task)));
 			userRepository.findAll().forEach(user -> documents.add(toUserDocument(user)));
+			safeList(knowledgeService.getKnowledgeBase()).forEach(knowledge -> {
+				if (knowledge != null && knowledge.getId() != null) {
+					documents.add(toKnowledgeDocument(knowledge));
+				}
+			});
 			BulkRequest.Builder bulk = new BulkRequest.Builder();
 			for (GlobalSearchDocument document : documents) {
 				if (document == null || document.getId() == null) {
@@ -219,6 +222,22 @@ public class GlobalSearchService {
 			return;
 		}
 		indexDocument(toTaskMessageDocument(client, task, message));
+	}
+
+
+	public void indexKnowledge(Knowledge knowledge) {
+		if (knowledge == null || knowledge.getId() == null) {
+			return;
+		}
+		indexDocument(toKnowledgeDocument(knowledge));
+	}
+
+
+	public void deleteKnowledge(Long knowledgeId) {
+		if (knowledgeId == null) {
+			return;
+		}
+		deleteDocument("KNOWLEDGE:" + knowledgeId);
 	}
 
 
@@ -416,6 +435,45 @@ public class GlobalSearchService {
 	}
 
 
+	private GlobalSearchDocument toKnowledgeDocument(Knowledge knowledge) {
+		String title = nullToEmpty(knowledge.getTitle()).trim();
+		String text = safeList(knowledge.getTexts()).stream()
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(value -> !value.isBlank())
+				.reduce("", (left, right) -> left.isBlank() ? right : left + " " + right);
+		String tags = safeList(knowledge.getTags()).stream()
+				.filter(Objects::nonNull)
+				.map(Tag::getName)
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(value -> !value.isBlank())
+				.reduce("", (left, right) -> left.isBlank() ? right : left + " " + right);
+		return GlobalSearchDocument.builder()
+				.id("KNOWLEDGE:" + knowledge.getId())
+				.entityType("KNOWLEDGE")
+				.entityId(knowledge.getId())
+				.title(title.isBlank() ? "Статья БЗ №%d".formatted(knowledge.getId()) : title)
+				.subtitle("База знаний")
+				.text(String.join(" ",
+						"база знаний",
+						"бз",
+						"статья",
+						title,
+						text,
+						tags
+				))
+				.url("/knowledge-base?knowledgeId=%d".formatted(knowledge.getId()))
+				.createdAt(null)
+				.updatedAt(null)
+				.meta(Map.of(
+						"tags", tags
+				))
+				.build();
+	}
+
+
+
 	private GlobalSearchResultDto toResult(GlobalSearchDocument document, Double score) {
 		return GlobalSearchResultDto.builder()
 				.id(document.getId())
@@ -524,6 +582,7 @@ public class GlobalSearchService {
 				"USER",
 				"CLIENT",
 				"TASK",
+				"KNOWLEDGE",
 				"CLIENT_MESSAGE",
 				"TASK_MESSAGE"
 		);
@@ -549,8 +608,9 @@ public class GlobalSearchService {
 			case "USER" -> 0;
 			case "CLIENT" -> 1;
 			case "TASK" -> 2;
-			case "CLIENT_MESSAGE" -> 3;
-			case "TASK_MESSAGE" -> 4;
+			case "KNOWLEDGE" -> 3;
+			case "CLIENT_MESSAGE" -> 4;
+			case "TASK_MESSAGE" -> 5;
 			default -> 100;
 		};
 	}

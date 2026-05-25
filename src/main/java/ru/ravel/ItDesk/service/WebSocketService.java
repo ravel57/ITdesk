@@ -65,4 +65,9 @@ public class WebSocketService {
 		);
 	}
 
+
+	public void clientsUpdated() {
+		simpMessaging.convertAndSend("/topic/clients-updated/", true);
+	}
+
 }

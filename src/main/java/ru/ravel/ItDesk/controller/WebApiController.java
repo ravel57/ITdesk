@@ -426,7 +426,9 @@ public class WebApiController {
 	@GetMapping("/organizations")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getOrganizations() {
-		return ResponseEntity.ok().body(organizationService.getOrganizations());
+		return ResponseEntity.ok().body(
+				userService.filterOrganizationsByCurrentUser(organizationService.getOrganizations())
+		);
 	}
 
 
@@ -478,6 +480,7 @@ public class WebApiController {
 	@GetMapping("/organization/{organizationId}/visits")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getOrganizationVisits(@PathVariable Long organizationId) {
+		userService.assertCurrentUserCanAccessOrganizationId(organizationId);
 		return ResponseEntity.ok().body(organizationService.getVisitHistory(organizationId));
 	}
 
@@ -486,6 +489,7 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> addOrganizationVisit(@PathVariable Long organizationId, @RequestBody OrganizationVisit visit) {
 		if (LicenseStarter.isLicenseActive) {
+			userService.assertCurrentUserCanAccessOrganizationId(organizationId);
 			return ResponseEntity.ok().body(organizationService.addVisit(organizationId, visit));
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -974,7 +978,9 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> newKnowledge(@RequestBody Knowledge knowledge) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(knowledgeService.newKnowledge(knowledge));
+			Knowledge savedKnowledge = knowledgeService.newKnowledge(knowledge);
+			globalSearchService.indexKnowledge(savedKnowledge);
+			return ResponseEntity.ok().body(savedKnowledge);
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -985,7 +991,9 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> updateKnowledge(@RequestBody Knowledge knowledge) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(knowledgeService.updateKnowledge(knowledge));
+			Knowledge savedKnowledge = knowledgeService.updateKnowledge(knowledge);
+			globalSearchService.indexKnowledge(savedKnowledge);
+			return ResponseEntity.ok().body(savedKnowledge);
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -997,6 +1005,7 @@ public class WebApiController {
 	public ResponseEntity<Object> deleteKnowledge(@PathVariable Long knowledgeId) {
 		if (LicenseStarter.isLicenseActive) {
 			knowledgeService.deleteKnowledge(knowledgeId);
+			globalSearchService.deleteKnowledge(knowledgeId);
 			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1121,7 +1130,46 @@ public class WebApiController {
 	@GetMapping("/license-info")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getLicenseValidUntil() {
-		return ResponseEntity.ok().body(new LicenseInfo(LicenseStarter.maxUsers, LicenseStarter.licenseUntil));
+		List<User> users = userService.getUsers();
+		long maxUsers = Objects.requireNonNullElse(LicenseStarter.maxUsers, 0L);
+		long adminsCount = users.stream()
+				.filter(this::isEnabledLicenseUser)
+				.filter(user -> hasUserAuthority(user, "ADMIN"))
+				.count();
+		long operatorsCount = users.stream()
+				.filter(this::isEnabledLicenseUser)
+				.filter(user -> hasUserAuthority(user, "OPERATOR"))
+				.count();
+		long usedUsersCount = users.stream()
+				.filter(this::isEnabledLicenseUser)
+				.filter(user -> hasUserAuthority(user, "ADMIN") || hasUserAuthority(user, "OPERATOR"))
+				.count();
+		long availableUsersCount = Math.max(0L, maxUsers - usedUsersCount);
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put("employeesCount", maxUsers);
+		result.put("maxUsers", maxUsers);
+		result.put("licenseUntil", LicenseStarter.licenseUntil);
+		result.put("usedUsersCount", usedUsersCount);
+		result.put("availableUsersCount", availableUsersCount);
+		result.put("adminsCount", adminsCount);
+		result.put("operatorsCount", operatorsCount);
+		return ResponseEntity.ok().body(result);
+	}
+
+
+	private boolean isEnabledLicenseUser(User user) {
+		return user != null && user.isEnabled();
+	}
+
+
+	private boolean hasUserAuthority(User user, String authorityName) {
+		if (user == null || user.getAuthorities() == null || authorityName == null) {
+			return false;
+		}
+		return user.getAuthorities().stream()
+				.filter(Objects::nonNull)
+				.map(Object::toString)
+				.anyMatch(authority -> authority.equals(authorityName) || authority.equals("ROLE_" + authorityName));
 	}
 
 

@@ -494,8 +494,11 @@ public class AnalyticsService {
 				currentClientId = message.clientId();
 				firstPendingIncomingMessageDate = null;
 			}
-
-			if (isIncomingMessage(message)) {
+			if (isIncomingMessageAnswerNotRequired(message)) {
+				firstPendingIncomingMessageDate = null;
+				continue;
+			}
+			if (isIncomingMessageRequiringAnswer(message)) {
 				if (firstPendingIncomingMessageDate == null) {
 					firstPendingIncomingMessageDate = message.date();
 				}
@@ -519,23 +522,21 @@ public class AnalyticsService {
 		long total = 0L;
 		long pendingIncoming = 0L;
 		Long currentClientId = null;
-
 		for (AnalyticsMessageRow message : messages) {
 			checkAnalyticsCancelled(cancellationToken);
-
 			if (!Objects.equals(currentClientId, message.clientId())) {
 				total += pendingIncoming;
 				pendingIncoming = 0L;
 				currentClientId = message.clientId();
 			}
-
-			if (isIncomingMessageRequiringAnswer(message)) {
+			if (isIncomingMessageAnswerNotRequired(message)) {
+				pendingIncoming = 0L;
+			} else if (isIncomingMessageRequiringAnswer(message)) {
 				pendingIncoming++;
 			} else if (isOutgoingOperatorMessage(message)) {
 				pendingIncoming = 0L;
 			}
 		}
-
 		return total + pendingIncoming;
 	}
 
@@ -543,6 +544,12 @@ public class AnalyticsService {
 	private boolean isIncomingMessageRequiringAnswer(AnalyticsMessageRow message) {
 		return isIncomingMessage(message)
 				&& !AnswerRequired.ANSWER_NOT_REQUIRED.equals(message.answerRequired());
+	}
+
+
+	private boolean isIncomingMessageAnswerNotRequired(AnalyticsMessageRow message) {
+		return isIncomingMessage(message)
+				&& AnswerRequired.ANSWER_NOT_REQUIRED.equals(message.answerRequired());
 	}
 
 

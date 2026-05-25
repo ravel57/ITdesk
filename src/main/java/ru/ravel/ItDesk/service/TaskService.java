@@ -26,6 +26,7 @@ public class TaskService {
 	private final WebSocketService webSocketService;
 	private final SlaPauseRepository slaPauseRepository;
 	private final AppSettingsRepository appSettingsRepository;
+	private final UserService userService;
 
 	private static final String FREEZE_SLA_PAUSE_REASON = "Заявка заморожена";
 	private static final String CLOSED_SLA_PAUSE_REASON = "Заявка закрыта";
@@ -58,7 +59,7 @@ public class TaskService {
 		if (task == null) {
 			throw new IllegalArgumentException("task must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		prepareTaskBeforeSave(task);
 		setSla(client, task);
 		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
@@ -102,7 +103,7 @@ public class TaskService {
 		}
 		prepareTaskBeforeSave(task);
 		Task olderTask = taskRepository.findById(task.getId()).orElseThrow();
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
@@ -1083,6 +1084,7 @@ public class TaskService {
 
 	@Transactional
 	public Task pauseTaskSla(Long taskId, String reason) {
+		getClientByTaskForCurrentUser(taskId);
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
@@ -1123,6 +1125,7 @@ public class TaskService {
 
 	@Transactional
 	public Task resumeTaskSla(Long taskId) {
+		getClientByTaskForCurrentUser(taskId);
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
@@ -1209,6 +1212,26 @@ public class TaskService {
 	private boolean hasDefaultTaskType() {
 		return taskTypeRepository.findAll().stream()
 				.anyMatch(taskType -> Boolean.TRUE.equals(taskType.getDefaultSelection()));
+	}
+
+
+	private Client getClientForCurrentUser(Long clientId) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		userService.assertCurrentUserCanAccessClient(client);
+		return client;
+	}
+
+
+	private Client getClientByTaskForCurrentUser(Long taskId) {
+		if (taskId == null) {
+			throw new IllegalArgumentException("taskId must not be null");
+		}
+		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
+		userService.assertCurrentUserCanAccessClient(client);
+		return client;
 	}
 
 }

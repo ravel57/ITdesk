@@ -36,7 +36,7 @@ public class SchedulerService {
 
 	@Scheduled(fixedRate = 500, timeUnit = TimeUnit.MILLISECONDS)
 	void updateClientsInfo() {
-		webSocketService.sendClients(clientService.getClients());
+		webSocketService.clientsUpdated();
 		webSocketService.getAuthenticatedUsers(userService.getUsersOnline());
 	}
 

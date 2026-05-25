@@ -19,4 +19,6 @@ public class UserDto {
 	private String authorities;
 
 	private List<String> availableOrganizations;
+
+	private List<Long> availableOrganizationIds;
 }

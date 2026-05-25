@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -65,9 +66,7 @@ public class UserService {
 							.lastname(userDto.getLastname())
 							.authorities(List.of(Role.getByName(userDto.getAuthorities())))
 							.password(passwordEncoder.encode(userDto.getPassword()))
-							.availableOrganizations(userDto.getAvailableOrganizations().stream()
-									.map(orgName -> organizationService.getOrganizations().stream()
-											.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
+							.availableOrganizations(resolveAvailableOrganizations(userDto))
 							.isEnabled(true)
 							.isAccountNonLocked(true)
 							.isAccountNonExpired(true)
@@ -100,9 +99,7 @@ public class UserService {
 				.authorities(List.of(Role.getByName(userDto.getAuthorities())))
 				.username(savedUser.getUsername())
 				.password(savedUser.getPassword())
-				.availableOrganizations(userDto.getAvailableOrganizations().stream()
-						.map(orgName -> organizationService.getOrganizations().stream()
-								.filter(org -> org.getName().equals(orgName)).findFirst().orElseThrow()).toList())
+				.availableOrganizations(resolveAvailableOrganizations(userDto))
 				.notifyChatPing(savedUser.getNotifyChatPing())
 				.notifyTaskChatPing(savedUser.getNotifyTaskChatPing())
 				.notifyNewAssignedTask(savedUser.getNotifyNewAssignedTask())
@@ -126,7 +123,11 @@ public class UserService {
 
 
 	public User getCurrentUser() {
-		String username = SecurityContextHolder.getContext().getAuthentication().getName();
+		var authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (authentication == null || authentication.getName() == null || authentication.getName().isBlank()) {
+			throw new AccessDeniedException("Пользователь не авторизован");
+		}
+		String username = authentication.getName();
 		return getUsers().stream()
 				.filter(it -> it.getUsername().equals(username))
 				.findFirst()
@@ -312,6 +313,175 @@ public class UserService {
 
 	public Set<User> getUsersOnline() {
 		return new LinkedHashSet<>(userRepository.findAllById(usersOnlineIds));
+	}
+
+
+	public boolean isAdmin(User user) {
+		return hasRole(user, Role.ADMIN);
+	}
+
+
+	public boolean isOperator(User user) {
+		return hasRole(user, Role.OPERATOR);
+	}
+
+
+	public boolean isCurrentUserAdmin() {
+		return isAdmin(getCurrentUser());
+	}
+
+
+	public List<Organization> filterOrganizationsByCurrentUser(Collection<Organization> organizations) {
+		if (organizations == null) {
+			return List.of();
+		}
+
+		User currentUser = getCurrentUser();
+
+		if (isAdmin(currentUser)) {
+			return organizations.stream()
+					.filter(Objects::nonNull)
+					.toList();
+		}
+
+		if (!isOperator(currentUser)) {
+			return List.of();
+		}
+
+		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
+
+		return organizations.stream()
+				.filter(Objects::nonNull)
+				.filter(organization -> organization.getId() != null)
+				.filter(organization -> allowedOrganizationIds.contains(organization.getId()))
+				.toList();
+	}
+
+
+	public List<Client> filterClientsByCurrentUser(Collection<Client> clients) {
+		if (clients == null) {
+			return List.of();
+		}
+		User currentUser = getCurrentUser();
+		if (isAdmin(currentUser)) {
+			return clients.stream()
+					.filter(Objects::nonNull)
+					.toList();
+		}
+		if (!isOperator(currentUser)) {
+			return List.of();
+		}
+		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
+		return clients.stream()
+				.filter(Objects::nonNull)
+				.filter(client -> client.getOrganization() != null)
+				.filter(client -> client.getOrganization().getId() != null)
+				.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
+				.toList();
+	}
+
+
+	public void assertCurrentUserCanAccessOrganizationId(Long organizationId) throws AccessDeniedException {
+		User currentUser = getCurrentUser();
+		if (isAdmin(currentUser)) {
+			return;
+		}
+		if (!canUserAccessOrganizationId(currentUser, organizationId)) {
+			throw new AccessDeniedException("Нет доступа к организации");
+		}
+	}
+
+
+	public void assertCurrentUserCanAccessClient(Client client) throws AccessDeniedException {
+		User currentUser = getCurrentUser();
+		if (isAdmin(currentUser)) {
+			return;
+		}
+		if (!canUserAccessClient(currentUser, client)) {
+			throw new AccessDeniedException("Нет доступа к клиенту");
+		}
+	}
+
+
+	public void assertUserCanAccessClient(User user, Client client) throws AccessDeniedException {
+		if (isAdmin(user)) {
+			return;
+		}
+		if (!canUserAccessClient(user, client)) {
+			throw new AccessDeniedException("Нет доступа к клиенту");
+		}
+	}
+
+
+	private boolean canUserAccessClient(User user, Client client) {
+		if (client == null || client.getOrganization() == null) {
+			return false;
+		}
+		return canUserAccessOrganizationId(user, client.getOrganization().getId());
+	}
+
+
+	private boolean canUserAccessOrganizationId(User user, Long organizationId) {
+		if (user == null || organizationId == null) {
+			return false;
+		}
+		if (isAdmin(user)) {
+			return true;
+		}
+		if (!isOperator(user)) {
+			return false;
+		}
+		return getAvailableOrganizationIds(user).contains(organizationId);
+	}
+
+
+	private Set<Long> getAvailableOrganizationIds(User user) {
+		if (user == null || user.getAvailableOrganizations() == null) {
+			return Set.of();
+		}
+		return user.getAvailableOrganizations().stream()
+				.filter(Objects::nonNull)
+				.map(Organization::getId)
+				.filter(Objects::nonNull)
+				.collect(java.util.stream.Collectors.toSet());
+	}
+
+
+	private boolean hasRole(User user, Role role) {
+		if (user == null || role == null || user.getAuthorities() == null) {
+			return false;
+		}
+		return user.getAuthorities().stream()
+				.filter(Objects::nonNull)
+				.anyMatch(authority -> Objects.equals(authority.getAuthority(), role.getAuthority()));
+	}
+
+
+	private List<Organization> resolveAvailableOrganizations(UserDto userDto) {
+		if (userDto == null) {
+			return List.of();
+		}
+		List<Organization> organizations = organizationService.getOrganizations();
+		if (userDto.getAvailableOrganizationIds() != null && !userDto.getAvailableOrganizationIds().isEmpty()) {
+			Set<Long> ids = userDto.getAvailableOrganizationIds().stream()
+					.filter(Objects::nonNull)
+					.collect(java.util.stream.Collectors.toSet());
+			return organizations.stream()
+					.filter(organization -> organization.getId() != null)
+					.filter(organization -> ids.contains(organization.getId()))
+					.toList();
+		}
+		if (userDto.getAvailableOrganizations() == null || userDto.getAvailableOrganizations().isEmpty()) {
+			return List.of();
+		}
+		Set<String> names = userDto.getAvailableOrganizations().stream()
+				.filter(Objects::nonNull)
+				.map(String::trim)
+				.filter(value -> !value.isBlank())
+				.collect(java.util.stream.Collectors.toSet());
+		return organizations.stream()
+				.filter(organization -> names.contains(organization.getName()))
+				.toList();
 	}
 
 

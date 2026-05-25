@@ -54,7 +54,16 @@ public class ClientService {
 
 
 	public List<Client> getClients() {
-		List<Client> clients = clientsRepository.findAll();
+		return prepareClientsForList(userService.filterClientsByCurrentUser(clientsRepository.findAll()));
+	}
+
+
+	public List<Client> getClientsForSystem() {
+		return prepareClientsForList(clientsRepository.findAll());
+	}
+
+
+	private List<Client> prepareClientsForList(List<Client> clients) {
 		clients.forEach(client -> {
 			Collection<Message> messages = safeCollection(client.getMessages());
 			client.setLastMessage(messages.stream()
@@ -197,7 +206,7 @@ public class ClientService {
 		message.setIsSent(true);
 		message.setIsRead(true);
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		hydrateReplyData(message, client.getMessages());
 		Message savedMessage = messageRepository.saveAndFlush(message);
 		hydrateReplyData(savedMessage, client.getMessages());
@@ -282,6 +291,7 @@ public class ClientService {
 		}
 		Client client = clientOpt.get();
 		User user = userOpt.get();
+		userService.assertUserCanAccessClient(user, client);
 		String watchKey = "%d:%d".formatted(client.getId(), user.getId());
 		Set<User> currentWatchers = watchingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
 		boolean alreadyWatching = currentWatchers.contains(user);
@@ -324,7 +334,7 @@ public class ClientService {
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		client.setFirstname(Objects.toString(c.get("firstname"), null));
 		client.setLastname(Objects.toString(c.get("lastname"), null));
 		Object organizationName = c.get("organization");
@@ -344,7 +354,7 @@ public class ClientService {
 			logger.warn("typing skipped: clientId or userId is null, payload={}", clientUserText);
 			return;
 		}
-		Client client = clientsRepository.findById(clientUserText.getClientId()).orElseThrow();
+		Client client = getClientForCurrentUser(clientUserText.getClientId());
 		User user = userRepository.findById(clientUserText.getUserId()).orElseThrow();
 		if (client.getTypingMessageText() == null) {
 			client.setTypingMessageText(new HashMap<>());
@@ -376,6 +386,7 @@ public class ClientService {
 		if (messageTask.getMessage() == null || messageTask.getMessage().getId() == null) {
 			throw new IllegalArgumentException("message.id must not be null");
 		}
+		getClientByTaskForCurrentUser(messageTask.getTask().getId());
 		Task task = taskRepository.findById(messageTask.getTask().getId()).orElseThrow();
 		task.setLinkedMessageId(messageTask.getMessage().getId());
 		taskRepository.save(task);
@@ -387,7 +398,7 @@ public class ClientService {
 		if (clientId == null || messageId == null) {
 			throw new IllegalArgumentException("clientId and messageId must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		Message message = messageRepository.findById(messageId).orElseThrow();
 		if (client.getMessageFrom() != null) {
 			switch (client.getMessageFrom()) {
@@ -416,7 +427,7 @@ public class ClientService {
 		if (clientId == null || messageId == null) {
 			throw new IllegalArgumentException("clientId and messageId must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		Message message = messageRepository.findById(messageId).orElseThrow();
 		boolean belongsToClient = safeCollection(client.getMessages()).stream()
 				.anyMatch(m -> Objects.equals(m.getId(), messageId));
@@ -476,7 +487,7 @@ public class ClientService {
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		safeCollection(client.getMessages()).forEach(message ->
 				globalSearchService.deleteDocument("CLIENT_MESSAGE:" + message.getId())
 		);
@@ -510,6 +521,7 @@ public class ClientService {
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
+		Client client = getClientByTaskForCurrentUser(taskId);
 		message.setDate(ZonedDateTime.now());
 		message.setUser(userService.getCurrentUser());
 		message.setIsSent(Boolean.TRUE.equals(message.getIsSent()));
@@ -560,7 +572,7 @@ public class ClientService {
 			));
 		}
 		Task savedTask = taskRepository.saveAndFlush(task);
-		Client client = clientsRepository.findByTaskId(taskId).orElse(null);
+		client = clientsRepository.findByTaskId(taskId).orElse(client);
 		globalSearchService.indexTask(client, savedTask);
 		globalSearchService.indexTaskMessage(client, savedTask, savedMessage);
 		return savedMessage;
@@ -596,7 +608,7 @@ public class ClientService {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
 		int safePage = Math.max(1, Objects.requireNonNullElse(page, 1));
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		List<Message> clientMessages = safeCollection(client.getMessages()).stream().sorted().toList();
 		int skipFromStart = Math.max(0, clientMessages.size() - pageLimit * safePage);
 		long limit = skipFromStart != 0 ? pageLimit : Math.max(0, clientMessages.size() - ((long) pageLimit * (safePage - 1)));
@@ -620,7 +632,7 @@ public class ClientService {
 			throw new IllegalArgumentException("clientId and linkedMessageId must not be null");
 		}
 		Message message = messageRepository.findById(linkedMessageId).orElseThrow();
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		List<Message> messages = safeCollection(client.getMessages()).stream()
 				.sorted()
 				.peek(msg -> msg.setReplyMessageText(safeCollection(client.getMessages()).stream()
@@ -641,7 +653,7 @@ public class ClientService {
 		if (clientId == null || messageText == null || messageText.getText() == null || messageText.getText().isBlank()) {
 			return Collections.emptyList();
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		String query = messageText.getText().toLowerCase(Locale.ROOT);
 		return safeCollection(client.getMessages()).stream()
 				.filter(message -> message.getText() != null)
@@ -683,7 +695,7 @@ public class ClientService {
 		if (clientId == null) {
 			return Collections.emptyList();
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		return safeCollection(client.getMessages()).stream()
 				.filter(m -> m.getFileUuid() != null)
 				.map(m -> new FileDto(m.getFileUuid(), m.getFileName(), m.getFileType()))
@@ -695,7 +707,7 @@ public class ClientService {
 		if (clientId == null || taskId == null) {
 			return Collections.emptyList();
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		Task task = safeCollection(client.getTasks()).stream()
 				.filter(t -> Objects.equals(t.getId(), taskId))
 				.findFirst()
@@ -732,7 +744,7 @@ public class ClientService {
 		if (clientId == null || messageId == null || request == null) {
 			throw new IllegalArgumentException("clientId, messageId and request must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientForCurrentUser(clientId);
 		AnswerRequired answerRequired = Objects.requireNonNullElse(
 				request.getAnswerRequired(),
 				AnswerRequired.NOT_SET
@@ -903,7 +915,7 @@ public class ClientService {
 			throw new IllegalArgumentException("clientId, taskId and messageId must not be null");
 		}
 		Task task = taskRepository.findById(taskId).orElseThrow();
-		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
+		Client client = getClientByTaskForCurrentUser(taskId);
 		if (!Objects.equals(client.getId(), clientId)) {
 			throw new IllegalArgumentException("task does not belong to client");
 		}
@@ -940,6 +952,26 @@ public class ClientService {
 				)
 		);
 		return savedMessage;
+	}
+
+
+	private Client getClientForCurrentUser(Long clientId) {
+		if (clientId == null) {
+			throw new IllegalArgumentException("clientId must not be null");
+		}
+		Client client = clientsRepository.findById(clientId).orElseThrow();
+		userService.assertCurrentUserCanAccessClient(client);
+		return client;
+	}
+
+
+	private Client getClientByTaskForCurrentUser(Long taskId) {
+		if (taskId == null) {
+			throw new IllegalArgumentException("taskId must not be null");
+		}
+		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
+		userService.assertCurrentUserCanAccessClient(client);
+		return client;
 	}
 
 }

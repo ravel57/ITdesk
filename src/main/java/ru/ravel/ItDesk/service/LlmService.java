@@ -17,6 +17,7 @@ public class LlmService {
 	@Value("${app.instance-name}")
 	private String instanceName;
 
+
 	public String askLlm(String question) {
 		LlmRequestBody body = LlmRequestBody.builder().query(question).instanceName(instanceName).build();
 		LlmResponse response = llmFeignClient.askQuery(body);

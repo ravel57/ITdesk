@@ -28,7 +28,9 @@ public class SlaValue {
 
 
 	public Duration toDuration(Duration workdayDuration) {
-		if (value == null || unit == null) return Duration.ZERO;
+		if (value == null || unit == null) {
+			return Duration.ZERO;
+		}
 		double v = value.doubleValue();
 		return switch (unit) {
 			case MINUTES -> Duration.ofMinutes(Math.round(v));

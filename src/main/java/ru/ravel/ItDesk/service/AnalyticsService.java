@@ -3,38 +3,24 @@ package ru.ravel.ItDesk.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.ravel.ItDesk.model.Client;
-import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.dto.AnswerRequired;
+import ru.ravel.ItDesk.model.AppSettings;
+import ru.ravel.ItDesk.model.Sla;
 import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
-import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.lang.reflect.Method;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
-import ru.ravel.ItDesk.model.AppSettings;
 
 
 @Service
@@ -44,11 +30,12 @@ public class AnalyticsService {
 	private static final long DEFAULT_DEADLINE_WARNING_MINUTES = 60L;
 	private static final Long EMPTY_GROUP_ID = -1L;
 
-	private final ClientRepository clientRepository;
 	private final TaskRepository taskRepository;
+	private final MessageRepository messageRepository;
 	private final AutomationOutboxRepository automationOutboxRepository;
 	private final SlaService slaService;
 	private final AppSettingsService appSettingsService;
+	private final ConcurrentMap<String, AnalyticsCancellationToken> activeAnalyticsRequests = new ConcurrentHashMap<>();
 
 
 	@Transactional(readOnly = true)
@@ -61,226 +48,466 @@ public class AnalyticsService {
 			String executorIds,
 			String tagIds
 	) {
-		ZoneId analyticsZone = getAnalyticsZone();
-		ZonedDateTime now = ZonedDateTime.now(analyticsZone);
-		ZonedDateTime safeTo = Objects.requireNonNullElse(parseZonedDateTime(to, analyticsZone), now);
-		ZonedDateTime safeFrom = Objects.requireNonNullElse(parseZonedDateTime(from, analyticsZone), safeTo.minusDays(7));
-		String safeGroupBy = Objects.toString(groupBy, "DAY").toUpperCase(Locale.ROOT);
-		AnalyticsFilters filters = new AnalyticsFilters(
-				parseIds(typeIds),
-				parseIds(priorityIds),
-				parseIds(executorIds),
-				parseIds(tagIds)
-		);
-
-		List<Client> clients = clientRepository.findAll();
-		List<Task> allTasks = taskRepository.findAll();
-		Map<Long, Task> tasksById = allTasks.stream()
-				.filter(task -> task.getId() != null)
-				.collect(Collectors.toMap(Task::getId, task -> task, (left, right) -> left, LinkedHashMap::new));
-		List<Task> tasks = allTasks.stream()
-				.filter(task -> matchesFilters(task, filters))
-				.toList();
-		List<Task> openTasks = tasks.stream()
-				.filter(task -> !Boolean.TRUE.equals(task.getCompleted()))
-				.toList();
-		List<Task> closedTasksInPeriod = tasks.stream()
-				.filter(task -> Boolean.TRUE.equals(task.getCompleted()))
-				.filter(task -> isBetween(task.getClosedAt(), safeFrom, safeTo))
-				.toList();
-		List<Message> clientMessages = getMessagesForAnalytics(clients, tasks, filters);
-		List<AnalyticsEvent> reopenedEvents = getAutomationEvents(TriggerType.TASK_REOPENED, safeFrom, safeTo, tasksById, analyticsZone).stream()
-				.filter(event -> event.task() != null ? matchesFilters(event.task(), filters) : !filters.hasAny())
-				.toList();
-
-		Map<String, Long> closedByPeriodMap = new LinkedHashMap<>();
-		Map<String, Long> reopenedByPeriodMap = new LinkedHashMap<>();
-		Map<Integer, Map<String, Object>> hourlyLoadMap = createHourlyLoadMap();
-		Map<Long, Map<String, Object>> operatorLoadMap = new LinkedHashMap<>();
-		Map<String, Map<String, Object>> taskTypeBreakdownMap = new LinkedHashMap<>();
-		Map<String, Map<String, Object>> priorityBreakdownMap = new LinkedHashMap<>();
-		Map<String, Map<String, Object>> executorBreakdownMap = new LinkedHashMap<>();
-		Map<String, Map<String, Object>> tagBreakdownMap = new LinkedHashMap<>();
-		List<Long> closeTimeSeconds = new ArrayList<>();
-
-		long newAppeals = 0L;
-		for (Message message : clientMessages) {
-			if (!isBetween(message.getDate(), safeFrom, safeTo)) {
-				continue;
-			}
-			if (isIncomingMessage(message)) {
-				newAppeals++;
-				incrementHourlyLoad(hourlyLoadMap, message.getDate(), analyticsZone, "incomingMessages");
-			} else if (isOutgoingOperatorMessage(message)) {
-				incrementHourlyLoad(hourlyLoadMap, message.getDate(), analyticsZone, "outgoingMessages");
-			}
-		}
-
-		for (Task task : tasks) {
-			incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "totalTasks");
-
-			if (isBetween(task.getCreatedAt(), safeFrom, safeTo)) {
-				incrementHourlyLoad(hourlyLoadMap, task.getCreatedAt(), analyticsZone, "createdTasks");
-				incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "createdTasks");
-			}
-		}
-
-		long overdueSla = openTasks.stream()
-				.filter(task -> isTaskSlaOverdue(task, now))
-				.count();
-		long overdueDeadlines = openTasks.stream()
-				.filter(task -> isTaskDeadlineOverdue(task, now))
-				.count();
-		long deadlineWarnings = openTasks.stream()
-				.filter(task -> isTaskDeadlineWarning(task, now, DEFAULT_DEADLINE_WARNING_MINUTES))
-				.count();
-		long unassignedTasks = openTasks.stream()
-				.filter(task -> task.getExecutor() == null)
-				.count();
-		long unansweredMessages = filters.hasAny()
-				? countUnansweredMessages(clientMessages)
-				: countUnansweredMessagesByClient(clients);
-		long avgFirstResponseSeconds = averageSeconds(getFirstResponseSeconds(clients, safeFrom, safeTo));
-
-		for (Task task : openTasks) {
-			User executor = task.getExecutor();
-			if (executor != null) {
-				incrementOperatorLoad(operatorLoadMap, executor, "openTasks");
-			}
-			incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "openTasks");
-			if (isTaskSlaOverdue(task, now)) {
-				if (executor != null) {
-					incrementOperatorLoad(operatorLoadMap, executor, "overdueSla");
-				}
-				incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "overdueSla");
-			}
-			if (isTaskDeadlineOverdue(task, now)) {
-				if (executor != null) {
-					incrementOperatorLoad(operatorLoadMap, executor, "overdueDeadlines");
-				}
-				incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "overdueDeadlines");
-			}
-			if (executor == null) {
-				incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "unassignedTasks");
-			}
-		}
-
-		for (Task task : closedTasksInPeriod) {
-			ZonedDateTime closedAt = task.getClosedAt();
-			if (closedAt != null) {
-				closedByPeriodMap.merge(getPeriodLabel(closedAt, safeGroupBy, analyticsZone), 1L, Long::sum);
-				incrementHourlyLoad(hourlyLoadMap, closedAt, analyticsZone, "closedTasks");
-			}
-			if (task.getExecutor() != null) {
-				incrementOperatorLoad(operatorLoadMap, task.getExecutor(), "closedTasks");
-			}
-			incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "closedTasks");
-			if (task.getCreatedAt() != null && closedAt != null && !closedAt.isBefore(task.getCreatedAt())) {
-				closeTimeSeconds.add(Duration.between(task.getCreatedAt(), closedAt).getSeconds());
-			}
-		}
-
-		for (AnalyticsEvent reopenedEvent : reopenedEvents) {
-			ZonedDateTime eventDate = reopenedEvent.date();
-			reopenedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
-			incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "reopenedTasks");
-
-			Task task = reopenedEvent.task();
-			if (task == null) {
-				continue;
-			}
-			if (task.getExecutor() != null) {
-				incrementOperatorLoad(operatorLoadMap, task.getExecutor(), "reopenedTasks");
-			}
-			incrementBreakdowns(taskTypeBreakdownMap, priorityBreakdownMap, executorBreakdownMap, tagBreakdownMap, task, "reopenedTasks");
-		}
-
-		Map<String, Object> result = new LinkedHashMap<>();
-		result.put("from", safeFrom);
-		result.put("to", safeTo);
-		result.put("groupBy", safeGroupBy);
-		result.put("timezone", analyticsZone.getId());
-		result.put("filters", filters.toMap());
-		result.put("newAppeals", newAppeals);
-		result.put("openTasks", (long) openTasks.size());
-		result.put("overdueSla", overdueSla);
-		result.put("overdueDeadlines", overdueDeadlines);
-		result.put("deadlineWarnings", deadlineWarnings);
-		result.put("deadlineWarningMinutes", DEFAULT_DEADLINE_WARNING_MINUTES);
-		result.put("unansweredMessages", unansweredMessages);
-		result.put("avgFirstResponseSeconds", avgFirstResponseSeconds);
-		result.put("avgCloseTimeSeconds", averageSeconds(closeTimeSeconds));
-		result.put("unassignedTasks", unassignedTasks);
-		result.put("closedTasks", (long) closedTasksInPeriod.size());
-		result.put("reopenedTasks", (long) reopenedEvents.size());
-		result.put("closedByPeriod", toPeriodRows(closedByPeriodMap));
-		result.put("reopenedByPeriod", toPeriodRows(reopenedByPeriodMap));
-		result.put("hourlyLoad", toHourlyRows(hourlyLoadMap));
-		result.put("operatorLoad", toOperatorRows(operatorLoadMap));
-		result.put("taskTypeBreakdown", toBreakdownRows(taskTypeBreakdownMap));
-		result.put("priorityBreakdown", toBreakdownRows(priorityBreakdownMap));
-		result.put("executorBreakdown", toBreakdownRows(executorBreakdownMap));
-		result.put("tagBreakdown", toBreakdownRows(tagBreakdownMap));
-		return result;
+		return getSummary(null, from, to, groupBy, typeIds, priorityIds, executorIds, tagIds);
 	}
 
 
-	private List<Message> getMessagesForAnalytics(List<Client> clients, List<Task> tasks, AnalyticsFilters filters) {
-		if (!filters.hasAny()) {
-			return clients.stream()
-					.flatMap(client -> safeCollection(client.getMessages()).stream())
-					.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
-					.toList();
-		}
+	@Transactional(readOnly = true)
+	public Map<String, Object> getSummary(
+			String requestKey,
+			String from,
+			String to,
+			String groupBy,
+			String typeIds,
+			String priorityIds,
+			String executorIds,
+			String tagIds
+	) {
+		AnalyticsCancellationToken cancellationToken = registerAnalyticsRequest(requestKey);
+		try {
+			checkAnalyticsCancelled(cancellationToken);
+			AnalyticsWorkingTime workingTime = getAnalyticsWorkingTime();
+			ZoneId analyticsZone = workingTime.zone();
+			ZonedDateTime now = ZonedDateTime.now(analyticsZone);
+			ZonedDateTime safeTo = Objects.requireNonNullElse(parseZonedDateTime(to, analyticsZone), now);
+			ZonedDateTime safeFrom = Objects.requireNonNullElse(parseZonedDateTime(from, analyticsZone), safeTo.minusDays(7));
+			String safeGroupBy = Objects.toString(groupBy, "DAY").toUpperCase(Locale.ROOT);
+			AnalyticsFilters filters = new AnalyticsFilters(
+					parseIds(typeIds),
+					parseIds(priorityIds),
+					parseIds(executorIds),
+					parseIds(tagIds)
+			);
 
-		Map<Long, Message> result = new LinkedHashMap<>();
-		Map<Long, Message> clientMessagesById = clients.stream()
-				.flatMap(client -> safeCollection(client.getMessages()).stream())
-				.filter(message -> message.getId() != null)
-				.collect(Collectors.toMap(Message::getId, message -> message, (left, right) -> left, LinkedHashMap::new));
+			List<TaskRepository.AnalyticsTaskRow> taskRows = taskRepository.findAnalyticsTaskRows(
+					!filters.typeIds().isEmpty(),
+					idsOrDummy(filters.typeIds()),
+					!filters.priorityIds().isEmpty(),
+					idsOrDummy(filters.priorityIds()),
+					!filters.executorIds().isEmpty(),
+					idsOrDummy(filters.executorIds()),
+					!filters.tagIds().isEmpty(),
+					idsOrDummy(filters.tagIds())
+			);
+			checkAnalyticsCancelled(cancellationToken);
 
-		for (Task task : tasks) {
-			for (Message message : safeCollection(task.getMessages())) {
-				if (message != null && message.getId() != null && !Boolean.TRUE.equals(message.getDeleted())) {
-					result.put(message.getId(), message);
+			Map<Long, List<Object>> tagsByTaskId = getTagsByTaskId(filters, cancellationToken);
+			Map<Long, TaskRepository.AnalyticsTaskRow> taskRowsById = new LinkedHashMap<>();
+
+			Map<String, Long> closedByPeriodMap = new LinkedHashMap<>();
+			Map<String, Long> reopenedByPeriodMap = new LinkedHashMap<>();
+			Map<Integer, Map<String, Object>> hourlyLoadMap = createHourlyLoadMap();
+			Map<Long, Map<String, Object>> operatorLoadMap = new LinkedHashMap<>();
+			Map<String, Map<String, Object>> taskTypeBreakdownMap = new LinkedHashMap<>();
+			Map<String, Map<String, Object>> priorityBreakdownMap = new LinkedHashMap<>();
+			Map<String, Map<String, Object>> executorBreakdownMap = new LinkedHashMap<>();
+			Map<String, Map<String, Object>> tagBreakdownMap = new LinkedHashMap<>();
+			List<Long> closeTimeSeconds = new ArrayList<>();
+
+			long openTasks = 0L;
+			long closedTasks = 0L;
+			long overdueDeadlines = 0L;
+			long deadlineWarnings = 0L;
+			long unassignedTasks = 0L;
+
+			for (TaskRepository.AnalyticsTaskRow row : taskRows) {
+				checkAnalyticsCancelled(cancellationToken);
+
+				if (row.getId() != null) {
+					taskRowsById.put(row.getId(), row);
 				}
-			}
-			if (task.getLinkedMessageId() != null) {
-				Message linkedMessage = clientMessagesById.get(task.getLinkedMessageId());
-				if (linkedMessage != null && !Boolean.TRUE.equals(linkedMessage.getDeleted())) {
-					result.put(linkedMessage.getId(), linkedMessage);
+
+				Collection<?> tags = tagsByTaskId.getOrDefault(row.getId(), List.of());
+
+				incrementBreakdowns(
+						taskTypeBreakdownMap,
+						priorityBreakdownMap,
+						executorBreakdownMap,
+						tagBreakdownMap,
+						row.getType(),
+						row.getPriority(),
+						row.getExecutor(),
+						tags,
+						"totalTasks"
+				);
+
+				if (isBetween(row.getCreatedAt(), safeFrom, safeTo)) {
+					incrementHourlyLoad(hourlyLoadMap, row.getCreatedAt(), analyticsZone, "createdTasks");
+					incrementBreakdowns(
+							taskTypeBreakdownMap,
+							priorityBreakdownMap,
+							executorBreakdownMap,
+							tagBreakdownMap,
+							row.getType(),
+							row.getPriority(),
+							row.getExecutor(),
+							tags,
+							"createdTasks"
+					);
 				}
-			}
-		}
 
-		return new ArrayList<>(result.values());
-	}
+				if (!Boolean.TRUE.equals(row.getCompleted())) {
+					openTasks++;
 
-
-	private List<Long> getFirstResponseSeconds(List<Client> clients, ZonedDateTime from, ZonedDateTime to) {
-		List<Long> result = new ArrayList<>();
-
-		for (Client client : clients) {
-			ZonedDateTime firstPendingIncomingMessageDate = null;
-
-			List<Message> sortedMessages = safeCollection(client.getMessages()).stream()
-					.filter(message -> message.getDate() != null)
-					.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
-					.sorted()
-					.toList();
-
-			for (Message message : sortedMessages) {
-				if (isIncomingMessage(message)) {
-					if (firstPendingIncomingMessageDate == null && isBetween(message.getDate(), from, to)) {
-						firstPendingIncomingMessageDate = message.getDate();
+					if (row.getExecutor() != null) {
+						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "openTasks");
 					}
+
+					incrementBreakdowns(
+							taskTypeBreakdownMap,
+							priorityBreakdownMap,
+							executorBreakdownMap,
+							tagBreakdownMap,
+							row.getType(),
+							row.getPriority(),
+							row.getExecutor(),
+							tags,
+							"openTasks"
+					);
+
+					if (isTaskDeadlineOverdue(row.getDeadline(), now)) {
+						overdueDeadlines++;
+
+						if (row.getExecutor() != null) {
+							incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueDeadlines");
+						}
+
+						incrementBreakdowns(
+								taskTypeBreakdownMap,
+								priorityBreakdownMap,
+								executorBreakdownMap,
+								tagBreakdownMap,
+								row.getType(),
+								row.getPriority(),
+								row.getExecutor(),
+								tags,
+								"overdueDeadlines"
+						);
+					}
+
+					if (isTaskDeadlineWarning(row.getDeadline(), now, DEFAULT_DEADLINE_WARNING_MINUTES)) {
+						deadlineWarnings++;
+					}
+
+					if (row.getExecutor() == null) {
+						unassignedTasks++;
+						incrementBreakdowns(
+								taskTypeBreakdownMap,
+								priorityBreakdownMap,
+								executorBreakdownMap,
+								tagBreakdownMap,
+								row.getType(),
+								row.getPriority(),
+								row.getExecutor(),
+								tags,
+								"unassignedTasks"
+						);
+					}
+
 					continue;
 				}
 
-				if (isOutgoingOperatorMessage(message) && firstPendingIncomingMessageDate != null && message.getDate().isAfter(firstPendingIncomingMessageDate)) {
-					result.add(Duration.between(firstPendingIncomingMessageDate, message.getDate()).getSeconds());
-					firstPendingIncomingMessageDate = null;
+				if (isBetween(row.getClosedAt(), safeFrom, safeTo)) {
+					closedTasks++;
+
+					closedByPeriodMap.merge(getPeriodLabel(row.getClosedAt(), safeGroupBy, analyticsZone), 1L, Long::sum);
+					incrementHourlyLoad(hourlyLoadMap, row.getClosedAt(), analyticsZone, "closedTasks");
+
+					if (row.getExecutor() != null) {
+						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "closedTasks");
+					}
+
+					incrementBreakdowns(
+							taskTypeBreakdownMap,
+							priorityBreakdownMap,
+							executorBreakdownMap,
+							tagBreakdownMap,
+							row.getType(),
+							row.getPriority(),
+							row.getExecutor(),
+							tags,
+							"closedTasks"
+					);
+
+					if (row.getCreatedAt() != null && row.getClosedAt() != null && !row.getClosedAt().isBefore(row.getCreatedAt())) {
+						closeTimeSeconds.add(getWorkingSeconds(row.getCreatedAt(), row.getClosedAt(), workingTime, cancellationToken));
+					}
 				}
+			}
+
+			long overdueSla = countOverdueSla(
+					now,
+					filters,
+					tagsByTaskId,
+					operatorLoadMap,
+					taskTypeBreakdownMap,
+					priorityBreakdownMap,
+					executorBreakdownMap,
+					tagBreakdownMap,
+					cancellationToken
+			);
+
+			List<AnalyticsMessageRow> clientMessages = getClientMessageRows(safeFrom, safeTo, cancellationToken);
+
+			long newAppeals = 0L;
+			for (AnalyticsMessageRow message : clientMessages) {
+				checkAnalyticsCancelled(cancellationToken);
+
+				if (isIncomingMessageRequiringAnswer(message)) {
+					newAppeals++;
+					incrementHourlyLoad(hourlyLoadMap, message.date(), analyticsZone, "incomingMessages");
+				} else if (isOutgoingOperatorMessage(message)) {
+					incrementHourlyLoad(hourlyLoadMap, message.date(), analyticsZone, "outgoingMessages");
+				}
+			}
+
+			long unansweredMessages = countUnansweredMessages(clientMessages, cancellationToken);
+			long avgFirstResponseSeconds = averageSeconds(getFirstResponseSeconds(clientMessages, workingTime, cancellationToken));
+
+			List<AnalyticsEvent> reopenedEvents = getAutomationEvents(
+					TriggerType.TASK_REOPENED,
+					safeFrom,
+					safeTo,
+					analyticsZone,
+					cancellationToken
+			);
+
+			long reopenedTasks = 0L;
+			for (AnalyticsEvent reopenedEvent : reopenedEvents) {
+				checkAnalyticsCancelled(cancellationToken);
+
+				TaskRepository.AnalyticsTaskRow taskRow = reopenedEvent.taskId() == null ? null : taskRowsById.get(reopenedEvent.taskId());
+
+				if (filters.hasAny() && taskRow == null) {
+					continue;
+				}
+
+				reopenedTasks++;
+				ZonedDateTime eventDate = reopenedEvent.date();
+				reopenedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
+				incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "reopenedTasks");
+
+				if (taskRow == null) {
+					continue;
+				}
+
+				if (taskRow.getExecutor() != null) {
+					incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "reopenedTasks");
+				}
+
+				incrementBreakdowns(
+						taskTypeBreakdownMap,
+						priorityBreakdownMap,
+						executorBreakdownMap,
+						tagBreakdownMap,
+						taskRow.getType(),
+						taskRow.getPriority(),
+						taskRow.getExecutor(),
+						tagsByTaskId.getOrDefault(taskRow.getId(), List.of()),
+						"reopenedTasks"
+				);
+			}
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("from", safeFrom);
+			result.put("to", safeTo);
+			result.put("groupBy", safeGroupBy);
+			result.put("timezone", analyticsZone.getId());
+			result.put("workingTimeEnabled", workingTime.enabled());
+			result.put("workdayStart", workingTime.workdayStart().toString());
+			result.put("workdayEnd", workingTime.workdayEnd().toString());
+			result.put("workingDays", workingTime.workingDays().stream().map(DayOfWeek::name).toList());
+			result.put("filters", filters.toMap());
+			result.put("newAppeals", newAppeals);
+			result.put("openTasks", openTasks);
+			result.put("overdueSla", overdueSla);
+			result.put("overdueDeadlines", overdueDeadlines);
+			result.put("deadlineWarnings", deadlineWarnings);
+			result.put("deadlineWarningMinutes", DEFAULT_DEADLINE_WARNING_MINUTES);
+			result.put("unansweredMessages", unansweredMessages);
+			result.put("avgFirstResponseSeconds", avgFirstResponseSeconds);
+			result.put("avgCloseTimeSeconds", averageSeconds(closeTimeSeconds));
+			result.put("unassignedTasks", unassignedTasks);
+			result.put("closedTasks", closedTasks);
+			result.put("reopenedTasks", reopenedTasks);
+			result.put("closedByPeriod", toPeriodRows(closedByPeriodMap));
+			result.put("reopenedByPeriod", toPeriodRows(reopenedByPeriodMap));
+			result.put("hourlyLoad", toHourlyRows(hourlyLoadMap));
+			result.put("operatorLoad", toOperatorRows(operatorLoadMap));
+			result.put("taskTypeBreakdown", toBreakdownRows(taskTypeBreakdownMap));
+			result.put("priorityBreakdown", toBreakdownRows(priorityBreakdownMap));
+			result.put("executorBreakdown", toBreakdownRows(executorBreakdownMap));
+			result.put("tagBreakdown", toBreakdownRows(tagBreakdownMap));
+			return result;
+		} finally {
+			completeAnalyticsRequest(cancellationToken);
+		}
+	}
+
+
+	public void cancelSummary(String requestKey) {
+		String safeRequestKey = requestKey == null ? null : requestKey.trim();
+
+		if (safeRequestKey == null || safeRequestKey.isBlank()) {
+			return;
+		}
+
+		AnalyticsCancellationToken cancellationToken = activeAnalyticsRequests.get(safeRequestKey);
+
+		if (cancellationToken != null) {
+			cancellationToken.cancel();
+		}
+	}
+
+
+	private long countOverdueSla(
+			ZonedDateTime now,
+			AnalyticsFilters filters,
+			Map<Long, List<Object>> tagsByTaskId,
+			Map<Long, Map<String, Object>> operatorLoadMap,
+			Map<String, Map<String, Object>> taskTypeBreakdownMap,
+			Map<String, Map<String, Object>> priorityBreakdownMap,
+			Map<String, Map<String, Object>> executorBreakdownMap,
+			Map<String, Map<String, Object>> tagBreakdownMap,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		List<TaskRepository.SlaAnalyticsRow> slaRows = taskRepository.findSlaAnalyticsRows(
+				!filters.typeIds().isEmpty(),
+				idsOrDummy(filters.typeIds()),
+				!filters.priorityIds().isEmpty(),
+				idsOrDummy(filters.priorityIds()),
+				!filters.executorIds().isEmpty(),
+				idsOrDummy(filters.executorIds()),
+				!filters.tagIds().isEmpty(),
+				idsOrDummy(filters.tagIds())
+		);
+
+		long overdueSla = 0L;
+
+		for (TaskRepository.SlaAnalyticsRow row : slaRows) {
+			checkAnalyticsCancelled(cancellationToken);
+
+			Sla sla = row.getSla();
+			if (sla == null) {
+				continue;
+			}
+
+			ZonedDateTime deadline = slaService.deadline(sla);
+			if (deadline == null || !deadline.isBefore(now)) {
+				continue;
+			}
+
+			overdueSla++;
+
+			if (row.getExecutor() != null) {
+				incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueSla");
+			}
+
+			incrementBreakdowns(
+					taskTypeBreakdownMap,
+					priorityBreakdownMap,
+					executorBreakdownMap,
+					tagBreakdownMap,
+					row.getType(),
+					row.getPriority(),
+					row.getExecutor(),
+					tagsByTaskId.getOrDefault(row.getId(), List.of()),
+					"overdueSla"
+			);
+		}
+
+		return overdueSla;
+	}
+
+
+	private Map<Long, List<Object>> getTagsByTaskId(AnalyticsFilters filters, AnalyticsCancellationToken cancellationToken) {
+		List<TaskRepository.AnalyticsTaskTagRow> tagRows = taskRepository.findAnalyticsTaskTagRows(
+				!filters.typeIds().isEmpty(),
+				idsOrDummy(filters.typeIds()),
+				!filters.priorityIds().isEmpty(),
+				idsOrDummy(filters.priorityIds()),
+				!filters.executorIds().isEmpty(),
+				idsOrDummy(filters.executorIds()),
+				!filters.tagIds().isEmpty(),
+				idsOrDummy(filters.tagIds())
+		);
+
+		Map<Long, List<Object>> result = new LinkedHashMap<>();
+
+		for (TaskRepository.AnalyticsTaskTagRow row : tagRows) {
+			checkAnalyticsCancelled(cancellationToken);
+
+			if (row.getTaskId() == null || row.getTag() == null) {
+				continue;
+			}
+
+			result.computeIfAbsent(row.getTaskId(), ignored -> new ArrayList<>()).add(row.getTag());
+		}
+
+		return result;
+	}
+
+
+	private List<AnalyticsMessageRow> getClientMessageRows(
+			ZonedDateTime from,
+			ZonedDateTime to,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		List<MessageRepository.MessageAnalyticsRow> rows = messageRepository.findClientMessageAnalyticsRowsBetween(from, to);
+		List<AnalyticsMessageRow> result = new ArrayList<>(rows.size());
+
+		for (MessageRepository.MessageAnalyticsRow row : rows) {
+			checkAnalyticsCancelled(cancellationToken);
+
+			result.add(new AnalyticsMessageRow(
+					row.getId(),
+					row.getClientId(),
+					row.getDate(),
+					row.getSent(),
+					row.getCommentFlag(),
+					row.getDeleted(),
+					row.getAnswerRequired()
+			));
+		}
+
+		result.sort(Comparator
+				.comparing(AnalyticsMessageRow::clientId, Comparator.nullsLast(Long::compareTo))
+				.thenComparing(AnalyticsMessageRow::date, Comparator.nullsLast(ZonedDateTime::compareTo))
+				.thenComparing(AnalyticsMessageRow::id, Comparator.nullsLast(Long::compareTo)));
+
+		return result;
+	}
+
+
+	private List<Long> getFirstResponseSeconds(
+			List<AnalyticsMessageRow> messages,
+			AnalyticsWorkingTime workingTime,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		List<Long> result = new ArrayList<>();
+		Long currentClientId = null;
+		ZonedDateTime firstPendingIncomingMessageDate = null;
+
+		for (AnalyticsMessageRow message : messages) {
+			checkAnalyticsCancelled(cancellationToken);
+
+			if (!Objects.equals(currentClientId, message.clientId())) {
+				currentClientId = message.clientId();
+				firstPendingIncomingMessageDate = null;
+			}
+
+			if (isIncomingMessage(message)) {
+				if (firstPendingIncomingMessageDate == null) {
+					firstPendingIncomingMessageDate = message.date();
+				}
+				continue;
+			}
+
+			if (isOutgoingOperatorMessage(message)
+					&& firstPendingIncomingMessageDate != null
+					&& message.date() != null
+					&& message.date().isAfter(firstPendingIncomingMessageDate)) {
+				result.add(getWorkingSeconds(firstPendingIncomingMessageDate, message.date(), workingTime, cancellationToken));
+				firstPendingIncomingMessageDate = null;
 			}
 		}
 
@@ -288,79 +515,63 @@ public class AnalyticsService {
 	}
 
 
-	private long countUnansweredMessagesByClient(List<Client> clients) {
-		long count = 0L;
-
-		for (Client client : clients) {
-			count += countUnansweredMessages(new ArrayList<>(safeCollection(client.getMessages())));
-		}
-
-		return count;
-	}
-
-
-	private long countUnansweredMessages(List<Message> messages) {
+	private long countUnansweredMessages(List<AnalyticsMessageRow> messages, AnalyticsCancellationToken cancellationToken) {
+		long total = 0L;
 		long pendingIncoming = 0L;
-		List<Message> sortedMessages = safeCollection(messages).stream()
-				.filter(message -> message.getDate() != null)
-				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
-				.sorted()
-				.toList();
+		Long currentClientId = null;
 
-		for (Message message : sortedMessages) {
-			if (isIncomingMessage(message)) {
+		for (AnalyticsMessageRow message : messages) {
+			checkAnalyticsCancelled(cancellationToken);
+
+			if (!Objects.equals(currentClientId, message.clientId())) {
+				total += pendingIncoming;
+				pendingIncoming = 0L;
+				currentClientId = message.clientId();
+			}
+
+			if (isIncomingMessageRequiringAnswer(message)) {
 				pendingIncoming++;
 			} else if (isOutgoingOperatorMessage(message)) {
 				pendingIncoming = 0L;
 			}
 		}
 
-		return pendingIncoming;
+		return total + pendingIncoming;
 	}
 
 
-	private boolean isIncomingMessage(Message message) {
+	private boolean isIncomingMessageRequiringAnswer(AnalyticsMessageRow message) {
+		return isIncomingMessage(message)
+				&& !AnswerRequired.ANSWER_NOT_REQUIRED.equals(message.answerRequired());
+	}
+
+
+	private boolean isIncomingMessage(AnalyticsMessageRow message) {
 		return message != null
-				&& Boolean.FALSE.equals(message.getIsSent())
-				&& !Boolean.TRUE.equals(message.getIsComment())
-				&& !Boolean.TRUE.equals(message.getDeleted());
+				&& Boolean.FALSE.equals(message.sent())
+				&& !Boolean.TRUE.equals(message.comment())
+				&& !Boolean.TRUE.equals(message.deleted());
 	}
 
 
-	private boolean isOutgoingOperatorMessage(Message message) {
+	private boolean isOutgoingOperatorMessage(AnalyticsMessageRow message) {
 		return message != null
-				&& Boolean.TRUE.equals(message.getIsSent())
-				&& !Boolean.TRUE.equals(message.getIsComment())
-				&& !Boolean.TRUE.equals(message.getDeleted());
+				&& Boolean.TRUE.equals(message.sent())
+				&& !Boolean.TRUE.equals(message.comment())
+				&& !Boolean.TRUE.equals(message.deleted());
 	}
 
 
-	private boolean isTaskSlaOverdue(Task task, ZonedDateTime now) {
-		if (task == null || task.getSla() == null || Boolean.TRUE.equals(task.getCompleted())) {
-			return false;
-		}
-
-		ZonedDateTime deadline = slaService.deadline(task.getSla());
+	private boolean isTaskDeadlineOverdue(ZonedDateTime deadline, ZonedDateTime now) {
 		return deadline != null && deadline.isBefore(now);
 	}
 
 
-	private boolean isTaskDeadlineOverdue(Task task, ZonedDateTime now) {
-		return task != null
-				&& task.getDeadline() != null
-				&& !Boolean.TRUE.equals(task.getCompleted())
-				&& task.getDeadline().isBefore(now);
-	}
-
-
-	private boolean isTaskDeadlineWarning(Task task, ZonedDateTime now, long warningMinutes) {
-		if (task == null || task.getDeadline() == null || Boolean.TRUE.equals(task.getCompleted())) {
+	private boolean isTaskDeadlineWarning(ZonedDateTime deadline, ZonedDateTime now, long warningMinutes) {
+		if (deadline == null || deadline.isBefore(now)) {
 			return false;
 		}
-		if (task.getDeadline().isBefore(now)) {
-			return false;
-		}
-		return !task.getDeadline().isAfter(now.plusMinutes(warningMinutes));
+		return !deadline.isAfter(now.plusMinutes(warningMinutes));
 	}
 
 
@@ -425,28 +636,23 @@ public class AnalyticsService {
 			Map<String, Map<String, Object>> priorityBreakdownMap,
 			Map<String, Map<String, Object>> executorBreakdownMap,
 			Map<String, Map<String, Object>> tagBreakdownMap,
-			Task task,
+			Object type,
+			Object priority,
+			User executor,
+			Collection<?> tags,
 			String metric
 	) {
-		if (task == null) {
-			return;
-		}
-
-		Object type = task.getType();
 		incrementBreakdown(taskTypeBreakdownMap, getEntityId(type), getEntityName(type, "Без типа"), metric);
-
-		Object priority = task.getPriority();
 		incrementBreakdown(priorityBreakdownMap, getEntityId(priority), getEntityName(priority, "Без приоритета"), metric);
-
-		User executor = task.getExecutor();
 		incrementBreakdown(executorBreakdownMap, executor == null ? null : executor.getId(), executor == null ? "Без исполнителя" : getUserDisplayName(executor), metric);
 
-		Collection<?> tags = safeCollection(task.getTags());
-		if (tags.isEmpty()) {
+		Collection<?> safeTags = safeCollection(tags);
+		if (safeTags.isEmpty()) {
 			incrementBreakdown(tagBreakdownMap, null, "Без тегов", metric);
 			return;
 		}
-		for (Object tag : tags) {
+
+		for (Object tag : safeTags) {
 			incrementBreakdown(tagBreakdownMap, getEntityId(tag), getEntityName(tag, "Без тега"), metric);
 		}
 	}
@@ -522,31 +728,6 @@ public class AnalyticsService {
 	}
 
 
-	private boolean matchesFilters(Task task, AnalyticsFilters filters) {
-		if (task == null) {
-			return false;
-		}
-		if (!filters.typeIds().isEmpty() && !filters.typeIds().contains(getEntityId(task.getType()))) {
-			return false;
-		}
-		if (!filters.priorityIds().isEmpty() && !filters.priorityIds().contains(getEntityId(task.getPriority()))) {
-			return false;
-		}
-		if (!filters.executorIds().isEmpty()) {
-			Long executorId = task.getExecutor() == null ? null : task.getExecutor().getId();
-			if (!filters.executorIds().contains(executorId)) {
-				return false;
-			}
-		}
-		if (!filters.tagIds().isEmpty()) {
-			return safeCollection(task.getTags()).stream()
-					.map(this::getEntityId)
-					.anyMatch(filters.tagIds()::contains);
-		}
-		return true;
-	}
-
-
 	private Set<Long> parseIds(String value) {
 		Set<Long> result = new LinkedHashSet<>();
 		if (value == null || value.isBlank()) {
@@ -566,39 +747,49 @@ public class AnalyticsService {
 	}
 
 
-	private List<AnalyticsEvent> getAutomationEvents(TriggerType triggerType, ZonedDateTime from, ZonedDateTime to, Map<Long, Task> tasksById, ZoneId zone) {
-		List<AnalyticsEvent> result = new ArrayList<>();
-		List<?> events;
+	private Set<Long> idsOrDummy(Set<Long> ids) {
+		return ids == null || ids.isEmpty() ? Set.of(EMPTY_GROUP_ID) : ids;
+	}
 
-		try {
-			events = automationOutboxRepository.findAll();
-		} catch (Exception ignored) {
+
+	private List<AnalyticsEvent> getAutomationEvents(
+			TriggerType triggerType,
+			ZonedDateTime from,
+			ZonedDateTime to,
+			ZoneId zone,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		List<AnalyticsEvent> result = new ArrayList<>();
+		if (from == null || to == null) {
 			return result;
 		}
-
-		for (Object event : events) {
-			String eventType = getEventType(event);
-			if (!Objects.equals(triggerType.name(), eventType)) {
+		List<AutomationOutboxRepository.TaskReopenedAnalyticsRow> events =
+				automationOutboxRepository.findTaskReopenedAnalyticsRows(
+						triggerType.name(),
+						from.toInstant(),
+						to.toInstant()
+				);
+		for (AutomationOutboxRepository.TaskReopenedAnalyticsRow event : events) {
+			checkAnalyticsCancelled(cancellationToken);
+			if (event.getCreatedAt() == null || event.getTaskId() == null) {
 				continue;
 			}
-			ZonedDateTime eventDate = getEventDate(event, zone);
+			ZonedDateTime eventDate = event.getCreatedAt().atZone(zone);
 			if (!isBetween(eventDate, from, to)) {
 				continue;
 			}
-			Task task = getEventTask(event, tasksById);
-			result.add(new AnalyticsEvent(event, eventDate, task));
+			result.add(new AnalyticsEvent(eventDate, event.getTaskId()));
 		}
-
 		return result;
 	}
 
 
-	private Task getEventTask(Object event, Map<Long, Task> tasksById) {
-		Task directTask = asTask(firstGetterValue(event, "getTask"), tasksById);
-		if (directTask != null) {
-			return directTask;
+	private Long getEventTaskId(Object event) {
+		Object directTask = firstGetterValue(event, "getTask");
+		Long directTaskId = getEntityId(directTask);
+		if (directTaskId != null) {
+			return directTaskId;
 		}
-
 		Object payload = firstGetterValue(event,
 				"getPayload",
 				"getPayloadJson",
@@ -606,41 +797,39 @@ public class AnalyticsService {
 				"getBody",
 				"getMessage"
 		);
-		return asTask(payload, tasksById);
+		return findTaskIdFromAny(payload);
 	}
 
 
-	private Task asTask(Object value, Map<Long, Task> tasksById) {
-		switch (value) {
-			case null -> {
-				return null;
-			}
-			case Task task -> {
-				return task;
-			}
-			case Map<?, ?> map -> {
-				Object taskValue = map.get("task");
-				if (taskValue != null) {
-					Task task = asTask(taskValue, tasksById);
-					if (task != null) {
-						return task;
-					}
+	private Long findTaskIdFromAny(Object value) {
+		if (value == null) {
+			return null;
+		}
+
+		if (value instanceof Map<?, ?> map) {
+			Object taskValue = map.get("task");
+			if (taskValue != null) {
+				Long taskId = findTaskIdFromAny(taskValue);
+				if (taskId != null) {
+					return taskId;
 				}
-				Long taskId = asLongOrNull(map.get("taskId"));
-				if (taskId == null && taskValue instanceof Map<?, ?> taskMap) {
-					taskId = asLongOrNull(taskMap.get("id"));
-				}
-				return taskId == null ? null : tasksById.get(taskId);
 			}
-			case CharSequence text -> {
-				Long taskId = findTaskId(text.toString());
-				return taskId == null ? null : tasksById.get(taskId);
+
+			Long taskId = asLongOrNull(map.get("taskId"));
+			if (taskId == null && taskValue instanceof Map<?, ?> taskMap) {
+				taskId = asLongOrNull(taskMap.get("id"));
 			}
-			default -> {
+
+			if (taskId != null) {
+				return taskId;
 			}
 		}
-		Long id = getEntityId(value);
-		return id == null ? null : tasksById.get(id);
+
+		if (value instanceof CharSequence text) {
+			return findTaskId(text.toString());
+		}
+
+		return getEntityId(value);
 	}
 
 
@@ -650,8 +839,8 @@ public class AnalyticsService {
 		}
 		String normalized = value.replace("\\\"", "\"");
 		List<Pattern> patterns = List.of(
-				Pattern.compile("\\\"task\\\"\\s*:\\s*\\{[^}]*\\\"id\\\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
-				Pattern.compile("\\\"taskId\\\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+				Pattern.compile("\"task\"\\s*:\\s*\\{[^}]*\"id\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+				Pattern.compile("\"taskId\"\\s*:\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
 				Pattern.compile("taskId\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE)
 		);
 		for (Pattern pattern : patterns) {
@@ -661,23 +850,6 @@ public class AnalyticsService {
 			}
 		}
 		return null;
-	}
-
-
-	private String getEventType(Object event) {
-		Object value = firstGetterValue(event,
-				"getTriggerType",
-				"getType",
-				"getEventType",
-				"getName"
-		);
-		if (value == null) {
-			return null;
-		}
-		if (value instanceof Enum<?> enumValue) {
-			return enumValue.name();
-		}
-		return Objects.toString(value, null).replace("\"", "").trim();
 	}
 
 
@@ -838,8 +1010,74 @@ public class AnalyticsService {
 		return collection == null ? List.of() : collection;
 	}
 
+	private AnalyticsCancellationToken registerAnalyticsRequest(String requestKey) {
+		String safeRequestKey = requestKey == null ? null : requestKey.trim();
 
-	private record AnalyticsEvent(Object source, ZonedDateTime date, Task task) {
+		if (safeRequestKey == null || safeRequestKey.isBlank()) {
+			return new AnalyticsCancellationToken(null);
+		}
+
+		AnalyticsCancellationToken cancellationToken = new AnalyticsCancellationToken(safeRequestKey);
+		AnalyticsCancellationToken previousToken = activeAnalyticsRequests.put(safeRequestKey, cancellationToken);
+
+		if (previousToken != null) {
+			previousToken.cancel();
+		}
+
+		return cancellationToken;
+	}
+
+
+	private void completeAnalyticsRequest(AnalyticsCancellationToken cancellationToken) {
+		if (cancellationToken == null || cancellationToken.requestKey() == null || cancellationToken.requestKey().isBlank()) {
+			return;
+		}
+		activeAnalyticsRequests.remove(cancellationToken.requestKey(), cancellationToken);
+	}
+
+
+	private void checkAnalyticsCancelled(AnalyticsCancellationToken cancellationToken) {
+		if (cancellationToken != null && cancellationToken.cancelled()) {
+			throw new CancellationException("Analytics request was cancelled");
+		}
+	}
+
+
+	private static final class AnalyticsCancellationToken {
+		private final String requestKey;
+		private volatile boolean cancelled;
+
+		private AnalyticsCancellationToken(String requestKey) {
+			this.requestKey = requestKey;
+		}
+
+		private String requestKey() {
+			return requestKey;
+		}
+
+		private void cancel() {
+			this.cancelled = true;
+		}
+
+		private boolean cancelled() {
+			return cancelled || Thread.currentThread().isInterrupted();
+		}
+	}
+
+
+	private record AnalyticsMessageRow(
+			Long id,
+			Long clientId,
+			ZonedDateTime date,
+			Boolean sent,
+			Boolean comment,
+			Boolean deleted,
+			AnswerRequired answerRequired
+	) {
+	}
+
+
+	private record AnalyticsEvent(ZonedDateTime date, Long taskId) {
 	}
 
 
@@ -859,16 +1097,160 @@ public class AnalyticsService {
 	}
 
 
-	private ZoneId getAnalyticsZone() {
+	private AnalyticsWorkingTime getAnalyticsWorkingTime() {
 		try {
 			AppSettings settings = appSettingsService.getGeneralSettings();
-			String timezone = settings == null ? null : settings.getTimezone();
-			if (timezone == null || timezone.isBlank()) {
-				return ZoneId.systemDefault();
+			ZoneId zone = parseZoneOrDefault(settings == null ? null : settings.getTimezone());
+			LocalTime workdayStart = parseTimeOrDefault(settings == null ? null : settings.getWorkdayStart(), LocalTime.of(9, 0));
+			LocalTime workdayEnd = parseTimeOrDefault(settings == null ? null : settings.getWorkdayEnd(), LocalTime.of(18, 0));
+			if (!workdayEnd.isAfter(workdayStart)) {
+				workdayStart = LocalTime.of(9, 0);
+				workdayEnd = LocalTime.of(18, 0);
 			}
+			EnumSet<DayOfWeek> workingDays = EnumSet.noneOf(DayOfWeek.class);
+			if (settings == null || Boolean.TRUE.equals(settings.getMondayEnabled())) {
+				workingDays.add(DayOfWeek.MONDAY);
+			}
+			if (settings == null || Boolean.TRUE.equals(settings.getTuesdayEnabled())) {
+				workingDays.add(DayOfWeek.TUESDAY);
+			}
+			if (settings == null || Boolean.TRUE.equals(settings.getWednesdayEnabled())) {
+				workingDays.add(DayOfWeek.WEDNESDAY);
+			}
+			if (settings == null || Boolean.TRUE.equals(settings.getThursdayEnabled())) {
+				workingDays.add(DayOfWeek.THURSDAY);
+			}
+			if (settings == null || Boolean.TRUE.equals(settings.getFridayEnabled())) {
+				workingDays.add(DayOfWeek.FRIDAY);
+			}
+			if (settings != null && Boolean.TRUE.equals(settings.getSaturdayEnabled())) {
+				workingDays.add(DayOfWeek.SATURDAY);
+			}
+			if (settings != null && Boolean.TRUE.equals(settings.getSundayEnabled())) {
+				workingDays.add(DayOfWeek.SUNDAY);
+			}
+			if (workingDays.isEmpty()) {
+				workingDays.addAll(EnumSet.of(
+						DayOfWeek.MONDAY,
+						DayOfWeek.TUESDAY,
+						DayOfWeek.WEDNESDAY,
+						DayOfWeek.THURSDAY,
+						DayOfWeek.FRIDAY
+				));
+			}
+			return new AnalyticsWorkingTime(
+					zone,
+					settings == null || Boolean.TRUE.equals(settings.getWorkingTimeEnabled()),
+					workdayStart,
+					workdayEnd,
+					workingDays
+			);
+		} catch (Exception ignored) {
+			return new AnalyticsWorkingTime(
+					ZoneId.systemDefault(),
+					true,
+					LocalTime.of(9, 0),
+					LocalTime.of(18, 0),
+					EnumSet.of(
+							DayOfWeek.MONDAY,
+							DayOfWeek.TUESDAY,
+							DayOfWeek.WEDNESDAY,
+							DayOfWeek.THURSDAY,
+							DayOfWeek.FRIDAY
+					)
+			);
+		}
+	}
+
+
+	private ZoneId parseZoneOrDefault(String timezone) {
+		if (timezone == null || timezone.isBlank()) {
+			return ZoneId.systemDefault();
+		}
+		try {
 			return ZoneId.of(timezone);
 		} catch (Exception ignored) {
 			return ZoneId.systemDefault();
 		}
 	}
+
+
+	private LocalTime parseTimeOrDefault(String value, LocalTime fallback) {
+		if (value == null || value.isBlank()) {
+			return fallback;
+		}
+		try {
+			return LocalTime.parse(value);
+		} catch (Exception ignored) {
+			return fallback;
+		}
+	}
+
+
+	private long getWorkingSeconds(
+			ZonedDateTime start,
+			ZonedDateTime end,
+			AnalyticsWorkingTime workingTime,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		checkAnalyticsCancelled(cancellationToken);
+		if (start == null || end == null || workingTime == null || end.isBefore(start)) {
+			return 0L;
+		}
+		ZoneId zone = workingTime.zone();
+		ZonedDateTime zonedStart = start.withZoneSameInstant(zone);
+		ZonedDateTime zonedEnd = end.withZoneSameInstant(zone);
+		if (!workingTime.enabled()) {
+			return Duration.between(zonedStart, zonedEnd).getSeconds();
+		}
+		LocalDate currentDate = zonedStart.toLocalDate();
+		LocalDate endDate = zonedEnd.toLocalDate();
+		long seconds = 0L;
+		while (!currentDate.isAfter(endDate)) {
+			checkAnalyticsCancelled(cancellationToken);
+			if (isWorkingDay(currentDate, workingTime)) {
+				ZonedDateTime windowStart = currentDate
+						.atTime(workingTime.workdayStart())
+						.atZone(zone);
+				ZonedDateTime windowEnd = currentDate
+						.atTime(workingTime.workdayEnd())
+						.atZone(zone);
+				ZonedDateTime segmentStart = maxDateTime(zonedStart, windowStart);
+				ZonedDateTime segmentEnd = minDateTime(zonedEnd, windowEnd);
+				if (segmentEnd.isAfter(segmentStart)) {
+					seconds += Duration.between(segmentStart, segmentEnd).getSeconds();
+				}
+			}
+			currentDate = currentDate.plusDays(1);
+		}
+		return seconds;
+	}
+
+
+	private boolean isWorkingDay(LocalDate date, AnalyticsWorkingTime workingTime) {
+		return date != null
+				&& workingTime != null
+				&& workingTime.workingDays().contains(date.getDayOfWeek());
+	}
+
+
+	private ZonedDateTime maxDateTime(ZonedDateTime left, ZonedDateTime right) {
+		return left.isAfter(right) ? left : right;
+	}
+
+
+	private ZonedDateTime minDateTime(ZonedDateTime left, ZonedDateTime right) {
+		return left.isBefore(right) ? left : right;
+	}
+
+
+	private record AnalyticsWorkingTime(
+			ZoneId zone,
+			boolean enabled,
+			LocalTime workdayStart,
+			LocalTime workdayEnd,
+			EnumSet<DayOfWeek> workingDays
+	) {
+	}
+
 }

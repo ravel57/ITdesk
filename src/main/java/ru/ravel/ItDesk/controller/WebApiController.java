@@ -18,6 +18,8 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 @RestController
@@ -949,7 +951,6 @@ public class WebApiController {
 	}
 
 
-
 	@PostMapping("/sla")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> postSla(@RequestBody OrganizationPriorityDuration sla) {
@@ -1139,17 +1140,41 @@ public class WebApiController {
 			@RequestParam(required = false) String typeIds,
 			@RequestParam(required = false) String priorityIds,
 			@RequestParam(required = false) String executorIds,
-			@RequestParam(required = false) String tagIds
+			@RequestParam(required = false) String tagIds,
+			HttpSession session
 	) {
-		return ResponseEntity.ok().body(analyticsService.getSummary(
-				from,
-				to,
-				groupBy,
-				typeIds,
-				priorityIds,
-				executorIds,
-				tagIds
-		));
+		try {
+			return ResponseEntity.ok().body(analyticsService.getSummary(
+					getAnalyticsRequestKey(session),
+					from,
+					to,
+					groupBy,
+					typeIds,
+					priorityIds,
+					executorIds,
+					tagIds
+			));
+		} catch (CancellationException ignored) {
+			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+		}
+	}
+
+
+	@PostMapping("/analytics/summary/cancel")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> cancelAnalyticsSummary(HttpSession session) {
+		analyticsService.cancelSummary(getAnalyticsRequestKey(session));
+		return ResponseEntity.noContent().build();
+	}
+
+
+	private String getAnalyticsRequestKey(HttpSession session) {
+		if (session == null) {
+			return null;
+		}
+		return "analytics-summary:" + session.getId();
 	}
 
 

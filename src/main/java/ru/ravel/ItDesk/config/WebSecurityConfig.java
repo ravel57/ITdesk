@@ -99,7 +99,7 @@ class WebSecurityConfig {
 						).permitAll()
 						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
 						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
-						.requestMatchers("/settings/profile").authenticated()
+						.requestMatchers("/settings", "/settings/profile").authenticated()
 						.requestMatchers("/settings/**").hasRole("ADMIN")
 						.requestMatchers("/ws/**").authenticated()
 						.anyRequest().authenticated())

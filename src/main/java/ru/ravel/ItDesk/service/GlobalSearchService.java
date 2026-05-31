@@ -19,6 +19,7 @@ import ru.ravel.ItDesk.dto.GlobalSearchDocument;
 import ru.ravel.ItDesk.dto.GlobalSearchResultDto;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
@@ -48,6 +49,7 @@ public class GlobalSearchService {
 	private final TaskRepository taskRepository;
 	private final UserRepository userRepository;
 	private final KnowledgeService knowledgeService;
+	private final MessageRepository messageRepository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -71,38 +73,73 @@ public class GlobalSearchService {
 		Set<String> allowedEntityTypes = normalizeEntityTypes(entityTypes);
 		try {
 			ensureIndexExists();
+			boolean fuzzyAllowed = isFuzzySearchAllowed(normalizedQuery);
+
 			SearchResponse<GlobalSearchDocument> response = elasticsearchClient.search(request -> request
 							.index(indexName)
 							.size(200)
 							.query(q -> q
-									.bool(b -> b
-											.should(s -> s
-													.multiMatch(m -> m
-															.query(query)
-															.type(TextQueryType.BestFields)
-															.fields(
-																	"title^5",
-																	"subtitle^2",
-																	"text",
-																	"entityType"
-															)
-													)
-											)
-											.should(s -> s
+									.bool(b -> {
+										b.should(s -> s
+												.matchPhrase(m -> m
+														.field("text")
+														.query(normalizedQuery)
+														.boost(80.0f)
+												)
+										);
+
+										b.should(s -> s
+												.matchPhrase(m -> m
+														.field("title")
+														.query(normalizedQuery)
+														.boost(8.0f)
+												)
+										);
+
+										b.should(s -> s
+												.multiMatch(m -> m
+														.query(normalizedQuery)
+														.type(TextQueryType.BestFields)
+														.fields(
+																"text^10",
+																"title^4",
+																"subtitle",
+																"entityType"
+														)
+												)
+										);
+
+										b.should(s -> s
+												.multiMatch(m -> m
+														.query(query)
+														.type(TextQueryType.BestFields)
+														.fields(
+																"text^10",
+																"title^4",
+																"subtitle",
+																"entityType"
+														)
+												)
+										);
+
+										if (fuzzyAllowed) {
+											b.should(s -> s
 													.multiMatch(m -> m
 															.query(normalizedQuery)
 															.type(TextQueryType.BestFields)
 															.fields(
-																	"title^5",
-																	"subtitle^2",
-																	"text",
-																	"entityType"
+																	"text^2",
+																	"title^2",
+																	"subtitle"
 															)
 															.fuzziness("AUTO")
+															.boost(0.3f)
 													)
-											)
-											.minimumShouldMatch("1")
-									)
+											);
+										}
+
+										return b.minimumShouldMatch("1");
+									})
 							),
 					GlobalSearchDocument.class
 			);
@@ -111,11 +148,11 @@ public class GlobalSearchService {
 					.map(hit -> toResult(hit.source(), hit.score()))
 					.filter(result -> allowedEntityTypes.isEmpty() || allowedEntityTypes.contains(result.getEntityType()))
 					.sorted(Comparator
-							.comparingInt((GlobalSearchResultDto result) -> getEntityTypePriority(result.getEntityType()))
-							.thenComparing(
-									result -> Objects.requireNonNullElse(result.getScore(), 0.0),
+							.comparing(
+									(GlobalSearchResultDto result) -> Objects.requireNonNullElse(result.getScore(), 0.0),
 									Comparator.reverseOrder()
 							)
+							.thenComparingInt(result -> getEntityTypePriority(result.getEntityType()))
 					)
 					.limit(50)
 					.toList();
@@ -129,34 +166,51 @@ public class GlobalSearchService {
 	public Map<String, Object> reindexAll() {
 		try {
 			recreateIndex();
-			List<GlobalSearchDocument> documents = new ArrayList<>();
+
+			Map<String, GlobalSearchDocument> documents = new LinkedHashMap<>();
+
 			clientRepository.findAll().forEach(client -> {
-				documents.add(toClientDocument(client));
-				safeList(client.getMessages()).forEach(message -> {
-					if (!Boolean.TRUE.equals(message.getDeleted())) {
-						documents.add(toClientMessageDocument(client, message));
-					}
-				});
+				putDocument(documents, toClientDocument(client));
+
 				safeList(client.getTasks()).forEach(task -> {
-					documents.add(toTaskDocument(client, task));
+					putDocument(documents, toTaskDocument(client, task));
+
 					safeList(task.getMessages()).forEach(message -> {
 						if (!Boolean.TRUE.equals(message.getDeleted())) {
-							documents.add(toTaskMessageDocument(client, task, message));
+							putDocument(documents, toTaskMessageDocument(client, task, message));
 						}
 					});
 				});
 			});
-			taskRepository.findAll().stream()
-					.filter(task -> documents.stream().noneMatch(doc -> doc.getId().equals("TASK:" + task.getId())))
-					.forEach(task -> documents.add(toTaskDocument(null, task)));
-			userRepository.findAll().forEach(user -> documents.add(toUserDocument(user)));
+
+			messageRepository.findClientMessagesForGlobalSearch().forEach(row -> {
+				Client client = row.getClient();
+				Message message = row.getMessage();
+
+				if (client == null || client.getId() == null || message == null || message.getId() == null) {
+					return;
+				}
+
+				if (!Boolean.TRUE.equals(message.getDeleted())) {
+					putDocument(documents, toClientMessageDocument(client, message));
+				}
+			});
+
+			taskRepository.findAll().forEach(task -> {
+				putDocument(documents, toTaskDocument(null, task));
+			});
+
+			userRepository.findAll().stream()
+					.filter(this::isSearchableUser)
+					.forEach(user -> putDocument(documents, toUserDocument(user)));
+
 			safeList(knowledgeService.getKnowledgeBase()).forEach(knowledge -> {
 				if (knowledge != null && knowledge.getId() != null) {
-					documents.add(toKnowledgeDocument(knowledge));
+					putDocument(documents, toKnowledgeDocument(knowledge));
 				}
 			});
 			BulkRequest.Builder bulk = new BulkRequest.Builder();
-			for (GlobalSearchDocument document : documents) {
+			for (GlobalSearchDocument document : documents.values()) {
 				if (document == null || document.getId() == null) {
 					continue;
 				}
@@ -213,12 +267,20 @@ public class GlobalSearchService {
 		if (client == null || client.getId() == null || message == null || message.getId() == null) {
 			return;
 		}
+		if (Boolean.TRUE.equals(message.getDeleted())) {
+			deleteDocument("CLIENT_MESSAGE:" + message.getId());
+			return;
+		}
 		indexDocument(toClientMessageDocument(client, message));
 	}
 
 
 	public void indexTaskMessage(Client client, Task task, Message message) {
 		if (task == null || task.getId() == null || message == null || message.getId() == null) {
+			return;
+		}
+		if (Boolean.TRUE.equals(message.getDeleted())) {
+			deleteDocument("TASK_MESSAGE:" + message.getId());
 			return;
 		}
 		indexDocument(toTaskMessageDocument(client, task, message));
@@ -230,6 +292,35 @@ public class GlobalSearchService {
 			return;
 		}
 		indexDocument(toKnowledgeDocument(knowledge));
+	}
+
+
+	public void indexUser(User user) {
+		if (user == null || user.getId() == null) {
+			return;
+		}
+
+		if (!isSearchableUser(user)) {
+			deleteUser(user.getId());
+			return;
+		}
+		indexDocument(toUserDocument(user));
+	}
+
+
+	public void deleteUser(Long userId) {
+		if (userId == null) {
+			return;
+		}
+		deleteDocument("USER:" + userId);
+	}
+
+
+	private boolean isSearchableUser(User user) {
+		return user != null
+				&& user.getId() != null
+				&& !Objects.equals(user, SystemUser.getInstance())
+				&& user.isEnabled();
 	}
 
 
@@ -350,7 +441,6 @@ public class GlobalSearchService {
 						"task-" + taskNumber,
 						"номер " + taskNumber,
 						taskNumber,
-						nullToEmpty(task.getName()),
 						nullToEmpty(task.getDescription()),
 						task.getStatus() == null ? "" : nullToEmpty(task.getStatus().getName()),
 						task.getPriority() == null ? "" : nullToEmpty(task.getPriority().getName()),
@@ -482,12 +572,23 @@ public class GlobalSearchService {
 				.clientId(document.getClientId())
 				.taskId(document.getTaskId())
 				.title(document.getTitle())
-				.text(document.getText())
+				.text(getResultDisplayText(document))
 				.subtitle(document.getSubtitle())
 				.url(document.getUrl())
 				.score(score)
 				.meta(document.getMeta())
 				.build();
+	}
+
+
+	private String getResultDisplayText(GlobalSearchDocument document) {
+		if (document == null || document.getEntityType() == null) {
+			return "";
+		}
+		if ("TASK".equals(document.getEntityType())) {
+			return "";
+		}
+		return nullToEmpty(document.getText()).trim();
 	}
 
 
@@ -517,8 +618,9 @@ public class GlobalSearchService {
 		if (!name.isBlank()) {
 			return name;
 		}
-		if (!user.getUsername().isBlank()) {
-			return user.getUsername();
+		String username = nullToEmpty(user.getUsername()).trim();
+		if (!username.isBlank()) {
+			return username;
 		}
 		return "Пользователь " + user.getId();
 	}
@@ -531,6 +633,14 @@ public class GlobalSearchService {
 
 	private <T> List<T> safeList(List<T> list) {
 		return list == null ? List.of() : list;
+	}
+
+
+	private void putDocument(Map<String, GlobalSearchDocument> documents, GlobalSearchDocument document) {
+		if (document == null || document.getId() == null) {
+			return;
+		}
+		documents.put(document.getId(), document);
 	}
 
 
@@ -558,6 +668,18 @@ public class GlobalSearchService {
 			elasticsearchClient.indices().delete(request -> request.index(indexName));
 		}
 		ensureIndexExists();
+	}
+
+
+	private boolean isFuzzySearchAllowed(String query) {
+		if (query == null || query.isBlank()) {
+			return false;
+		}
+		String normalized = query.trim();
+		if (normalized.matches(".*\\d.*")) {
+			return false;
+		}
+		return normalized.length() >= 4;
 	}
 
 

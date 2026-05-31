@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import ru.ravel.ItDesk.dto.AnswerRequired;
+import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 
 import java.time.ZonedDateTime;
@@ -14,8 +15,6 @@ import java.util.Optional;
 
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
-
-	Optional<Message> findByFileUuid(String fileUuid);
 
 	Optional<Message> findByMessengerMessageId(Integer messengerMessageId);
 
@@ -44,6 +43,20 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 			@Param("messengerMessageId") Integer messengerMessageId,
 			@Param("clientId") Long clientId
 	);
+
+
+	@Query("""
+			select
+				c as client,
+				m as message
+			from Client c
+			join c.messages m
+			where coalesce(m.deleted, false) = false
+			  and m.text is not null
+			  and trim(m.text) <> ''
+			order by c.id asc, m.date asc, m.id asc
+			""")
+	List<ClientMessageSearchRow> findClientMessagesForGlobalSearch();
 
 
 	@Query("""
@@ -83,5 +96,12 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 		Boolean getDeleted();
 
 		AnswerRequired getAnswerRequired();
+	}
+
+
+	interface ClientMessageSearchRow {
+		Client getClient();
+
+		Message getMessage();
 	}
 }

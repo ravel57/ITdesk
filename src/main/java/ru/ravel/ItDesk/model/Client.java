@@ -44,9 +44,10 @@ public class Client {
 
 	private String email;
 
-	@OneToMany(fetch = FetchType.EAGER, orphanRemoval = true)
+	@OneToMany(fetch = FetchType.LAZY, orphanRemoval = true)
 	@JoinColumn(name = "client_id")
 	@Builder.Default
+	@JsonIgnore
 	private List<Task> tasks = new ArrayList<>();
 
 	@OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
@@ -103,4 +104,34 @@ public class Client {
 
 	@Transient
 	private ZonedDateTime firstUnansweredMessageDate;
+
+	@Transient
+	private Long openTasksCount = 0L;
+
+	@Transient
+	private Long tasksWithoutAssigneeCount = 0L;
+
+	@Transient
+	private Boolean hasCriticalTasks = false;
+
+	@Transient
+	private Boolean hasTaskPing = false;
+
+	@Transient
+	private Long taskPingCount = 0L;
+
+	@Transient
+	private Long minimalSlaTaskId;
+
+	@Transient
+	private ZonedDateTime minimalSlaStartDate;
+
+	@Transient
+	private Long minimalSlaDurationSeconds;
+
+	@Transient
+	private ZonedDateTime minimalSlaDeadline;
+
+	@Transient
+	private Boolean minimalSlaPaused = false;
 }

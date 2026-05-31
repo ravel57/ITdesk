@@ -10,7 +10,7 @@ ext {
 }
 
 group = 'ru.ravel'
-version = '0.5.0'
+version = '0.6.0'
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_21
@@ -47,8 +47,7 @@ dependencies {
 	implementation 'org.springframework.session:spring-session-jdbc'
 
 //  redis
-//	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-//	implementation 'org.springframework.session:spring-session-data-redis'
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
 //	FeignClient
 	implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'

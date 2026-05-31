@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.service.*;
@@ -79,6 +78,13 @@ public class WebApiController {
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
+	}
+
+
+	@PostMapping("/tasks-page")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getTasksPage(@RequestBody Map<String, Object> request) {
+		return ResponseEntity.ok().body(taskService.getTasksPage(request));
 	}
 
 
@@ -358,7 +364,7 @@ public class WebApiController {
 
 	@DeleteMapping("/delete-user/{userId}")
 	@PreAuthorize("hasAnyRole('ADMIN')")
-	public ResponseEntity<Object> updateUser(@PathVariable Long userId) {
+	public ResponseEntity<Object> deleteUser(@PathVariable Long userId) {
 		if (LicenseStarter.isLicenseActive) {
 			userService.deleteUser(userId);
 			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -428,6 +434,13 @@ public class WebApiController {
 		return ResponseEntity.ok().body(
 				userService.filterOrganizationsByCurrentUser(organizationService.getOrganizations())
 		);
+	}
+
+
+	@GetMapping("/organizations/task-stats")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getOrganizationTaskStats() {
+		return ResponseEntity.ok().body(taskService.getOrganizationTaskStats());
 	}
 
 
@@ -1026,11 +1039,8 @@ public class WebApiController {
 	@GetMapping("/triggers")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getAllTriggers() {
-		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(automationTriggerService.list());
-		} else {
-			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-		}
+		return ResponseEntity.ok().body(automationTriggerService.list());
+
 	}
 
 
@@ -1090,11 +1100,7 @@ public class WebApiController {
 	@GetMapping("/trigger-types")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getTriggerTypes() {
-		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(TriggerType.values());
-		} else {
-			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-		}
+		return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 	}
 
 

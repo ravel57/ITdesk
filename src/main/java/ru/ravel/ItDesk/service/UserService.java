@@ -34,6 +34,7 @@ public class UserService {
 	private final LicenseRepository licenseRepository;
 	private final MessageRepository messageRepository;
 	private final SupportRepository supportRepository;
+	private final ClientRepository clientRepository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -41,6 +42,7 @@ public class UserService {
 	private final Set<Long> usersOnlineIds = ConcurrentHashMap.newKeySet();
 	private final TaskRepository taskRepository;
 	private final EventPublisher eventPublisher;
+	private final GlobalSearchService globalSearchService;
 
 
 	public List<User> getUsers() {
@@ -67,26 +69,38 @@ public class UserService {
 		if (getUsers().size() < LicenseStarter.maxUsers) {
 			Pattern pattern = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
 			if (pattern.matcher(userDto.getUsername()).matches()) {
-				try {
-					User user = User.builder()
-							.username(userDto.getUsername())
-							.firstname(userDto.getFirstname())
-							.lastname(userDto.getLastname())
-							.authorities(List.of(Role.getByName(userDto.getAuthorities())))
-							.password(passwordEncoder.encode(userDto.getPassword()))
-							.availableOrganizations(resolveAvailableOrganizations(userDto))
-							.isEnabled(true)
-							.isAccountNonLocked(true)
-							.isAccountNonExpired(true)
-							.isCredentialsNonExpired(true)
-							.build();
-					User saved = userRepository.save(user);
-					eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
-					return saved;
+				User existingUser = userRepository.findByUsername(userDto.getUsername()).orElse(null);
+				if (existingUser != null) {
+					existingUser.setIsEnabled(true);
+					existingUser.setIsAccountNonLocked(true);
 
-				} catch (Exception e) {
-					logger.error(e.getMessage(), e);
-					throw new RuntimeException(e);
+					User saved = userRepository.save(existingUser);
+					globalSearchService.indexUser(saved);
+
+					return saved;
+				} else {
+					try {
+						User user = User.builder()
+								.username(userDto.getUsername())
+								.firstname(userDto.getFirstname())
+								.lastname(userDto.getLastname())
+								.authorities(List.of(Role.getByName(userDto.getAuthorities())))
+								.password(passwordEncoder.encode(userDto.getPassword()))
+								.availableOrganizations(resolveAvailableOrganizations(userDto))
+								.isEnabled(true)
+								.isAccountNonLocked(true)
+								.isAccountNonExpired(true)
+								.isCredentialsNonExpired(true)
+								.build();
+						User saved = userRepository.save(user);
+						globalSearchService.indexUser(saved);
+						eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
+						return saved;
+
+					} catch (Exception e) {
+						logger.error(e.getMessage(), e);
+						throw new RuntimeException(e);
+					}
 				}
 			} else {
 				throw new RuntimeException("not email");
@@ -125,6 +139,7 @@ public class UserService {
 				.isCredentialsNonExpired(savedUser.getIsCredentialsNonExpired())
 				.build();
 		User saved = userRepository.save(user);
+		globalSearchService.indexUser(saved);
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
 		return saved;
 	}
@@ -219,10 +234,13 @@ public class UserService {
 				.filter(task -> Objects.equals(task.getExecutor().getId(), userId))
 				.forEach(task -> {
 					task.setExecutor(null);
-					taskRepository.save(task);
+					Task savedTask = taskRepository.save(task);
+					clientRepository.findByTaskId(savedTask.getId())
+							.ifPresent(client -> globalSearchService.indexTask(client, savedTask));
 				});
-		userRepository.save(user);
-		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", user));
+		User saved = userRepository.save(user);
+		globalSearchService.deleteUser(saved.getId());
+		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
 	}
 
 
@@ -358,21 +376,21 @@ public class UserService {
 		if (organizations == null) {
 			return List.of();
 		}
-
 		User currentUser = getCurrentUser();
-
 		if (isAdmin(currentUser)) {
 			return organizations.stream()
 					.filter(Objects::nonNull)
 					.toList();
 		}
-
 		if (!isOperator(currentUser)) {
 			return List.of();
 		}
-
+		if (hasAccessToAllOrganizations(currentUser)) {
+			return organizations.stream()
+					.filter(Objects::nonNull)
+					.toList();
+		}
 		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
-
 		return organizations.stream()
 				.filter(Objects::nonNull)
 				.filter(organization -> organization.getId() != null)
@@ -419,10 +437,22 @@ public class UserService {
 
 
 	private boolean canUserAccessClient(User user, Client client) {
-		if (client == null || client.getOrganization() == null) {
+		if (client == null || user == null) {
 			return false;
 		}
-		return canUserAccessOrganizationId(user, client.getOrganization().getId());
+		if (isAdmin(user)) {
+			return true;
+		}
+		if (!isOperator(user)) {
+			return false;
+		}
+		if (hasAccessToAllOrganizations(user)) {
+			return true;
+		}
+		if (client.getOrganization() == null || client.getOrganization().getId() == null) {
+			return false;
+		}
+		return getAvailableOrganizationIds(user).contains(client.getOrganization().getId());
 	}
 
 
@@ -435,6 +465,9 @@ public class UserService {
 		}
 		if (!isOperator(user)) {
 			return false;
+		}
+		if (hasAccessToAllOrganizations(user)) {
+			return true;
 		}
 		return getAvailableOrganizationIds(user).contains(organizationId);
 	}
@@ -449,6 +482,14 @@ public class UserService {
 				.map(Organization::getId)
 				.filter(Objects::nonNull)
 				.collect(java.util.stream.Collectors.toSet());
+	}
+
+
+	private boolean hasAccessToAllOrganizations(User user) {
+		if (!isOperator(user)) {
+			return false;
+		}
+		return user.getAvailableOrganizations() == null || user.getAvailableOrganizations().isEmpty();
 	}
 
 
@@ -517,6 +558,11 @@ public class UserService {
 		}
 		if (!isOperator(user)) {
 			return List.of();
+		}
+		if (hasAccessToAllOrganizations(user)) {
+			return clients.stream()
+					.filter(Objects::nonNull)
+					.toList();
 		}
 		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(user);
 		return clients.stream()

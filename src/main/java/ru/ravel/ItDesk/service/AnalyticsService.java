@@ -79,16 +79,22 @@ public class AnalyticsService {
 					parseIds(tagIds)
 			);
 
+			Set<Long> repositoryExecutorIds = filters.repositoryExecutorIds();
 			List<TaskRepository.AnalyticsTaskRow> taskRows = taskRepository.findAnalyticsTaskRows(
 					!filters.typeIds().isEmpty(),
 					idsOrDummy(filters.typeIds()),
 					!filters.priorityIds().isEmpty(),
 					idsOrDummy(filters.priorityIds()),
-					!filters.executorIds().isEmpty(),
-					idsOrDummy(filters.executorIds()),
+					!repositoryExecutorIds.isEmpty(),
+					idsOrDummy(repositoryExecutorIds),
 					!filters.tagIds().isEmpty(),
 					idsOrDummy(filters.tagIds())
 			);
+			if (filters.executorFilterNeedsInMemory()) {
+				taskRows = taskRows.stream()
+						.filter(row -> filters.matchesExecutor(row.getExecutor()))
+						.toList();
+			}
 			checkAnalyticsCancelled(cancellationToken);
 
 			Map<Long, List<Object>> tagsByTaskId = getTagsByTaskId(filters, cancellationToken);
@@ -143,9 +149,7 @@ public class AnalyticsService {
 				}
 				if (!Boolean.TRUE.equals(row.getCompleted())) {
 					openTasks++;
-					if (row.getExecutor() != null) {
-						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "openTasks");
-					}
+					incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "openTasks");
 					incrementBreakdowns(
 							taskTypeBreakdownMap,
 							priorityBreakdownMap,
@@ -159,9 +163,7 @@ public class AnalyticsService {
 					);
 					if (isTaskDeadlineOverdue(row.getDeadline(), now)) {
 						overdueDeadlines++;
-						if (row.getExecutor() != null) {
-							incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueDeadlines");
-						}
+						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueDeadlines");
 						incrementBreakdowns(
 								taskTypeBreakdownMap,
 								priorityBreakdownMap,
@@ -177,7 +179,7 @@ public class AnalyticsService {
 					if (isTaskDeadlineWarning(row.getDeadline(), now, DEFAULT_DEADLINE_WARNING_MINUTES)) {
 						deadlineWarnings++;
 					}
-					if (row.getExecutor() == null) {
+					if (isUnassignedExecutor(row.getExecutor())) {
 						unassignedTasks++;
 						incrementBreakdowns(
 								taskTypeBreakdownMap,
@@ -228,23 +230,27 @@ public class AnalyticsService {
 			Set<Long> closedTaskIdsFromEvents = new HashSet<>();
 			for (AnalyticsEvent closedEvent : closedEvents) {
 				checkAnalyticsCancelled(cancellationToken);
-				TaskRepository.AnalyticsTaskRow taskRow = closedEvent.taskId() == null ? null : taskRowsById.get(closedEvent.taskId());
+				if (closedEvent.taskId() == null) {
+					continue;
+				}
+				TaskRepository.AnalyticsTaskRow taskRow = taskRowsById.get(closedEvent.taskId());
 				if (filters.hasAny() && taskRow == null) {
 					continue;
 				}
-				closedTasks++;
-				if (closedEvent.taskId() != null) {
-					closedTaskIdsFromEvents.add(closedEvent.taskId());
-				}
 				ZonedDateTime eventDate = closedEvent.date();
+				if (!isBetween(eventDate, safeFrom, safeTo)) {
+					continue;
+				}
+				if (!closedTaskIdsFromEvents.add(closedEvent.taskId())) {
+					continue;
+				}
+				closedTasks++;
 				closedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
 				incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "closedTasks");
 				if (taskRow == null) {
 					continue;
 				}
-				if (taskRow.getExecutor() != null) {
-					incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "closedTasks");
-				}
+				incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "closedTasks");
 				incrementBreakdowns(
 						taskTypeBreakdownMap,
 						priorityBreakdownMap,
@@ -256,7 +262,6 @@ public class AnalyticsService {
 						tagsByTaskId.getOrDefault(taskRow.getId(), List.of()),
 						"closedTasks"
 				);
-
 				if (taskRow.getCreatedAt() != null && eventDate != null && !eventDate.isBefore(taskRow.getCreatedAt())) {
 					closeTimeSeconds.add(getWorkingSeconds(taskRow.getCreatedAt(), eventDate, workingTime, cancellationToken));
 				}
@@ -276,9 +281,7 @@ public class AnalyticsService {
 				closedTasks++;
 				closedByPeriodMap.merge(getPeriodLabel(row.getClosedAt(), safeGroupBy, analyticsZone), 1L, Long::sum);
 				incrementHourlyLoad(hourlyLoadMap, row.getClosedAt(), analyticsZone, "closedTasks");
-				if (row.getExecutor() != null) {
-					incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "closedTasks");
-				}
+				incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "closedTasks");
 				incrementBreakdowns(
 						taskTypeBreakdownMap,
 						priorityBreakdownMap,
@@ -316,9 +319,7 @@ public class AnalyticsService {
 				if (taskRow == null) {
 					continue;
 				}
-				if (taskRow.getExecutor() != null) {
-					incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "reopenedTasks");
-				}
+				incrementOperatorLoad(operatorLoadMap, taskRow.getExecutor(), "reopenedTasks");
 				incrementBreakdowns(
 						taskTypeBreakdownMap,
 						priorityBreakdownMap,
@@ -394,13 +395,14 @@ public class AnalyticsService {
 			Map<String, Map<String, Object>> tagBreakdownMap,
 			AnalyticsCancellationToken cancellationToken
 	) {
+		Set<Long> repositoryExecutorIds = filters.repositoryExecutorIds();
 		List<TaskRepository.SlaAnalyticsRow> slaRows = taskRepository.findSlaAnalyticsRows(
 				!filters.typeIds().isEmpty(),
 				idsOrDummy(filters.typeIds()),
 				!filters.priorityIds().isEmpty(),
 				idsOrDummy(filters.priorityIds()),
-				!filters.executorIds().isEmpty(),
-				idsOrDummy(filters.executorIds()),
+				!repositoryExecutorIds.isEmpty(),
+				idsOrDummy(repositoryExecutorIds),
 				!filters.tagIds().isEmpty(),
 				idsOrDummy(filters.tagIds())
 		);
@@ -409,7 +411,9 @@ public class AnalyticsService {
 
 		for (TaskRepository.SlaAnalyticsRow row : slaRows) {
 			checkAnalyticsCancelled(cancellationToken);
-
+			if (!filters.matchesExecutor(row.getExecutor())) {
+				continue;
+			}
 			Sla sla = row.getSla();
 			if (sla == null) {
 				continue;
@@ -421,11 +425,7 @@ public class AnalyticsService {
 			}
 
 			overdueSla++;
-
-			if (row.getExecutor() != null) {
-				incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueSla");
-			}
-
+			incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueSla");
 			incrementBreakdowns(
 					taskTypeBreakdownMap,
 					priorityBreakdownMap,
@@ -449,8 +449,8 @@ public class AnalyticsService {
 				idsOrDummy(filters.typeIds()),
 				!filters.priorityIds().isEmpty(),
 				idsOrDummy(filters.priorityIds()),
-				!filters.executorIds().isEmpty(),
-				idsOrDummy(filters.executorIds()),
+				!filters.repositoryExecutorIds().isEmpty(),
+				idsOrDummy(filters.repositoryExecutorIds()),
 				!filters.tagIds().isEmpty(),
 				idsOrDummy(filters.tagIds())
 		);
@@ -642,14 +642,12 @@ public class AnalyticsService {
 
 
 	private void incrementOperatorLoad(Map<Long, Map<String, Object>> operatorLoadMap, User user, String metric) {
-		if (user == null || user.getId() == null) {
-			return;
-		}
-
-		Map<String, Object> row = operatorLoadMap.computeIfAbsent(user.getId(), userId -> {
+		Long key = user == null || user.getId() == null ? EMPTY_GROUP_ID : user.getId();
+		String name = user == null || user.getId() == null ? "Без исполнителя" : getUserDisplayName(user);
+		Map<String, Object> row = operatorLoadMap.computeIfAbsent(key, userId -> {
 			Map<String, Object> created = new LinkedHashMap<>();
-			created.put("userId", user.getId());
-			created.put("name", getUserDisplayName(user));
+			created.put("userId", key);
+			created.put("name", name);
 			created.put("openTasks", 0L);
 			created.put("closedTasks", 0L);
 			created.put("overdueSla", 0L);
@@ -675,7 +673,12 @@ public class AnalyticsService {
 	) {
 		incrementBreakdown(taskTypeBreakdownMap, getEntityId(type), getEntityName(type, "Без типа"), metric);
 		incrementBreakdown(priorityBreakdownMap, getEntityId(priority), getEntityName(priority, "Без приоритета"), metric);
-		incrementBreakdown(executorBreakdownMap, executor == null ? null : executor.getId(), executor == null ? "Без исполнителя" : getUserDisplayName(executor), metric);
+		incrementBreakdown(
+				executorBreakdownMap,
+				isUnassignedExecutor(executor) ? null : executor.getId(),
+				isUnassignedExecutor(executor) ? "Без исполнителя" : getUserDisplayName(executor),
+				metric
+		);
 
 		Collection<?> safeTags = safeCollection(tags);
 		if (safeTags.isEmpty()) {
@@ -1117,6 +1120,27 @@ public class AnalyticsService {
 			return !typeIds.isEmpty() || !priorityIds.isEmpty() || !executorIds.isEmpty() || !tagIds.isEmpty();
 		}
 
+		private boolean executorFilterNeedsInMemory() {
+			return executorIds.contains(EMPTY_GROUP_ID);
+		}
+
+		private Set<Long> repositoryExecutorIds() {
+			if (executorFilterNeedsInMemory()) {
+				return Set.of();
+			}
+			return executorIds;
+		}
+
+		private boolean matchesExecutor(User executor) {
+			if (executorIds.isEmpty()) {
+				return true;
+			}
+			if (isUnassignedExecutor(executor)) {
+				return executorIds.contains(EMPTY_GROUP_ID);
+			}
+			return executorIds.contains(executor.getId());
+		}
+
 		private Map<String, Object> toMap() {
 			Map<String, Object> result = new LinkedHashMap<>();
 			result.put("typeIds", typeIds);
@@ -1272,6 +1296,11 @@ public class AnalyticsService {
 
 	private ZonedDateTime minDateTime(ZonedDateTime left, ZonedDateTime right) {
 		return left.isBefore(right) ? left : right;
+	}
+
+
+	private static boolean isUnassignedExecutor(User user) {
+		return user == null || user.getId() == null;
 	}
 
 

@@ -39,18 +39,20 @@ spring:
     suffix: .html
     mode: HTML
     cache: false
-
-#  redis:
-#    host: ${REDIS_HOST:localhost}
-#    port: ${REDIS_PORT:6379}
-#    database: ${REDIS_DB:0}
-#    timeout: 60000   # мс (60 секунд)
-#    lettuce:
-#      pool:
-#        max-active: 8
-#        max-idle: 8
-#        min-idle: 0
-#        max-wait: -1ms
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:supersecret}
+      database: ${REDIS_DB:0}
+      timeout: 60000
+      ttl-days: 7
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
 
 minio:
   url: ${MINIO_URL:http://localhost:9000}

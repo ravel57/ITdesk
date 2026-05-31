@@ -65,18 +65,19 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				coalesce(t.completed, false) as completed,
 				t.type as type,
 				t.priority as priority,
-				t.executor as executor
+				executor as executor
 			from Task t
+			left join t.executor executor
 			where (:hasTypeIds = false or t.type.id in :typeIds)
 			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
-			  and (:hasExecutorIds = false or t.executor.id in :executorIds)
+			  and (:hasExecutorIds = false or executor.id in :executorIds)
 			  and (
-			      :hasTagIds = false
-			      or exists (
-			          select tag.id
-			          from t.tags tag
-			          where tag.id in :tagIds
-			      )
+				  :hasTagIds = false
+				  or exists (
+					  select tag.id
+					  from t.tags tag
+					  where tag.id in :tagIds
+				  )
 			  )
 			""")
 	List<AnalyticsTaskRow> findAnalyticsTaskRows(
@@ -96,17 +97,18 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.id as taskId,
 				tag as tag
 			from Task t
+			left join t.executor executor
 			join t.tags tag
 			where (:hasTypeIds = false or t.type.id in :typeIds)
 			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
-			  and (:hasExecutorIds = false or t.executor.id in :executorIds)
+			  and (:hasExecutorIds = false or executor.id in :executorIds)
 			  and (
-			      :hasTagIds = false
-			      or exists (
-			          select filterTag.id
-			          from t.tags filterTag
-			          where filterTag.id in :tagIds
-			      )
+				  :hasTagIds = false
+				  or exists (
+					  select filterTag.id
+					  from t.tags filterTag
+					  where filterTag.id in :tagIds
+				  )
 			  )
 			""")
 	List<AnalyticsTaskTagRow> findAnalyticsTaskTagRows(
@@ -127,20 +129,21 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.sla as sla,
 				t.type as type,
 				t.priority as priority,
-				t.executor as executor
+				executor as executor
 			from Task t
+			left join t.executor executor
 			where coalesce(t.completed, false) = false
 			  and t.sla is not null
 			  and (:hasTypeIds = false or t.type.id in :typeIds)
 			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
-			  and (:hasExecutorIds = false or t.executor.id in :executorIds)
+			  and (:hasExecutorIds = false or executor.id in :executorIds)
 			  and (
-			      :hasTagIds = false
-			      or exists (
-			          select tag.id
-			          from t.tags tag
-			          where tag.id in :tagIds
-			      )
+				  :hasTagIds = false
+				  or exists (
+					  select tag.id
+					  from t.tags tag
+					  where tag.id in :tagIds
+				  )
 			  )
 			""")
 	List<SlaAnalyticsRow> findSlaAnalyticsRows(

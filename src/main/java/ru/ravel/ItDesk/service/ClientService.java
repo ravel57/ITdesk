@@ -1,11 +1,12 @@
 package ru.ravel.ItDesk.service;
 
 import com.pengrad.telegrambot.TelegramException;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.*;
@@ -39,6 +40,7 @@ public class ClientService {
 	private final EventPublisher eventPublisher;
 	private final UserRepository userRepository;
 	private final GlobalSearchService globalSearchService;
+	private final SlaPauseRepository slaPauseRepository;
 
 	private final Map<String, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<String, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -53,11 +55,13 @@ public class ClientService {
 	private boolean isDemo;
 
 
+	@Transactional(readOnly = true)
 	public List<Client> getClients() {
 		return prepareClientsForList(userService.filterClientsByCurrentUser(clientsRepository.findAll()));
 	}
 
 
+	@Transactional(readOnly = true)
 	public List<Client> getClientsForSystem() {
 		return prepareClientsForList(clientsRepository.findAll());
 	}
@@ -79,11 +83,7 @@ public class ClientService {
 			client.setFirstUnansweredMessageDate(getFirstUnansweredMessageDate(messages));
 			client.setTypingUsers(Objects.requireNonNullElse(typingUsers.get(client.getId()), Collections.emptySet()));
 			client.setWatchingUsers(Objects.requireNonNullElse(watchingUsers.get(client.getId()), Collections.emptySet()));
-			safeCollection(client.getTasks()).forEach(task -> {
-				if (task.getMessages() != null) {
-					task.getMessages().sort(Message::compareTo);
-				}
-			});
+			fillClientTaskSummary(client);
 			if (client.getMessageFrom() == null) {
 				client.setSourceChannel(null);
 				return;
@@ -104,6 +104,45 @@ public class ClientService {
 			}
 		});
 		return clients;
+	}
+
+
+	private void fillClientTaskSummary(Client client) {
+		if (client == null || client.getId() == null) {
+			return;
+		}
+		client.setOpenTasksCount(safeLong(clientsRepository.countOpenTasksByClientId(client.getId())));
+		client.setTasksWithoutAssigneeCount(safeLong(clientsRepository.countOpenTasksWithoutAssigneeByClientId(client.getId())));
+		client.setHasCriticalTasks(safeLong(clientsRepository.countOpenCriticalTasksByClientId(client.getId())) > 0);
+
+		Long currentUserId = Optional.ofNullable(userService.getCurrentUser())
+				.map(User::getId)
+				.orElse(null);
+		if (currentUserId == null) {
+			client.setTaskPingCount(0L);
+			client.setHasTaskPing(false);
+		} else {
+			long taskPingCount = safeLong(clientsRepository.countOpenTaskPingsByClientIdAndUserId(client.getId(), currentUserId));
+			client.setTaskPingCount(taskPingCount);
+			client.setHasTaskPing(taskPingCount > 0);
+		}
+
+		clientsRepository.findFirstOpenSlaTaskByClientId(client.getId(), PageRequest.of(0, 1))
+				.stream()
+				.findFirst()
+				.ifPresent(task -> {
+					Sla sla = task.getSla();
+					client.setMinimalSlaTaskId(task.getId());
+					client.setMinimalSlaStartDate(sla == null ? null : sla.getStartDate());
+					client.setMinimalSlaDurationSeconds(sla == null || sla.getDuration() == null ? null : sla.getDuration().getSeconds());
+					client.setMinimalSlaDeadline(getDeadline(sla));
+					client.setMinimalSlaPaused(isPaused(sla));
+				});
+	}
+
+
+	private long safeLong(Long value) {
+		return value == null ? 0L : value;
 	}
 
 
@@ -150,16 +189,28 @@ public class ClientService {
 
 
 	public Duration getPausedDuration(Sla sla) {
-		if (sla == null) {
+		if (sla == null || sla.getId() == null) {
 			return Duration.ZERO;
 		}
+		return getPausedDurationBySlaId(sla.getId());
+	}
+
+
+	private Duration getPausedDurationBySlaId(Long slaId) {
+		if (slaId == null) {
+			return Duration.ZERO;
+		}
+
 		ZonedDateTime now = ZonedDateTime.now();
-		long seconds = safeCollection(sla.getPauses()).stream()
-				.mapToLong(p -> {
-					ZonedDateTime end = (p.getEndedAt() == null) ? now : p.getEndedAt();
-					return Math.max(0, Duration.between(p.getStartedAt(), end).getSeconds());
+
+		long seconds = slaPauseRepository.findAllBySlaId(slaId).stream()
+				.filter(pause -> pause.getStartedAt() != null)
+				.mapToLong(pause -> {
+					ZonedDateTime end = pause.getEndedAt() == null ? now : pause.getEndedAt();
+					return Math.max(0, Duration.between(pause.getStartedAt(), end).getSeconds());
 				})
 				.sum();
+
 		return Duration.ofSeconds(seconds);
 	}
 
@@ -179,13 +230,17 @@ public class ClientService {
 
 	public Duration getRemaining(Sla sla) {
 		ZonedDateTime deadline = getDeadline(sla);
-		if (deadline == null) return Duration.ZERO;
+		if (deadline == null) {
+			return Duration.ZERO;
+		}
 		return Duration.between(ZonedDateTime.now(), deadline);
 	}
 
 
 	public boolean isPaused(Sla sla) {
-		return sla != null && safeCollection(sla.getPauses()).stream().anyMatch(p -> p.getEndedAt() == null);
+		return sla != null
+				&& sla.getId() != null
+				&& slaPauseRepository.findFirstBySlaIdAndEndedAtIsNullOrderByStartedAtDesc(sla.getId()).isPresent();
 	}
 
 
@@ -511,7 +566,6 @@ public class ClientService {
 		}
 		return getClients().stream()
 				.filter(client -> observer.getAvailableOrganizations().contains(client.getOrganization()))
-				.peek(client -> safeCollection(client.getTasks()).forEach(task -> task.setMessages(Collections.emptyList())))
 				.toList();
 	}
 
@@ -619,10 +673,7 @@ public class ClientService {
 						.filter(m -> Objects.equals(m.getId(), message.getReplyMessageId()))
 						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
-		safeCollection(client.getTasks()).forEach(task -> messages.stream()
-				.filter(message -> task.getLinkedMessageId() != null)
-				.filter(message -> Objects.equals(message.getId(), task.getLinkedMessageId()))
-				.forEach(message -> message.setLinkedTaskId(task.getLinkedMessageId())));
+		applyLinkedTaskIds(clientId, messages);
 		return new PageMessages(messages, skipFromStart == 0);
 	}
 
@@ -639,13 +690,41 @@ public class ClientService {
 						.filter(m -> Objects.equals(m.getId(), msg.getReplyMessageId()))
 						.findFirst().orElse(Message.builder().text("").build()).getText()))
 				.toList();
-		safeCollection(client.getTasks()).forEach(task -> messages.stream()
-				.filter(msg -> Objects.equals(msg.getId(), task.getLinkedMessageId()))
-				.forEach(msg -> msg.setLinkedTaskId(task.getLinkedMessageId())));
+		applyLinkedTaskIds(clientId, messages);
 		int index = Math.max(0, messages.indexOf(message));
 		int page = Math.max(1, ((Double) Math.ceil((double) (messages.size() - index) / pageLimit)).intValue());
 		int skipFromStart = Math.max(0, messages.size() - pageLimit * page);
 		return new LinkedMessagePage(page, messages.stream().skip(skipFromStart).sorted().toList(), skipFromStart == 0);
+	}
+
+
+	private void applyLinkedTaskIds(Long clientId, List<Message> messages) {
+		if (clientId == null || messages == null || messages.isEmpty()) {
+			return;
+		}
+		List<Long> messageIds = messages.stream()
+				.map(Message::getId)
+				.filter(Objects::nonNull)
+				.toList();
+		if (messageIds.isEmpty()) {
+			return;
+		}
+		Map<Long, Long> taskIdByMessageId = new HashMap<>();
+		clientsRepository.findLinkedTaskIdsByClientIdAndMessageIds(clientId, messageIds)
+				.forEach(row -> {
+					if (row.length < 2 || row[0] == null || row[1] == null) {
+						return;
+					}
+					Long messageId = ((Number) row[0]).longValue();
+					Long taskId = ((Number) row[1]).longValue();
+					taskIdByMessageId.put(messageId, taskId);
+				});
+		messages.forEach(message -> {
+			Long taskId = taskIdByMessageId.get(message.getId());
+			if (taskId != null) {
+				message.setLinkedTaskId(taskId);
+			}
+		});
 	}
 
 
@@ -698,7 +777,17 @@ public class ClientService {
 		Client client = getClientForCurrentUser(clientId);
 		return safeCollection(client.getMessages()).stream()
 				.filter(m -> m.getFileUuid() != null)
-				.map(m -> new FileDto(m.getFileUuid(), m.getFileName(), m.getFileType()))
+				.filter(m -> !Boolean.TRUE.equals(m.getDeleted()))
+				.sorted(Comparator
+						.comparing(Message::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
+						.thenComparing(Message::getId, Comparator.nullsLast(Comparator.reverseOrder()))
+				)
+				.map(m -> new FileDto(
+						m.getFileUuid(),
+						m.getFileName(),
+						m.getFileType(),
+						m.getDate()
+				))
 				.toList();
 	}
 
@@ -707,14 +796,21 @@ public class ClientService {
 		if (clientId == null || taskId == null) {
 			return Collections.emptyList();
 		}
-		Client client = getClientForCurrentUser(clientId);
-		Task task = safeCollection(client.getTasks()).stream()
-				.filter(t -> Objects.equals(t.getId(), taskId))
-				.findFirst()
-				.orElseThrow();
+		getClientByTaskForCurrentUser(taskId);
+		Task task = taskRepository.findById(taskId).orElseThrow();
 		return safeCollection(task.getMessages()).stream()
 				.filter(m -> m.getFileUuid() != null)
-				.map(m -> new FileDto(m.getFileUuid(), m.getFileName(), m.getFileType()))
+				.filter(m -> !Boolean.TRUE.equals(m.getDeleted()))
+				.sorted(Comparator
+						.comparing(Message::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
+						.thenComparing(Message::getId, Comparator.nullsLast(Comparator.reverseOrder()))
+				)
+				.map(m -> new FileDto(
+						m.getFileUuid(),
+						m.getFileName(),
+						m.getFileType(),
+						m.getDate()
+				))
 				.toList();
 	}
 

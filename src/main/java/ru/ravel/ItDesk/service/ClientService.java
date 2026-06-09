@@ -26,6 +26,9 @@ import java.util.regex.Pattern;
 @Service
 @RequiredArgsConstructor
 public class ClientService {
+	private static final Integer PAGE_LIMIT = 100;
+
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
 	private final ClientRepository clientsRepository;
 	private final TaskRepository taskRepository;
@@ -41,15 +44,12 @@ public class ClientService {
 	private final UserRepository userRepository;
 	private final GlobalSearchService globalSearchService;
 	private final SlaPauseRepository slaPauseRepository;
+	private final UserNotificationService userNotificationService;
 
 	private final Map<String, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<String, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<Long, Set<User>> typingUsers = new ConcurrentHashMap<>();
 	private final Map<Long, Set<User>> watchingUsers = new ConcurrentHashMap<>();
-
-	private final Logger logger = LoggerFactory.getLogger(this.getClass());
-	private final Integer pageLimit = 100;
-	private final UserNotificationService userNotificationService;
 
 	@Value("${app.is-demo:false}")
 	private boolean isDemo;
@@ -657,44 +657,44 @@ public class ClientService {
 	}
 
 
+	@Transactional(readOnly = true)
 	public PageMessages getPageOfMessages(Long clientId, Integer page) {
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
 		int safePage = Math.max(1, Objects.requireNonNullElse(page, 1));
+		int offset = Math.max(0, PAGE_LIMIT * (safePage - 1));
 		Client client = getClientForCurrentUser(clientId);
-		List<Message> clientMessages = safeCollection(client.getMessages()).stream().sorted().toList();
-		int skipFromStart = Math.max(0, clientMessages.size() - pageLimit * safePage);
-		long limit = skipFromStart != 0 ? pageLimit : Math.max(0, clientMessages.size() - ((long) pageLimit * (safePage - 1)));
-		List<Message> messages = clientMessages.stream()
-				.skip(skipFromStart)
-				.limit(limit)
-				.peek(message -> message.setReplyMessageText(clientMessages.stream()
-						.filter(m -> Objects.equals(m.getId(), message.getReplyMessageId()))
-						.findFirst().orElse(Message.builder().text("").build()).getText()))
+		List<Message> loadedDesc = messageRepository.findClientMessagesPageFromEnd(
+				client.getId(),
+				PAGE_LIMIT + 1,
+				offset
+		);
+		boolean hasOlderMessages = loadedDesc.size() > PAGE_LIMIT;
+		List<Message> messages = loadedDesc.stream()
+				.limit(PAGE_LIMIT)
+				.sorted(Comparator
+						.comparing(Message::getDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+						.thenComparing(Message::getId, Comparator.nullsFirst(Comparator.naturalOrder()))
+				)
 				.toList();
+		fillReplyDataForPage(messages);
 		applyLinkedTaskIds(clientId, messages);
-		return new PageMessages(messages, skipFromStart == 0);
+		return new PageMessages(messages, !hasOlderMessages);
 	}
 
 
+	@Transactional(readOnly = true)
 	public LinkedMessagePage getMessagesUntilLinkedMessage(Long clientId, Long linkedMessageId) {
 		if (clientId == null || linkedMessageId == null) {
 			throw new IllegalArgumentException("clientId and linkedMessageId must not be null");
 		}
 		Message message = messageRepository.findById(linkedMessageId).orElseThrow();
 		Client client = getClientForCurrentUser(clientId);
-		List<Message> messages = safeCollection(client.getMessages()).stream()
-				.sorted()
-				.peek(msg -> msg.setReplyMessageText(safeCollection(client.getMessages()).stream()
-						.filter(m -> Objects.equals(m.getId(), msg.getReplyMessageId()))
-						.findFirst().orElse(Message.builder().text("").build()).getText()))
-				.toList();
-		applyLinkedTaskIds(clientId, messages);
-		int index = Math.max(0, messages.indexOf(message));
-		int page = Math.max(1, ((Double) Math.ceil((double) (messages.size() - index) / pageLimit)).intValue());
-		int skipFromStart = Math.max(0, messages.size() - pageLimit * page);
-		return new LinkedMessagePage(page, messages.stream().skip(skipFromStart).sorted().toList(), skipFromStart == 0);
+		long messagesAfter = messageRepository.countClientMessagesAfterMessage(client.getId(), message.getId());
+		int page = Math.max(1, (int) Math.ceil((messagesAfter + 1.0) / PAGE_LIMIT));
+		PageMessages pageMessages = getPageOfMessages(client.getId(), page);
+		return new LinkedMessagePage(page, pageMessages.getMessages(), pageMessages.getIsEnd());
 	}
 
 
@@ -737,7 +737,7 @@ public class ClientService {
 		return safeCollection(client.getMessages()).stream()
 				.filter(message -> message.getText() != null)
 				.filter(message -> message.getText().toLowerCase(Locale.ROOT).contains(query))
-				.sorted()
+				.sorted(Comparator.reverseOrder())
 				.toList();
 	}
 
@@ -751,7 +751,7 @@ public class ClientService {
 		return safeCollection(task.getMessages()).stream()
 				.filter(message -> message.getText() != null)
 				.filter(message -> message.getText().toLowerCase(Locale.ROOT).contains(query))
-				.sorted()
+				.sorted(Comparator.reverseOrder())
 				.toList();
 	}
 
@@ -1068,6 +1068,65 @@ public class ClientService {
 		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
 		userService.assertCurrentUserCanAccessClient(client);
 		return client;
+	}
+
+
+	private Map<Long, Message> buildMessageById(List<Message> messages) {
+		Map<Long, Message> messageById = new HashMap<>();
+		for (Message message : safeCollection(messages)) {
+			if (message != null && message.getId() != null) {
+				messageById.put(message.getId(), message);
+			}
+		}
+		return messageById;
+	}
+
+	private void fillReplyDataForPage(List<Message> messages) {
+		if (messages == null || messages.isEmpty()) {
+			return;
+		}
+
+		List<Long> replyMessageIds = messages.stream()
+				.map(Message::getReplyMessageId)
+				.filter(Objects::nonNull)
+				.distinct()
+				.toList();
+
+		if (replyMessageIds.isEmpty()) {
+			return;
+		}
+
+		Map<Long, Message> replyMessageById = new HashMap<>();
+
+		messageRepository.findAllById(replyMessageIds).forEach(message -> {
+			if (message != null && message.getId() != null) {
+				replyMessageById.put(message.getId(), message);
+			}
+		});
+
+		messages.forEach(message -> fillReplyMessageText(message, replyMessageById));
+	}
+
+
+	private void fillReplyMessageText(Message message, Map<Long, Message> messageById) {
+		if (message == null || message.getReplyMessageId() == null) {
+			return;
+		}
+		Message replyMessage = messageById.get(message.getReplyMessageId());
+		if (replyMessage == null) {
+			message.setReplyMessageText("");
+			return;
+		}
+		message.setReplyMessageText(Objects.toString(replyMessage.getText(), ""));
+		if (message.getReplyFileType() == null) {
+			message.setReplyFileType(replyMessage.getFileType());
+		}
+		if (message.getReplyUuid() == null && replyMessage.getFileUuid() != null && !replyMessage.getFileUuid().isBlank()) {
+			try {
+				message.setReplyUuid(UUID.fromString(replyMessage.getFileUuid()));
+			} catch (Exception ignored) {
+			}
+		}
 	}
 
 }

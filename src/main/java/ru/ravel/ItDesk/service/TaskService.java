@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
+import ru.ravel.ItDesk.dto.TaskUpdatedDto;
 
 import java.time.*;
 import java.util.*;
@@ -55,13 +56,15 @@ public class TaskService {
 		List<Map<String, Object>> filterChain = getFilterChainRequestValue(request);
 		List<Map<String, Object>> requiredFilterChain = getRequestFilterChainValue(request, "requiredFilterChain");
 		Long clientId = getLongRequestValue(request, "clientId", null);
+		Long taskId = getLongRequestValue(request, "taskId", null);
 		TaskPageQueryContext queryContext = buildTaskPageQueryContext(
 				includeCompleted,
 				search,
 				filterChain,
 				requiredFilterChain,
 				filterJoinOperator,
-				clientId
+				clientId,
+				taskId
 		);
 		long totalElements = countTaskPageRows(queryContext);
 		int totalPages = totalElements == 0
@@ -86,6 +89,32 @@ public class TaskService {
 		response.put("totalPages", totalPages);
 		response.put("isEnd", page >= totalPages || tasks.isEmpty());
 		return response;
+	}
+
+
+	@Transactional(readOnly = true)
+	public TaskUpdatedDto buildTaskUpdatedDto(Long clientId, Long taskId) {
+		if (taskId == null) {
+			throw new IllegalArgumentException("taskId must not be null");
+		}
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		Client client = resolveTaskSocketClient(clientId, taskId);
+		Long resolvedClientId = client != null ? client.getId() : clientId;
+		return new TaskUpdatedDto(
+				resolvedClientId,
+				toTaskPageDto(task, client)
+		);
+	}
+
+
+	private Client resolveTaskSocketClient(Long clientId, Long taskId) {
+		if (clientId != null) {
+			return clientsRepository.findById(clientId).orElse(null);
+		}
+		if (taskId == null) {
+			return null;
+		}
+		return clientsRepository.findByTaskId(taskId).orElse(null);
 	}
 
 
@@ -209,7 +238,8 @@ public class TaskService {
 			List<Map<String, Object>> filterChain,
 			List<Map<String, Object>> requiredFilterChain,
 			String filterJoinOperator,
-			Long clientId
+			Long clientId,
+			Long taskId
 	) {
 		Map<String, Object> params = new HashMap<>();
 
@@ -229,6 +259,10 @@ public class TaskService {
 		if (clientId != null) {
 			params.put("taskPageClientId", clientId);
 			fromWhere.append(" and c.id = :taskPageClientId ");
+		}
+		if (taskId != null) {
+			params.put("taskPageTaskId", taskId);
+			fromWhere.append(" and t.id = :taskPageTaskId ");
 		}
 		if (!includeCompleted) {
 			fromWhere.append("""
@@ -1049,6 +1083,7 @@ public class TaskService {
 			Map<String, Object> slaMap = (Map<String, Object>) rawSlaMap;
 			putZonedDateTime(slaMap, "startDate", task.getSla().getStartDate());
 		}
+		putTaskMessagesDates(taskDto, task);
 		taskDto.put("client", toClientPageDto(client));
 		return taskDto;
 	}
@@ -1056,6 +1091,56 @@ public class TaskService {
 
 	private void putZonedDateTime(Map<String, Object> dto, String key, ZonedDateTime value) {
 		dto.put(key, value == null ? null : value.toString());
+	}
+
+
+	@SuppressWarnings("unchecked")
+	private void putTaskMessagesDates(Map<String, Object> taskDto, Task task) {
+		if (taskDto == null || task == null || task.getMessages() == null) {
+			return;
+		}
+		Object rawMessages = taskDto.get("messages");
+		if (!(rawMessages instanceof List<?> dtoMessages)) {
+			return;
+		}
+		Map<Long, Message> messageById = task.getMessages().stream()
+				.filter(Objects::nonNull)
+				.filter(message -> message.getId() != null)
+				.collect(
+						java.util.stream.Collectors.toMap(
+								Message::getId,
+								message -> message,
+								(left, right) -> left
+						)
+				);
+		for (Object rawMessage : dtoMessages) {
+			if (!(rawMessage instanceof Map<?, ?> rawMessageMap)) {
+				continue;
+			}
+			Map<String, Object> messageMap = (Map<String, Object>) rawMessageMap;
+			Long messageId = getLongValue(messageMap.get("id"));
+			Message sourceMessage = messageById.get(messageId);
+			if (sourceMessage == null) {
+				continue;
+			}
+			putZonedDateTime(messageMap, "date", sourceMessage.getDate());
+			putZonedDateTime(messageMap, "editedAt", sourceMessage.getEditedAt());
+		}
+	}
+
+
+	private Long getLongValue(Object value) {
+		if (value instanceof Number number) {
+			return number.longValue();
+		}
+		if (value instanceof String stringValue) {
+			try {
+				return Long.parseLong(stringValue);
+			} catch (NumberFormatException ignored) {
+				return null;
+			}
+		}
+		return null;
 	}
 
 

@@ -70,12 +70,15 @@ public class UserNotificationService {
 	@Transactional(readOnly = true)
 	public void checkSlaNotifications() {
 		ZonedDateTime now = ZonedDateTime.now();
+
 		taskRepository.findAll().stream()
 				.filter(task -> !Boolean.TRUE.equals(task.getCompleted()))
 				.forEach(task -> {
 					if (hasValidSla(task)) {
 						checkSlaHalfTime(task, now);
+						checkSlaOverdue(task, now);
 					}
+
 					checkDeadlineNotifications(task, now);
 				});
 	}
@@ -131,7 +134,12 @@ public class UserNotificationService {
 		if (elapsed.compareTo(duration.dividedBy(2)) < 0) {
 			return;
 		}
-		String key = "SLA_HALF_TIME_PASSED:%d:%d".formatted(task.getId(), sla.getId());
+		String key = "SLA_HALF_TIME_PASSED:%d:%d:%s:%d".formatted(
+				task.getId(),
+				sla.getId(),
+				sla.getStartDate().toInstant().toString(),
+				duration.getSeconds()
+		);
 		if (!sentNotificationKeys.add(key)) {
 			return;
 		}
@@ -139,6 +147,36 @@ public class UserNotificationService {
 				task,
 				UserNotificationEvent.SLA_HALF_TIME_PASSED,
 				"SLA по заявке «%s» прошел больше чем на 50%%".formatted(task.getName())
+		);
+	}
+
+
+	private void checkSlaOverdue(Task task, ZonedDateTime now) {
+		Sla sla = task.getSla();
+		if (sla == null || sla.getStartDate() == null || sla.getDuration() == null) {
+			return;
+		}
+		Duration pausedDuration = getPausedDuration(sla);
+		Duration elapsed = Duration.between(sla.getStartDate(), now).minus(pausedDuration);
+		if (elapsed.isNegative()) {
+			return;
+		}
+		if (elapsed.compareTo(sla.getDuration()) < 0) {
+			return;
+		}
+		String key = "SLA_OVERDUE:%d:%d:%s:%d".formatted(
+				task.getId(),
+				sla.getId(),
+				sla.getStartDate().toInstant().toString(),
+				sla.getDuration().getSeconds()
+		);
+		if (!sentNotificationKeys.add(key)) {
+			return;
+		}
+		notifyTaskResponsibleUsers(
+				task,
+				UserNotificationEvent.SLA_OVERDUE,
+				"SLA нарушен по заявке «%s»".formatted(task.getName())
 		);
 	}
 

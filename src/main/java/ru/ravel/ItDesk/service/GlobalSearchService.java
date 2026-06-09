@@ -57,11 +57,6 @@ public class GlobalSearchService {
 	private String indexName;
 
 
-	public List<GlobalSearchResultDto> search(String query) {
-		return search(query, Set.of());
-	}
-
-
 	public List<GlobalSearchResultDto> search(String query, Set<String> entityTypes) {
 		if (query == null || query.isBlank()) {
 			return List.of();
@@ -102,9 +97,7 @@ public class GlobalSearchService {
 														.type(TextQueryType.BestFields)
 														.fields(
 																"text^10",
-																"title^4",
-																"subtitle",
-																"entityType"
+																"title^4"
 														)
 												)
 										);
@@ -115,9 +108,7 @@ public class GlobalSearchService {
 														.type(TextQueryType.BestFields)
 														.fields(
 																"text^10",
-																"title^4",
-																"subtitle",
-																"entityType"
+																"title^4"
 														)
 												)
 										);
@@ -467,7 +458,10 @@ public class GlobalSearchService {
 				.entityType("CLIENT_MESSAGE")
 				.entityId(message.getId())
 				.clientId(client.getId())
-				.title(getClientName(client))
+				.title(buildMessageTitle(
+						message,
+						Boolean.TRUE.equals(message.getIsSent()) ? "Исходящее сообщение" : "Входящее сообщение"
+				))
 				.subtitle(Boolean.TRUE.equals(message.getIsSent()) ? "Исходящее сообщение" : "Входящее сообщение")
 				.text(nullToEmpty(message.getText()))
 				.url("/chats/%d?messageId=%d".formatted(client.getId(), message.getId()))
@@ -488,7 +482,7 @@ public class GlobalSearchService {
 				.entityId(message.getId())
 				.clientId(client == null ? null : client.getId())
 				.taskId(task.getId())
-				.title(nullToEmpty(task.getName()))
+				.title(buildMessageTitle(message, "Сообщение в заявке №" + task.getId()))
 				.subtitle("Комментарий / сообщение в заявке")
 				.text(nullToEmpty(message.getText()))
 				.url(client == null
@@ -606,7 +600,7 @@ public class GlobalSearchService {
 		if (client.getPhoneNumber() != null && !client.getPhoneNumber().isBlank()) {
 			return client.getPhoneNumber();
 		}
-		return "Клиент " + client.getId();
+		return "Клиент %d".formatted(client.getId());
 	}
 
 
@@ -622,7 +616,7 @@ public class GlobalSearchService {
 		if (!username.isBlank()) {
 			return username;
 		}
-		return "Пользователь " + user.getId();
+		return "Пользователь %d".formatted(user.getId());
 	}
 
 
@@ -735,6 +729,19 @@ public class GlobalSearchService {
 			case "TASK_MESSAGE" -> 5;
 			default -> 100;
 		};
+	}
+
+
+	private String buildMessageTitle(Message message, String fallback) {
+		String text = message == null ? "" : nullToEmpty(message.getText()).trim();
+		if (text.isBlank()) {
+			return fallback;
+		}
+		String normalized = text.replaceAll("\\s+", " ");
+		if (normalized.length() <= 80) {
+			return normalized;
+		}
+		return normalized.substring(0, 80) + "...";
 	}
 
 }

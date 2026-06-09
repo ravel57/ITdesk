@@ -74,7 +74,9 @@ public class WebApiController {
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(taskService.updateTask(clientId, task));
+			Task savedTask = taskService.updateTask(clientId, task);
+			webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(clientId, savedTask.getId()));
+			return ResponseEntity.ok().body(savedTask);
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}

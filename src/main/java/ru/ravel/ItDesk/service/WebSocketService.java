@@ -10,6 +10,8 @@ import ru.ravel.ItDesk.model.*;
 
 import java.util.List;
 import java.util.Set;
+import ru.ravel.ItDesk.dto.TaskUpdatedDto;
+
 
 @Service
 @RequiredArgsConstructor
@@ -55,6 +57,14 @@ public class WebSocketService {
 
 	public void taskMessage(Long clientId, Long taskId, Message message) {
 		simpMessaging.convertAndSend("/topic/task-messages/", new TaskMessageDto(clientId, taskId, message));
+	}
+
+
+	public void taskUpdated(TaskUpdatedDto taskUpdatedDto) {
+		if (taskUpdatedDto == null || taskUpdatedDto.getTask() == null) {
+			return;
+		}
+		simpMessaging.convertAndSend("/topic/task-updated/", taskUpdatedDto);
 	}
 
 

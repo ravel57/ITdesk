@@ -224,11 +224,7 @@ public class TelegramService {
 								return;
 							}
 							savedMessage = messageRepository.saveAndFlush(message);
-							if (client.getMessages() == null) {
-								client.setMessages(new ArrayList<>());
-							}
-							client.getMessages().add(savedMessage);
-							client = clientRepository.saveAndFlush(client);
+							messageRepository.attachMessageToClient(client.getId(), savedMessage.getId());
 						} else {
 							client = Client.builder()
 									.firstname(update.message().from().firstName())
@@ -251,11 +247,7 @@ public class TelegramService {
 								}
 							}
 							savedMessage = messageRepository.saveAndFlush(message);
-							if (client.getMessages() == null) {
-								client.setMessages(new ArrayList<>());
-							}
-							client.getMessages().add(savedMessage);
-							client = clientRepository.saveAndFlush(client);
+							messageRepository.attachMessageToClient(client.getId(), savedMessage.getId());
 							if (created) {
 								eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of(
 										"client", client,
@@ -283,19 +275,13 @@ public class TelegramService {
 								.findByMessengerMessageIdAndClientId(update.editedMessage().messageId(), client.getId())
 								.orElseThrow();
 						message.setText(update.editedMessage().text());
-						messageRepository.save(message);
-						client.getMessages().stream()
-								.filter(msg -> msg.getId().equals(message.getId()))
-								.findFirst()
-								.orElseThrow()
-								.setText(update.editedMessage().text());
-						try {
-							clientRepository.save(client);    // Работает только так ¯\_(ツ)_/¯
-						} catch (Exception e) {
-							clientRepository.save(client);    // Работает только так ¯\_(ツ)_/¯
-						}
-						eventPublisher.publish(TriggerType.MESSAGE_EDITED, Map.of("client", client, "message", message));
-						webSocketService.editedMessage(new ClientMessage(client, message));
+						message.setEditedAt(ZonedDateTime.now());
+						Message savedMessage = messageRepository.saveAndFlush(message);
+						eventPublisher.publish(TriggerType.MESSAGE_EDITED, Map.of(
+								"client", client,
+								"message", savedMessage
+						));
+						webSocketService.editedMessage(new ClientMessage(client, savedMessage));
 					}
 				});
 			} catch (Exception e) {

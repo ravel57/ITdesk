@@ -64,6 +64,7 @@ services:
       - LOG_PATH=/home/java/logs
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_INDEX=uldesk_global_search
+      - REDIS_HOST=redis
     volumes:
       - ./webapp-logs:/home/java/logs
       - ./plugins:/home/java/plugins

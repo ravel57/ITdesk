@@ -1,6 +1,8 @@
 package ru.ravel.ItDesk.repository;
 
+import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -18,7 +20,53 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
 	Optional<Message> findByMessengerMessageId(Integer messengerMessageId);
 
-//	long countByClientId(Long clientId);
+	@Query(value = """
+			select *
+			from message m
+			where m.client_id = :clientId
+			order by m.date desc nulls last, m.id desc
+			limit :limit
+			offset :offset
+			""", nativeQuery = true)
+	List<Message> findClientMessagesPageFromEnd(
+			@Param("clientId") Long clientId,
+			@Param("limit") int limit,
+			@Param("offset") int offset
+	);
+
+	@Query(value = """
+			select count(*)
+			from message m
+			where m.client_id = :clientId
+			  and (
+			       m.date > (select lm.date from message lm where lm.id = :messageId)
+			    or (
+			         m.date = (select lm.date from message lm where lm.id = :messageId)
+			     and m.id > :messageId
+			    )
+			  )
+			""", nativeQuery = true)
+	long countClientMessagesAfterMessage(
+			@Param("clientId") Long clientId,
+			@Param("messageId") Long messageId
+	);
+
+
+	@Transactional
+	@Modifying(clearAutomatically = true)
+	@Query(
+			value = """
+					update message
+					set client_id = :clientId
+					where id = :messageId
+					""",
+			nativeQuery = true
+	)
+	void attachMessageToClient(
+			@Param("clientId") Long clientId,
+			@Param("messageId") Long messageId
+	);
+
 
 	@Query("""
 			select count(m) > 0

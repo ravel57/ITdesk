@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import ru.ravel.ItDesk.dto.AnswerRequired;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.model.User;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -115,9 +116,11 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 				m.isSent as sent,
 				m.isComment as commentFlag,
 				m.deleted as deleted,
-				m.answerRequired as answerRequired
+				m.answerRequired as answerRequired,
+				sender as sender
 			from Client c
 			join c.messages m
+			left join m.user sender
 			where m.date is not null
 			  and m.date >= :from
 			  and m.date <= :to
@@ -144,6 +147,8 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 		Boolean getDeleted();
 
 		AnswerRequired getAnswerRequired();
+
+		User getSender();
 	}
 
 

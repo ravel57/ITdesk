@@ -99,6 +99,7 @@ public class AnalyticsService {
 
 			Map<Long, List<Object>> tagsByTaskId = getTagsByTaskId(filters, cancellationToken);
 			Map<Long, TaskRepository.AnalyticsTaskRow> taskRowsById = new LinkedHashMap<>();
+			Set<Long> filteredLinkedMessageIds = new HashSet<>();
 
 			Map<String, Long> closedByPeriodMap = new LinkedHashMap<>();
 			Map<String, Long> reopenedByPeriodMap = new LinkedHashMap<>();
@@ -120,6 +121,9 @@ public class AnalyticsService {
 				checkAnalyticsCancelled(cancellationToken);
 				if (row.getId() != null) {
 					taskRowsById.put(row.getId(), row);
+				}
+				if (row.getLinkedMessageId() != null) {
+					filteredLinkedMessageIds.add(row.getLinkedMessageId());
 				}
 				Collection<?> tags = tagsByTaskId.getOrDefault(row.getId(), List.of());
 				incrementBreakdowns(
@@ -218,7 +222,15 @@ public class AnalyticsService {
 				}
 			}
 			long unansweredMessages = countUnansweredMessages(clientMessages, cancellationToken);
-			long avgFirstResponseSeconds = averageSeconds(getFirstResponseSeconds(clientMessages, workingTime, cancellationToken));
+			List<Long> firstResponseSeconds = getFirstResponseSeconds(
+					clientMessages,
+					workingTime,
+					filters.hasAny(),
+					filteredLinkedMessageIds,
+					operatorLoadMap,
+					cancellationToken
+			);
+			long avgFirstResponseSeconds = averageSeconds(firstResponseSeconds);
 
 			List<AnalyticsEvent> closedEvents = getAutomationEvents(
 					TriggerType.TASK_CLOSED,
@@ -489,7 +501,8 @@ public class AnalyticsService {
 					row.getSent(),
 					row.getCommentFlag(),
 					row.getDeleted(),
-					row.getAnswerRequired()
+					row.getAnswerRequired(),
+					row.getSender()
 			));
 		}
 
@@ -505,9 +518,13 @@ public class AnalyticsService {
 	private List<Long> getFirstResponseSeconds(
 			List<AnalyticsMessageRow> messages,
 			AnalyticsWorkingTime workingTime,
+			boolean filterByLinkedMessageIds,
+			Set<Long> linkedMessageIds,
+			Map<Long, Map<String, Object>> operatorLoadMap,
 			AnalyticsCancellationToken cancellationToken
 	) {
 		List<Long> result = new ArrayList<>();
+		Set<Long> safeLinkedMessageIds = linkedMessageIds == null ? Set.of() : linkedMessageIds;
 		Long currentClientId = null;
 		ZonedDateTime firstPendingIncomingMessageDate = null;
 
@@ -518,11 +535,21 @@ public class AnalyticsService {
 				currentClientId = message.clientId();
 				firstPendingIncomingMessageDate = null;
 			}
+
+			boolean messageMatchesTaskFilters = !filterByLinkedMessageIds
+					|| safeLinkedMessageIds.contains(message.id());
+
 			if (isIncomingMessageAnswerNotRequired(message)) {
-				firstPendingIncomingMessageDate = null;
+				if (messageMatchesTaskFilters) {
+					firstPendingIncomingMessageDate = null;
+				}
 				continue;
 			}
+
 			if (isIncomingMessageRequiringAnswer(message)) {
+				if (!messageMatchesTaskFilters) {
+					continue;
+				}
 				if (firstPendingIncomingMessageDate == null) {
 					firstPendingIncomingMessageDate = message.date();
 				}
@@ -533,7 +560,14 @@ public class AnalyticsService {
 					&& firstPendingIncomingMessageDate != null
 					&& message.date() != null
 					&& message.date().isAfter(firstPendingIncomingMessageDate)) {
-				result.add(getWorkingSeconds(firstPendingIncomingMessageDate, message.date(), workingTime, cancellationToken));
+				long responseSeconds = getWorkingSeconds(
+						firstPendingIncomingMessageDate,
+						message.date(),
+						workingTime,
+						cancellationToken
+				);
+				result.add(responseSeconds);
+				addOperatorFirstResponse(operatorLoadMap, message.sender(), responseSeconds);
 				firstPendingIncomingMessageDate = null;
 			}
 		}
@@ -630,6 +664,18 @@ public class AnalyticsService {
 
 	private List<Map<String, Object>> toOperatorRows(Map<Long, Map<String, Object>> operatorLoadMap) {
 		return operatorLoadMap.values().stream()
+				.map(item -> {
+					Map<String, Object> row = new LinkedHashMap<>(item);
+					long firstResponseCount = asLong(row.remove("firstResponseCount"));
+					long firstResponseTotalSeconds = asLong(row.remove("firstResponseTotalSeconds"));
+					row.put(
+							"avgFirstResponseSeconds",
+							firstResponseCount == 0L
+									? 0L
+									: Math.round((double) firstResponseTotalSeconds / firstResponseCount)
+					);
+					return row;
+				})
 				.sorted(Comparator.comparingLong((Map<String, Object> item) ->
 						asLong(item.get("openTasks"))
 								+ asLong(item.get("closedTasks"))
@@ -641,10 +687,14 @@ public class AnalyticsService {
 	}
 
 
-	private void incrementOperatorLoad(Map<Long, Map<String, Object>> operatorLoadMap, User user, String metric) {
+	private Map<String, Object> getOrCreateOperatorLoadRow(
+			Map<Long, Map<String, Object>> operatorLoadMap,
+			User user
+	) {
 		Long key = user == null || user.getId() == null ? EMPTY_GROUP_ID : user.getId();
 		String name = user == null || user.getId() == null ? "Без исполнителя" : getUserDisplayName(user);
-		Map<String, Object> row = operatorLoadMap.computeIfAbsent(key, userId -> {
+
+		return operatorLoadMap.computeIfAbsent(key, userId -> {
 			Map<String, Object> created = new LinkedHashMap<>();
 			created.put("userId", key);
 			created.put("name", name);
@@ -653,10 +703,30 @@ public class AnalyticsService {
 			created.put("overdueSla", 0L);
 			created.put("overdueDeadlines", 0L);
 			created.put("reopenedTasks", 0L);
+			created.put("firstResponseCount", 0L);
+			created.put("firstResponseTotalSeconds", 0L);
 			return created;
 		});
+	}
 
+
+	private void incrementOperatorLoad(Map<Long, Map<String, Object>> operatorLoadMap, User user, String metric) {
+		Map<String, Object> row = getOrCreateOperatorLoadRow(operatorLoadMap, user);
 		row.put(metric, asLong(row.get(metric)) + 1L);
+	}
+
+
+	private void addOperatorFirstResponse(
+			Map<Long, Map<String, Object>> operatorLoadMap,
+			User user,
+			long responseSeconds
+	) {
+		Map<String, Object> row = getOrCreateOperatorLoadRow(operatorLoadMap, user);
+		row.put("firstResponseCount", asLong(row.get("firstResponseCount")) + 1L);
+		row.put(
+				"firstResponseTotalSeconds",
+				asLong(row.get("firstResponseTotalSeconds")) + Math.max(responseSeconds, 0L)
+		);
 	}
 
 
@@ -1106,7 +1176,8 @@ public class AnalyticsService {
 			Boolean sent,
 			Boolean comment,
 			Boolean deleted,
-			AnswerRequired answerRequired
+			AnswerRequired answerRequired,
+			User sender
 	) {
 	}
 

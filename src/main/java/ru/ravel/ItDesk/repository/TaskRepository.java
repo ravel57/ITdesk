@@ -65,7 +65,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				coalesce(t.completed, false) as completed,
 				t.type as type,
 				t.priority as priority,
-				executor as executor
+				executor as executor,
+				t.linkedMessageId as linkedMessageId
 			from Task t
 			left join t.executor executor
 			where (:hasTypeIds = false or t.type.id in :typeIds)
@@ -174,6 +175,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 		Object getPriority();
 
 		User getExecutor();
+
+		Long getLinkedMessageId();
 	}
 
 

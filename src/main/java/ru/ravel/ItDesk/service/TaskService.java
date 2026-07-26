@@ -20,6 +20,11 @@ import java.util.*;
 @RequiredArgsConstructor
 public class TaskService {
 
+	private static final String FREEZE_SLA_PAUSE_REASON = "Заявка заморожена";
+	private static final String CLOSED_SLA_PAUSE_REASON = "Заявка закрыта";
+	private static final String MANUAL_SLA_PAUSE_REASON = "Ручная пауза SLA";
+	private static final String AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON = "Авто-пауза SLA: нерабочее время";
+
 	private final TaskRepository taskRepository;
 	private final TaskTypeRepository taskTypeRepository;
 	private final ClientRepository clientsRepository;
@@ -33,11 +38,6 @@ public class TaskService {
 	private final ObjectMapper objectMapper;
 	private final EntityManager entityManager;
 	private final UserService userService;
-
-	private static final String FREEZE_SLA_PAUSE_REASON = "Заявка заморожена";
-	private static final String CLOSED_SLA_PAUSE_REASON = "Заявка закрыта";
-	private static final String MANUAL_SLA_PAUSE_REASON = "Ручная пауза SLA";
-	private static final String AUTO_NON_WORKING_TIME_SLA_PAUSE_REASON = "Авто-пауза SLA: нерабочее время";
 	private final UserNotificationService userNotificationService;
 
 

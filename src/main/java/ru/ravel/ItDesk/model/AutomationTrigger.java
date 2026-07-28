@@ -6,6 +6,8 @@ import org.jetbrains.annotations.NotNull;
 import ru.ravel.ItDesk.model.automatosation.AutomationRuleStatus;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 
+import java.time.ZonedDateTime;
+
 
 @Entity
 @Data
@@ -31,9 +33,38 @@ public class AutomationTrigger implements Comparable<AutomationTrigger> {
 
 	private String action;
 
+	@Column(columnDefinition = "text")
+	private String elseAction;
+
+	@Column(columnDefinition = "text")
+	private String workflowDefinition;
+
+	@Column(nullable = false, columnDefinition = "int default 1")
+	@Builder.Default
+	private Integer workflowVersion = 1;
+
 	@Enumerated(EnumType.STRING)
 	@Builder.Default
 	private AutomationRuleStatus automationRuleStatus = AutomationRuleStatus.ENABLED;
+
+	@Column(nullable = false, columnDefinition = "boolean default false")
+	@Builder.Default
+	private Boolean stopProcessing = false;
+
+	@Column(nullable = false, columnDefinition = "bigint default 0")
+	@Builder.Default
+	private Long matchCount = 0L;
+
+	private ZonedDateTime lastMatchedAt;
+
+	@Column(nullable = false, columnDefinition = "bigint default 0")
+	@Builder.Default
+	private Long failureCount = 0L;
+
+	private ZonedDateTime lastFailedAt;
+
+	@Column(length = 2000)
+	private String lastError;
 
 //	@OneToMany(fetch = FetchType.EAGER)
 //	private List<TriggerExpressionAction> actions;

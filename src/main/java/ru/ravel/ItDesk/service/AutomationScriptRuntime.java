@@ -14,6 +14,8 @@ import ru.ravel.ItDesk.model.automatosation.TriggerOperationType;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import ru.ravel.ItDesk.model.AppSettings;
 
@@ -248,6 +250,7 @@ public class AutomationScriptRuntime {
 	// ------------------------- ACTION PARSER -------------------------
 
 	private static final Pattern CALL_PATTERN = Pattern.compile("^([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\((.*)\\)$");
+	private static final Pattern TEMPLATE_EXPRESSION_PATTERN = Pattern.compile("\\{\\{\\s*(.+?)\\s*}}");
 
 	private ParsedCall parseCall(String script, JsonNode payloadRoot) {
 		var matched = CALL_PATTERN.matcher(script);
@@ -266,32 +269,11 @@ public class AutomationScriptRuntime {
 			return List.of();
 		}
 		List<Object> out = new ArrayList<>();
-		StringBuilder cur = new StringBuilder();
-		boolean inString = false;
-		char stringQuote = 0;
-		for (int i = 0; i < inside.length(); i++) {
-			char c = inside.charAt(i);
-			if (inString) {
-				cur.append(c);
-				if (c == stringQuote && inside.charAt(i - 1) != '\\') {
-					inString = false;
-				}
-				continue;
+		for (String argument : splitTopLevel(inside, ',')) {
+			if (!argument.isBlank()) {
+				out.add(parseArg(argument.trim(), payloadRoot));
 			}
-			if (c == '\'' || c == '"') {
-				inString = true;
-				stringQuote = c;
-				cur.append(c);
-				continue;
-			}
-			if (c == ',') {
-				out.add(parseArg(cur.toString().trim(), payloadRoot));
-				cur.setLength(0);
-				continue;
-			}
-			cur.append(c);
 		}
-		if (!cur.toString().trim().isBlank()) out.add(parseArg(cur.toString().trim(), payloadRoot));
 		return out;
 	}
 
@@ -300,12 +282,47 @@ public class AutomationScriptRuntime {
 			return null;
 		}
 		raw = raw.trim();
-		// 'строка' или "строка"
-		if ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith("\"") && raw.endsWith("\""))) {
-			String s = raw.substring(1, raw.length() - 1);
-			return s.replace("\\'", "'").replace("\\\"", "\"");
+
+		// В аргументах действий поддерживается конкатенация:
+		// client.sendMessage('Заявка: ' + task.name + ' закрыта!')
+		// Сначала разбираем оператор +, иначе вся строка ошибочно определяется
+		// как один строковый литерал только потому, что начинается и заканчивается кавычкой.
+		List<String> concatenationParts = splitTopLevel(raw, '+');
+		if (concatenationParts.size() > 1) {
+			StringBuilder result = new StringBuilder();
+			for (String part : concatenationParts) {
+				Object value = parseSingleArg(part.trim(), payloadRoot);
+				if (value != null) {
+					result.append(stringValue(value));
+				}
+			}
+			return result.toString();
 		}
-		// true/false/null
+
+		return parseSingleArg(raw, payloadRoot);
+	}
+
+	private Object parseSingleArg(String raw, JsonNode payloadRoot) {
+		if (raw == null || raw.isBlank()) {
+			return null;
+		}
+		raw = raw.trim();
+
+		// Строковый шаблон. Внутри строки можно использовать {{ expression }}:
+		// client.sendMessage('Заявка: {{ task.name.trim() }} закрыта!')
+		if ((raw.startsWith("'") && raw.endsWith("'")) || (raw.startsWith("\"") && raw.endsWith("\""))) {
+			String value = decodeActionStringLiteral(raw.substring(1, raw.length() - 1));
+			return interpolateActionTemplate(value, payloadRoot);
+		}
+
+		// Отдельное шаблонное выражение также допустимо:
+		// client.sendMessage({{ task.name.trim() }})
+		String templateExpression = unwrapTemplateExpression(raw);
+		if (templateExpression != null) {
+			ActionValueResult result = tryEvaluateActionValueExpression(templateExpression, payloadRoot);
+			return result.parsed() ? result.value() : raw;
+		}
+
 		if ("true".equalsIgnoreCase(raw)) {
 			return true;
 		}
@@ -315,32 +332,188 @@ public class AutomationScriptRuntime {
 		if ("null".equalsIgnoreCase(raw)) {
 			return null;
 		}
-		// число
-		if (raw.matches("-?\\d+")) {
+		if (raw.matches("-?\\d+(\\.\\d+)?")) {
 			try {
-				return Long.parseLong(raw);
+				return new BigDecimal(raw);
 			} catch (Exception ignored) {
 			}
 		}
-		// ссылка на payload: message.text / client.id / client.messagesCount
-		if (raw.matches("[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+)+")) {
-			JsonNode node = readByPath(payloadRoot, raw);
-			if (node == null || node.isNull()) {
-				return null;
+
+		// Для аргументов действий используется тот же expression parser, что и для условий.
+		// Поэтому поддерживаются не только task.name, но и цепочки методов:
+		// task.name.trim(), task.tags.last().name, message.text.lower().
+		if (looksLikeActionValueExpression(raw)) {
+			ActionValueResult result = tryEvaluateActionValueExpression(raw, payloadRoot);
+			if (result.parsed()) {
+				return result.value();
 			}
-			if (node.isTextual()) {
-				return node.asText();
-			}
-			if (node.isNumber()) {
-				return node.decimalValue();
-			}
-			if (node.isBoolean()) {
-				return node.asBoolean();
-			}
-			return node; // объект/массив
 		}
-		// иначе — как строка
+
+		// Некавыченные константы действий (например IN_PROGRESS) сохраняем строкой.
 		return raw;
+	}
+
+
+	private static String decodeActionStringLiteral(String value) {
+		if (value == null || value.isEmpty()) {
+			return value;
+		}
+
+		// Внешний сценарий использует одинарные кавычки, поэтому \" внутри
+		// является лишним экранированием. Старые версии frontend могли
+		// экранировать его несколько раз: \\" -> \" -> ".
+		while (value.contains("\\\"")) {
+			value = value.replace("\\\"", "\"");
+		}
+
+		StringBuilder result = new StringBuilder(value.length());
+		for (int i = 0; i < value.length(); i++) {
+			char current = value.charAt(i);
+			if (current != '\\' || i + 1 >= value.length()) {
+				result.append(current);
+				continue;
+			}
+
+			char next = value.charAt(++i);
+			switch (next) {
+				case '\\' -> result.append('\\');
+				case '\'' -> result.append('\'');
+				case '"' -> result.append('"');
+				case 'n' -> result.append('\n');
+				case 'r' -> result.append('\r');
+				case 't' -> result.append('\t');
+				default -> result.append('\\').append(next);
+			}
+		}
+		return result.toString();
+	}
+
+	private String interpolateActionTemplate(String template, JsonNode payloadRoot) {
+		Matcher matcher = TEMPLATE_EXPRESSION_PATTERN.matcher(template);
+		StringBuffer result = new StringBuffer();
+		boolean found = false;
+
+		while (matcher.find()) {
+			found = true;
+			String expression = matcher.group(1) == null ? "" : matcher.group(1).trim();
+			ActionValueResult evaluated = tryEvaluateActionValueExpression(expression, payloadRoot);
+
+			String replacement;
+			if (!evaluated.parsed()) {
+				// Не скрываем ошибку в шаблоне: оставляем неизвестное выражение как было.
+				replacement = matcher.group(0);
+			} else if (evaluated.value() == null) {
+				replacement = "";
+			} else {
+				replacement = stringValue(evaluated.value());
+			}
+
+			matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+		}
+
+		if (!found) {
+			return template;
+		}
+
+		matcher.appendTail(result);
+		return result.toString();
+	}
+
+	private String unwrapTemplateExpression(String raw) {
+		if (raw == null) {
+			return null;
+		}
+		String value = raw.trim();
+		if (!value.startsWith("{{") || !value.endsWith("}}") || value.length() < 4) {
+			return null;
+		}
+		return value.substring(2, value.length() - 2).trim();
+	}
+
+	private boolean looksLikeActionValueExpression(String raw) {
+		if (raw == null || raw.isBlank()) {
+			return false;
+		}
+		String value = raw.trim();
+		return value.indexOf('.') > 0
+				|| value.matches("[a-zA-Z_][a-zA-Z0-9_]*\\s*\\(.*\\)");
+	}
+
+	private ActionValueResult tryEvaluateActionValueExpression(String expression, JsonNode payloadRoot) {
+		if (expression == null || expression.isBlank()) {
+			return new ActionValueResult(false, null);
+		}
+		try {
+			Lexer lexer = new Lexer(expression);
+			Parser parser = new Parser(lexer);
+			ExprNode parsed = parser.parseCompleteExpression();
+			return new ActionValueResult(true, parsed.eval(payloadRoot));
+		} catch (RuntimeException ignored) {
+			return new ActionValueResult(false, null);
+		}
+	}
+
+	private String stringValue(Object value) {
+		if (value instanceof JsonNode node) {
+			return node.isTextual() ? node.asText() : node.toString();
+		}
+		if (value instanceof BigDecimal number) {
+			return number.stripTrailingZeros().toPlainString();
+		}
+		return String.valueOf(value);
+	}
+
+	private List<String> splitTopLevel(String value, char delimiter) {
+		List<String> parts = new ArrayList<>();
+		StringBuilder current = new StringBuilder();
+		boolean inString = false;
+		char quote = 0;
+		boolean escaped = false;
+		int roundDepth = 0;
+		int squareDepth = 0;
+		int curlyDepth = 0;
+
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (inString) {
+				current.append(c);
+				if (escaped) {
+					escaped = false;
+				} else if (c == '\\') {
+					escaped = true;
+				} else if (c == quote) {
+					inString = false;
+				}
+				continue;
+			}
+
+			if (c == '\'' || c == '"') {
+				inString = true;
+				quote = c;
+				current.append(c);
+				continue;
+			}
+
+			switch (c) {
+				case '(' -> roundDepth++;
+				case ')' -> roundDepth = Math.max(0, roundDepth - 1);
+				case '[' -> squareDepth++;
+				case ']' -> squareDepth = Math.max(0, squareDepth - 1);
+				case '{' -> curlyDepth++;
+				case '}' -> curlyDepth = Math.max(0, curlyDepth - 1);
+				default -> {
+				}
+			}
+
+			if (c == delimiter && roundDepth == 0 && squareDepth == 0 && curlyDepth == 0) {
+				parts.add(current.toString());
+				current.setLength(0);
+			} else {
+				current.append(c);
+			}
+		}
+		parts.add(current.toString());
+		return parts;
 	}
 
 	private JsonNode readByPath(JsonNode root, String path) {
@@ -423,6 +596,9 @@ public class AutomationScriptRuntime {
 	}
 
 	private record ParsedCall(String target, String method, List<Object> args) {
+	}
+
+	private record ActionValueResult(boolean parsed, Object value) {
 	}
 
 	// ------------------------- EXPRESSION ENGINE -------------------------
@@ -597,6 +773,12 @@ public class AutomationScriptRuntime {
 
 		ExprNode parseExpression() {
 			return parseOr();
+		}
+
+		ExprNode parseCompleteExpression() {
+			ExprNode expression = parseExpression();
+			expect(TokType.EOF);
+			return expression;
 		}
 
 		private ExprNode parseOr() {
@@ -1002,8 +1184,7 @@ public class AutomationScriptRuntime {
 		}
 		char q = s.charAt(0);
 		if ((q == '\'' || q == '"') && s.charAt(s.length() - 1) == q) {
-			String v = s.substring(1, s.length() - 1);
-			return v.replace("\\'", "'").replace("\\\"", "\"");
+			return decodeActionStringLiteral(s.substring(1, s.length() - 1));
 		}
 		return s;
 	}
@@ -1116,6 +1297,74 @@ public class AutomationScriptRuntime {
 			case CONTAINS_ANY -> containsAny(target, args);
 
 			case CONTAINS_ALL -> containsAll(target, args);
+
+			case NAME_CONTAINS -> collectionFieldContains(target, "name", firstArg(args));
+
+			case TEXT_CONTAINS -> collectionFieldContains(target, "text", firstArg(args));
+
+			case DESCRIPTION_CONTAINS -> collectionFieldContains(target, "description", firstArg(args));
+
+			case FIELD_CONTAINS -> collectionFieldContains(target, toStr(firstArg(args)), argAt(args, 1));
+
+			case FIELD_EQUALS -> collectionFieldEquals(target, toStr(firstArg(args)), argAt(args, 1));
+
+			case FIELD_EXISTS -> collectionFieldExists(target, toStr(firstArg(args)));
+
+			case STATUS_IS -> collectionEntityFieldMatches(target, "status", firstArg(args));
+
+			case PRIORITY_IS -> collectionEntityFieldMatches(target, "priority", firstArg(args));
+
+			case TYPE_IS -> collectionEntityFieldMatches(target, "type", firstArg(args));
+
+			case SUPPORT_LINE_IS -> collectionEntityFieldMatches(target, "supportLine", firstArg(args));
+
+			case ASSIGNED_TO -> collectionEntityFieldMatches(target, "executor", firstArg(args));
+
+			case HAS_OPEN -> countMatching(target, AutomationScriptRuntime::isOpenTaskItem) > 0;
+
+			case HAS_CLOSED -> countMatching(target, AutomationScriptRuntime::isCompletedItem) > 0;
+
+			case OPEN_COUNT -> countMatching(target, AutomationScriptRuntime::isOpenTaskItem);
+
+			case CLOSED_COUNT -> countMatching(target, AutomationScriptRuntime::isCompletedItem);
+
+			case OVERDUE_COUNT -> countMatching(target, AutomationScriptRuntime::isOverdueItem);
+
+			case UNASSIGNED_COUNT -> countMatching(target, item -> !hasAssigneeItem(item));
+
+			case INCOMING_TEXT_CONTAINS -> collectionFieldContainsWhere(
+					target, "text", firstArg(args), AutomationScriptRuntime::isIncomingMessageItem
+			);
+
+			case OUTGOING_TEXT_CONTAINS -> collectionFieldContainsWhere(
+					target, "text", firstArg(args), AutomationScriptRuntime::isOutgoingMessageItem
+			);
+
+			case COMMENT_CONTAINS -> collectionFieldContainsWhere(
+					target, "text", firstArg(args), AutomationScriptRuntime::isCommentMessageItem
+			);
+
+			case INCOMING_COUNT -> countMatching(target, AutomationScriptRuntime::isIncomingMessageItem);
+
+			case OUTGOING_COUNT -> countMatching(target, AutomationScriptRuntime::isOutgoingMessageItem);
+
+			case UNREAD_COUNT -> countMatching(target, AutomationScriptRuntime::isUnreadMessageItem);
+
+			case ATTACHMENT_COUNT -> countMatching(target, AutomationScriptRuntime::hasAttachmentItem);
+
+			case HAS_INCOMPLETE -> countMatching(target, item -> !isCompletedItem(item)) > 0;
+
+			case COMPLETED_COUNT -> countMatching(target, AutomationScriptRuntime::isCompletedItem);
+
+			case INCOMPLETE_COUNT -> countMatching(target, item -> !isCompletedItem(item));
+
+			case HAS_ASSIGNEE -> hasAssigneeItem(target);
+
+			case HAS_DEADLINE -> hasDeadlineItem(target);
+
+			case IS_OVERDUE -> isOverdueItem(target);
+
+			case IS_COMPLETED -> isCompletedItem(target);
 
 			case LOWER -> {
 				String s = toStr(target);
@@ -1309,6 +1558,341 @@ public class AutomationScriptRuntime {
 	}
 
 
+
+	private static Object firstArg(List<Object> args) {
+		return argAt(args, 0);
+	}
+
+
+	private static Object argAt(List<Object> args, int index) {
+		return args == null || index < 0 || index >= args.size() ? null : args.get(index);
+	}
+
+
+	private static boolean collectionFieldContains(Object target, String fieldPath, Object expected) {
+		return collectionFieldContainsWhere(target, fieldPath, expected, item -> true);
+	}
+
+
+	private static boolean collectionFieldContainsWhere(
+			Object target,
+			String fieldPath,
+			Object expected,
+			Predicate<Object> filter
+	) {
+		String part = scalarText(expected);
+		if (fieldPath == null || fieldPath.isBlank() || part == null) {
+			return false;
+		}
+		for (Object item : itemsOf(target)) {
+			if (filter != null && !filter.test(item)) {
+				continue;
+			}
+			String value = scalarText(readObjectPath(item, fieldPath));
+			if (containsIgnoreCase(value, part)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	private static boolean collectionFieldEquals(Object target, String fieldPath, Object expected) {
+		if (fieldPath == null || fieldPath.isBlank()) {
+			return false;
+		}
+		for (Object item : itemsOf(target)) {
+			if (valueMatches(readObjectPath(item, fieldPath), expected)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	private static boolean collectionFieldExists(Object target, String fieldPath) {
+		if (fieldPath == null || fieldPath.isBlank()) {
+			return false;
+		}
+		for (Object item : itemsOf(target)) {
+			Object value = readObjectPath(item, fieldPath);
+			if (value != null && !isEmptyValue(value)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	private static boolean collectionEntityFieldMatches(Object target, String fieldPath, Object expected) {
+		if (expected == null) {
+			return false;
+		}
+		for (Object item : itemsOf(target)) {
+			Object value = readObjectPath(item, fieldPath);
+			if (entityMatches(value, expected)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	private static long countMatching(Object target, Predicate<Object> predicate) {
+		if (predicate == null) {
+			return 0L;
+		}
+		long count = 0L;
+		for (Object item : itemsOf(target)) {
+			if (predicate.test(item)) {
+				count++;
+			}
+		}
+		return count;
+	}
+
+
+	private static List<Object> itemsOf(Object target) {
+		if (target == null) {
+			return List.of();
+		}
+		if (target instanceof JsonNode node) {
+			if (node.isNull() || node.isMissingNode()) {
+				return List.of();
+			}
+			if (node.isArray()) {
+				List<Object> items = new ArrayList<>(node.size());
+				for (JsonNode item : node) {
+					items.add(item);
+				}
+				return items;
+			}
+			return List.of(node);
+		}
+		if (target instanceof Collection<?> collection) {
+			return new ArrayList<>(collection);
+		}
+		if (target.getClass().isArray()) {
+			int length = java.lang.reflect.Array.getLength(target);
+			List<Object> items = new ArrayList<>(length);
+			for (int index = 0; index < length; index++) {
+				items.add(java.lang.reflect.Array.get(target, index));
+			}
+			return items;
+		}
+		return List.of(target);
+	}
+
+
+	private static Object readObjectPath(Object source, String path) {
+		if (source == null || path == null || path.isBlank()) {
+			return null;
+		}
+		Object current = source;
+		for (String part : path.split("\\.")) {
+			if (current == null) {
+				return null;
+			}
+			if (current instanceof JsonNode node) {
+				if (!node.isObject()) {
+					return null;
+				}
+				current = unwrap(node.get(part));
+				continue;
+			}
+			if (current instanceof Map<?, ?> map) {
+				current = map.get(part);
+				continue;
+			}
+			return null;
+		}
+		return current;
+	}
+
+
+	private static Object readFirstObjectPath(Object source, String... paths) {
+		if (paths == null) {
+			return null;
+		}
+		for (String path : paths) {
+			Object value = readObjectPath(source, path);
+			if (value != null) {
+				return value;
+			}
+		}
+		return null;
+	}
+
+
+	private static boolean entityMatches(Object value, Object expected) {
+		if (value == null || expected == null) {
+			return false;
+		}
+		if (valueMatches(value, expected)) {
+			return true;
+		}
+		for (String property : List.of("id", "name", "type", "title", "username", "email")) {
+			Object nested = readObjectPath(value, property);
+			if (nested != null && valueMatches(nested, expected)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+
+	private static boolean valueMatches(Object left, Object right) {
+		if (left == null || right == null) {
+			return left == right;
+		}
+		BigDecimal leftNumber = toBigDecimal(left);
+		BigDecimal rightNumber = toBigDecimal(right);
+		if (leftNumber != null && rightNumber != null) {
+			return leftNumber.compareTo(rightNumber) == 0;
+		}
+		String leftText = scalarText(left);
+		String rightText = scalarText(right);
+		return leftText != null && rightText != null && leftText.trim().equalsIgnoreCase(rightText.trim());
+	}
+
+
+	private static String scalarText(Object value) {
+		if (value == null) {
+			return null;
+		}
+		if (value instanceof JsonNode node) {
+			if (node.isNull() || node.isMissingNode()) {
+				return null;
+			}
+			if (node.isValueNode()) {
+				return node.asText();
+			}
+			return node.toString();
+		}
+		if (value instanceof BigDecimal number) {
+			return number.stripTrailingZeros().toPlainString();
+		}
+		return String.valueOf(value);
+	}
+
+
+	private static boolean isEmptyValue(Object value) {
+		if (value == null) {
+			return true;
+		}
+		if (value instanceof JsonNode node) {
+			return node.isNull()
+					|| node.isMissingNode()
+					|| node.isTextual() && node.asText().isBlank()
+					|| node.isContainerNode() && node.isEmpty();
+		}
+		if (value instanceof CharSequence text) {
+			return text.toString().isBlank();
+		}
+		if (value instanceof Collection<?> collection) {
+			return collection.isEmpty();
+		}
+		if (value instanceof Map<?, ?> map) {
+			return map.isEmpty();
+		}
+		return false;
+	}
+
+
+	private static boolean isCompletedItem(Object item) {
+		return booleanValue(readObjectPath(item, "completed"), false);
+	}
+
+
+	private static boolean isOpenTaskItem(Object item) {
+		return item != null && !isCompletedItem(item);
+	}
+
+
+	private static boolean hasAssigneeItem(Object item) {
+		Object executor = readObjectPath(item, "executor");
+		if (executor == null || isEmptyValue(executor)) {
+			return false;
+		}
+		Object id = readObjectPath(executor, "id");
+		return id == null || !isEmptyValue(id);
+	}
+
+
+	private static boolean hasDeadlineItem(Object item) {
+		return toZonedDateTime(readObjectPath(item, "deadline")) != null;
+	}
+
+
+	private static boolean isOverdueItem(Object item) {
+		if (item == null || isCompletedItem(item)) {
+			return false;
+		}
+		ZonedDateTime deadline = inAutomationZone(toZonedDateTime(readObjectPath(item, "deadline")));
+		return deadline != null && deadline.isBefore(automationNow());
+	}
+
+
+	private static boolean isActiveMessageItem(Object item) {
+		return item != null && !booleanValue(readObjectPath(item, "deleted"), false);
+	}
+
+
+	private static boolean isIncomingMessageItem(Object item) {
+		return isActiveMessageItem(item)
+				&& !booleanValue(readFirstObjectPath(item, "isComment", "comment"), false)
+				&& !booleanValue(readFirstObjectPath(item, "isSent", "sent"), false);
+	}
+
+
+	private static boolean isOutgoingMessageItem(Object item) {
+		return isActiveMessageItem(item)
+				&& !booleanValue(readFirstObjectPath(item, "isComment", "comment"), false)
+				&& booleanValue(readFirstObjectPath(item, "isSent", "sent"), false);
+	}
+
+
+	private static boolean isCommentMessageItem(Object item) {
+		return isActiveMessageItem(item)
+				&& booleanValue(readFirstObjectPath(item, "isComment", "comment"), false);
+	}
+
+
+	private static boolean isUnreadMessageItem(Object item) {
+		return isActiveMessageItem(item)
+				&& !booleanValue(readFirstObjectPath(item, "isRead", "read"), false);
+	}
+
+
+	private static boolean hasAttachmentItem(Object item) {
+		return !isEmptyValue(readObjectPath(item, "fileUuid"))
+				|| !isEmptyValue(readObjectPath(item, "fileName"))
+				|| !isEmptyValue(readObjectPath(item, "fileType"));
+	}
+
+
+	private static boolean booleanValue(Object value, boolean fallback) {
+		if (value instanceof Boolean bool) {
+			return bool;
+		}
+		if (value instanceof JsonNode node && node.isBoolean()) {
+			return node.asBoolean();
+		}
+		if (value instanceof Number number) {
+			return number.intValue() != 0;
+		}
+		if (value instanceof CharSequence text) {
+			String normalized = text.toString().trim();
+			if ("true".equalsIgnoreCase(normalized) || "1".equals(normalized)) {
+				return true;
+			}
+			if ("false".equalsIgnoreCase(normalized) || "0".equals(normalized)) {
+				return false;
+			}
+		}
+		return fallback;
+	}
+
 	private static boolean containsIgnoreCase(String source, String part) {
 		if (source == null || part == null) {
 			return false;
@@ -1377,23 +1961,11 @@ public class AutomationScriptRuntime {
 	}
 
 	private static boolean hasAttachment(JsonNode root, Object target) {
-		JsonNode messageNode = null;
-
-		if (target instanceof JsonNode node) {
-			messageNode = node;
+		if (target != null) {
+			return countMatching(target, AutomationScriptRuntime::hasAttachmentItem) > 0;
 		}
-
-		if (messageNode == null) {
-			messageNode = readByPathStatic(root, "message");
-		}
-
-		if (messageNode == null || messageNode.isNull()) {
-			return false;
-		}
-
-		return hasNonBlankField(messageNode, "fileUuid")
-				|| hasNonBlankField(messageNode, "fileName")
-				|| hasNonBlankField(messageNode, "fileType");
+		JsonNode messageNode = readByPathStatic(root, "message");
+		return messageNode != null && !messageNode.isNull() && hasAttachmentItem(messageNode);
 	}
 
 	private static boolean hasNonBlankField(JsonNode node, String field) {
@@ -1501,23 +2073,16 @@ public class AutomationScriptRuntime {
 			return false;
 		}
 		String expected = tagName.trim().toLowerCase(Locale.ROOT);
-		if (target instanceof JsonNode node && node.isArray()) {
-			for (JsonNode item : node) {
-				if (tagMatches(item, expected)) {
-					return true;
-				}
+		for (Object item : itemsOf(target)) {
+			Object nestedTags = readObjectPath(item, "tags");
+			if (nestedTags != null && hasTag(nestedTags, tagName)) {
+				return true;
 			}
-			return false;
-		}
-		if (target instanceof Collection<?> collection) {
-			for (Object item : collection) {
-				if (tagMatches(item, expected)) {
-					return true;
-				}
+			if (tagMatches(item, expected)) {
+				return true;
 			}
-			return false;
 		}
-		return tagMatches(target, expected);
+		return false;
 	}
 
 	private static boolean tagMatches(Object tag, String expected) {

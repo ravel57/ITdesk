@@ -79,7 +79,9 @@ public class TaskHistoryService {
 			case TASK_UPDATED -> "Заявка обновлена";
 			case TASK_STATUS_CHANGED -> "Изменен статус";
 			case TASK_PRIORITY_CHANGED -> "Изменен приоритет";
+			case TASK_TYPE_CHANGED -> "Изменен тип заявки";
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> "Изменен исполнитель";
+			case TASK_GROUP_CHANGED -> "Изменена линия поддержки";
 			case TASK_DUE_DATE_CHANGED -> "Изменен дедлайн";
 			case TASK_CLOSED -> "Заявка закрыта";
 			case TASK_REOPENED -> "Заявка возвращена в работу";
@@ -116,9 +118,19 @@ public class TaskHistoryService {
 					getName(payload.path("newPriority"))
 			);
 
+			case TASK_TYPE_CHANGED -> "Тип заявки: %s → %s".formatted(
+					getTaskTypeName(payload.path("oldType")),
+					getTaskTypeName(payload.path("newType"))
+			);
+
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> "Исполнитель: %s → %s".formatted(
 					getUserName(payload.path("oldExecutor")),
 					getUserName(payload.path("newExecutor"))
+			);
+
+			case TASK_GROUP_CHANGED -> "Линия поддержки: %s → %s".formatted(
+					getName(payload.path("oldSupportLine")),
+					getName(payload.path("newSupportLine"))
 			);
 
 			case TASK_DUE_DATE_CHANGED -> "Дедлайн: %s → %s".formatted(
@@ -164,6 +176,23 @@ public class TaskHistoryService {
 			return name;
 		}
 		return node.asText("—");
+	}
+
+
+	private String getTaskTypeName(JsonNode node) {
+		if (node == null || node.isMissingNode() || node.isNull()) {
+			return "Без типа";
+		}
+		String type = node.path("type").asText("");
+		if (!type.isBlank()) {
+			return type;
+		}
+		String name = node.path("name").asText("");
+		if (!name.isBlank()) {
+			return name;
+		}
+		String value = node.asText("");
+		return value.isBlank() ? "Без типа" : value;
 	}
 
 
@@ -249,11 +278,25 @@ public class TaskHistoryService {
 					getName(payload.path("newPriority"))
 			));
 
+			case TASK_TYPE_CHANGED -> List.of(change(
+					"type",
+					"Тип заявки",
+					getTaskTypeName(payload.path("oldType")),
+					getTaskTypeName(payload.path("newType"))
+			));
+
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> List.of(change(
 					"executor",
 					"Исполнитель",
 					getUserName(payload.path("oldExecutor")),
 					getUserName(payload.path("newExecutor"))
+			));
+
+			case TASK_GROUP_CHANGED -> List.of(change(
+					"supportLine",
+					"Линия поддержки",
+					getName(payload.path("oldSupportLine")),
+					getName(payload.path("newSupportLine"))
 			));
 
 			case TASK_DUE_DATE_CHANGED -> List.of(change(

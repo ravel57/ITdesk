@@ -51,6 +51,10 @@ public class Task {
 	@JoinColumn
 	private User executor;
 
+	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn(name = "support_line_id")
+	private SupportLine supportLine;
+
 	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Tag> tags;
 

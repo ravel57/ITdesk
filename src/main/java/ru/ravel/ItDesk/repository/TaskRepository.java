@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.repository;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -54,6 +55,43 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 
 	Optional<Task> findBySlaId(Long slaId);
+
+
+	boolean existsBySupportLineId(Long supportLineId);
+
+
+	@Query("""
+			select count(t)
+			from Task t
+			where t.executor.id = :executorId
+			  and coalesce(t.completed, false) = false
+			""")
+	long countOpenByExecutorId(@Param("executorId") Long executorId);
+
+
+	@Query("""
+			select t
+			from Client c
+			join c.tasks t
+			where c.id = :clientId
+			  and coalesce(t.completed, false) = false
+			  and (:excludeTaskId is null or t.id <> :excludeTaskId)
+			  and (:typeId is null or t.type.id = :typeId)
+			  and (:createdAfter is null or t.createdAt >= :createdAfter)
+			  and (:useExactTitle = false or lower(coalesce(t.name, '')) = lower(:title))
+			  and (:useContainsTitle = false or lower(coalesce(t.name, '')) like lower(concat('%', :title, '%')))
+			order by t.createdAt desc
+			""")
+	List<Task> findPotentialDuplicates(
+			@Param("clientId") Long clientId,
+			@Param("excludeTaskId") Long excludeTaskId,
+			@Param("typeId") Long typeId,
+			@Param("createdAfter") ZonedDateTime createdAfter,
+			@Param("useExactTitle") boolean useExactTitle,
+			@Param("useContainsTitle") boolean useContainsTitle,
+			@Param("title") String title,
+			Pageable pageable
+	);
 
 
 	@Query("""

@@ -11,6 +11,44 @@ public enum TriggerFunctionsType {
 	CONTAINS_ANY("containsAny"),
 	CONTAINS_ALL("containsAll"),
 
+	// ---- удобные проверки объектов и коллекций ----
+	NAME_CONTAINS("nameContains"),
+	TEXT_CONTAINS("textContains"),
+	DESCRIPTION_CONTAINS("descriptionContains"),
+	FIELD_CONTAINS("fieldContains"),
+	FIELD_EQUALS("fieldEquals"),
+	FIELD_EXISTS("fieldExists"),
+
+	STATUS_IS("statusIs"),
+	PRIORITY_IS("priorityIs"),
+	TYPE_IS("typeIs"),
+	SUPPORT_LINE_IS("supportLineIs"),
+	ASSIGNED_TO("assignedTo"),
+
+	HAS_OPEN("hasOpen"),
+	HAS_CLOSED("hasClosed"),
+	OPEN_COUNT("openCount"),
+	CLOSED_COUNT("closedCount"),
+	OVERDUE_COUNT("overdueCount"),
+	UNASSIGNED_COUNT("unassignedCount"),
+
+	INCOMING_TEXT_CONTAINS("incomingTextContains"),
+	OUTGOING_TEXT_CONTAINS("outgoingTextContains"),
+	COMMENT_CONTAINS("commentContains"),
+	INCOMING_COUNT("incomingCount"),
+	OUTGOING_COUNT("outgoingCount"),
+	UNREAD_COUNT("unreadCount"),
+	ATTACHMENT_COUNT("attachmentCount"),
+
+	HAS_INCOMPLETE("hasIncomplete"),
+	COMPLETED_COUNT("completedCount"),
+	INCOMPLETE_COUNT("incompleteCount"),
+
+	HAS_ASSIGNEE("hasAssignee"),
+	HAS_DEADLINE("hasDeadline"),
+	IS_OVERDUE("isOverdue"),
+	IS_COMPLETED("isCompleted"),
+
 	ANY_OF("anyOf"),
 	NONE_OF("noneOf"),
 	ALL_OF("allOf"),

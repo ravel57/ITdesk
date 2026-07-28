@@ -1,24 +1,20 @@
 package ru.ravel.ItDesk.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.POJONode;
 import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.repository.PriorityRepository;
-import ru.ravel.ItDesk.repository.StatusRepository;
-import ru.ravel.ItDesk.repository.TagRepository;
-import ru.ravel.ItDesk.repository.TaskRepository;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.repository.*;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 
 /**
@@ -46,6 +42,10 @@ public class AutomationActionExecutor {
 	private final TaskRepository taskRepository;
 	private final TagRepository tagRepository;
 	private final TaskService taskService;
+	private final SupportLineRepository supportLineRepository;
+	private final UserRepository userRepository;
+	private final WebSocketService webSocketService;
+	private final EventPublisher eventPublisher;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -138,6 +138,7 @@ public class AutomationActionExecutor {
 		}
 
 		public void sendMessage(String text) {
+			text = normalizeOutgoingMessageText(text);
 			Long clientId = resolveClientId(ctx);
 			if (clientId == null) {
 				log.warn("client.sendMessage skipped: clientId is null, event={}", safeEventInfo(ctx.getEvent()));
@@ -154,7 +155,7 @@ public class AutomationActionExecutor {
 					.date(ZonedDateTime.now())
 					.isComment(false)
 					.build();
-			clientService.sendMessageWithUser(clientId, message, SystemUser.getInstance());
+			clientService.sendMessageForSystem(clientId, message);
 			log.info("AUTO client.sendMessage(clientId={}, text={})", clientId, text);
 		}
 
@@ -199,6 +200,86 @@ public class AutomationActionExecutor {
 			return resolveTaskId(ctx);
 		}
 
+		public void setName(String name) {
+			Long taskId = resolveTaskId(ctx);
+			if (taskId == null || name == null || name.isBlank()) {
+				log.warn("task.setName skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			String oldName = task.getName();
+			String newName = name.trim();
+			if (Objects.equals(oldName, newName)) {
+				return;
+			}
+			task.setName(newName);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_UPDATED, task, ctx,
+					"changes", List.of(taskChange("name", "Название", oldName, newName)));
+			notifyTaskUpdated(taskId);
+		}
+
+
+		public void setDescription(String description) {
+			Long taskId = resolveTaskId(ctx);
+			if (taskId == null || description == null) {
+				log.warn("task.setDescription skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			String oldDescription = task.getDescription();
+			if (Objects.equals(oldDescription, description)) {
+				return;
+			}
+			task.setDescription(description);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_UPDATED, task, ctx,
+					"changes", List.of(taskChange("description", "Описание", oldDescription, description)));
+			notifyTaskUpdated(taskId);
+		}
+
+
+		public void setDeadlineAfterMinutes(Long minutes) {
+			Long taskId = resolveTaskId(ctx);
+			if (taskId == null || minutes == null || minutes < 1) {
+				log.warn("task.setDeadlineAfterMinutes skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			ZonedDateTime oldDeadline = task.getDeadline();
+			ZonedDateTime newDeadline = ZonedDateTime.now().plusMinutes(minutes);
+			task.setDeadline(newDeadline);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_DUE_DATE_CHANGED, task, ctx,
+					"oldDeadline", oldDeadline,
+					"newDeadline", newDeadline);
+			notifyTaskUpdated(taskId);
+		}
+
+
+		public void clearDeadline() {
+			Long taskId = resolveTaskId(ctx);
+			if (taskId == null) {
+				return;
+			}
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			ZonedDateTime oldDeadline = task.getDeadline();
+			if (oldDeadline == null) {
+				return;
+			}
+			task.setDeadline(null);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_DUE_DATE_CHANGED, task, ctx,
+					"oldDeadline", oldDeadline,
+					"newDeadline", null);
+			notifyTaskUpdated(taskId);
+		}
+
+
 		public void setStatus(String status) {
 			Long taskId = resolveTaskId(ctx);
 			if (taskId == null || status == null || status.isBlank()) {
@@ -206,8 +287,18 @@ public class AutomationActionExecutor {
 				return;
 			}
 			Task task = taskRepository.findById(taskId).orElseThrow();
-			task.setStatus(statusRepository.findByName(status).orElseThrow());
+			Status oldStatus = task.getStatus();
+			Status newStatus = statusRepository.findByName(status).orElseThrow();
+			if (sameEntity(oldStatus, newStatus)) {
+				return;
+			}
+			task.setStatus(newStatus);
+			task.setLastActivity(ZonedDateTime.now());
 			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_STATUS_CHANGED, task, ctx,
+					"oldStatus", oldStatus,
+					"newStatus", newStatus);
+			notifyTaskUpdated(taskId);
 			log.info("AUTO task.setStatus(taskId={}, status={})", taskId, status);
 		}
 
@@ -218,8 +309,18 @@ public class AutomationActionExecutor {
 				return;
 			}
 			Task task = taskRepository.findById(taskId).orElseThrow();
-			task.setPriority(priorityRepository.findByName(priority).orElseThrow());
+			Priority oldPriority = task.getPriority();
+			Priority newPriority = priorityRepository.findByName(priority).orElseThrow();
+			if (sameEntity(oldPriority, newPriority)) {
+				return;
+			}
+			task.setPriority(newPriority);
+			task.setLastActivity(ZonedDateTime.now());
 			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_PRIORITY_CHANGED, task, ctx,
+					"oldPriority", oldPriority,
+					"newPriority", newPriority);
+			notifyTaskUpdated(taskId);
 			log.info("AUTO task.setPriority(taskId={}, priority={})", taskId, priority);
 		}
 
@@ -230,8 +331,15 @@ public class AutomationActionExecutor {
 				return;
 			}
 			Task task = taskRepository.findById(taskId).orElseThrow();
-			task.getTags().add(tagRepository.findByName(tag).orElseThrow());
+			Tag foundTag = tagRepository.findByName(tag).orElseThrow();
+			if (task.getTags().stream().anyMatch(existing -> sameEntity(existing, foundTag))) {
+				return;
+			}
+			task.getTags().add(foundTag);
+			task.setLastActivity(ZonedDateTime.now());
 			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_TAG_ADDED, task, ctx, "tag", foundTag);
+			notifyTaskUpdated(taskId);
 			log.info("AUTO task.addTag(taskId={}, tag={})", taskId, tag);
 		}
 
@@ -242,8 +350,15 @@ public class AutomationActionExecutor {
 				return;
 			}
 			Task task = taskRepository.findById(taskId).orElseThrow();
-			task.getTags().remove(tagRepository.findByName(tag).orElseThrow());
+			Tag foundTag = tagRepository.findByName(tag).orElseThrow();
+			boolean removed = task.getTags().removeIf(existing -> sameEntity(existing, foundTag));
+			if (!removed) {
+				return;
+			}
+			task.setLastActivity(ZonedDateTime.now());
 			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_TAG_REMOVED, task, ctx, "tag", foundTag);
+			notifyTaskUpdated(taskId);
 			log.info("AUTO task.removeTag(taskId={}, tag={})", taskId, tag);
 		}
 
@@ -253,8 +368,40 @@ public class AutomationActionExecutor {
 				log.warn("task.assignToUser skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			// TODO: taskService.assignToUser(taskId, userId)
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			User oldExecutor = task.getExecutor();
+			User newExecutor = userRepository.findById(userId).orElseThrow();
+			if (sameEntity(oldExecutor, newExecutor)) {
+				return;
+			}
+			task.setExecutor(newExecutor);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_ASSIGNEE_CHANGED, task, ctx,
+					"oldExecutor", oldExecutor,
+					"newExecutor", newExecutor);
+			notifyTaskUpdated(taskId);
 			log.info("AUTO task.assignToUser(taskId={}, userId={})", taskId, userId);
+		}
+
+		public void clearAssignee() {
+			Long taskId = resolveTaskId(ctx);
+			if (taskId == null) {
+				return;
+			}
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			User oldExecutor = task.getExecutor();
+			if (oldExecutor == null) {
+				return;
+			}
+			task.setExecutor(null);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_ASSIGNEE_CHANGED, task, ctx,
+					"oldExecutor", oldExecutor,
+					"newExecutor", null);
+			notifyTaskUpdated(taskId);
+			log.info("AUTO task.clearAssignee(taskId={})", taskId);
 		}
 
 		public void assignToGroup(Long groupId) {
@@ -263,8 +410,141 @@ public class AutomationActionExecutor {
 				log.warn("task.assignToGroup skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			// TODO: taskService.assignToGroup(taskId, groupId)
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			SupportLine oldSupportLine = task.getSupportLine();
+			User oldExecutor = task.getExecutor();
+			SupportLine newSupportLine = supportLineRepository.findById(groupId).orElseThrow();
+			if (sameEntity(oldSupportLine, newSupportLine)
+					&& (oldExecutor == null || newSupportLine.getMembers().stream()
+					.anyMatch(user -> sameEntity(user, oldExecutor)))) {
+				return;
+			}
+			task.setSupportLine(newSupportLine);
+			if (task.getExecutor() != null && newSupportLine.getMembers().stream()
+					.noneMatch(user -> sameEntity(user, task.getExecutor()))) {
+				task.setExecutor(null);
+			}
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			if (!sameEntity(oldSupportLine, task.getSupportLine())) {
+				publishTaskEvent(TriggerType.TASK_GROUP_CHANGED, task, ctx,
+						"oldSupportLine", oldSupportLine,
+						"newSupportLine", task.getSupportLine());
+			}
+			if (!sameEntity(oldExecutor, task.getExecutor())) {
+				publishTaskEvent(TriggerType.TASK_ASSIGNEE_CHANGED, task, ctx,
+						"oldExecutor", oldExecutor,
+						"newExecutor", task.getExecutor());
+			}
+			notifyTaskUpdated(taskId);
 			log.info("AUTO task.assignToGroup(taskId={}, groupId={})", taskId, groupId);
+		}
+
+
+		public void assignToLeastLoadedMember(Long groupId) {
+			Long taskId = resolveTaskId(ctx);
+			if (taskId == null || groupId == null) {
+				log.warn("task.assignToLeastLoadedMember skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			SupportLine supportLine = supportLineRepository.findById(groupId).orElseThrow();
+			User executor = supportLine.getMembers().stream()
+					.filter(Objects::nonNull)
+					.filter(User::isEnabled)
+					.filter(user -> user.getId() != null)
+					.min(java.util.Comparator
+							.comparingLong((User user) -> taskRepository.countOpenByExecutorId(user.getId()))
+							.thenComparing(User::getId))
+					.orElse(null);
+
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			SupportLine oldSupportLine = task.getSupportLine();
+			User oldExecutor = task.getExecutor();
+			if (sameEntity(oldSupportLine, supportLine) && sameEntity(oldExecutor, executor)) {
+				return;
+			}
+			task.setSupportLine(supportLine);
+			task.setExecutor(executor);
+			task.setLastActivity(ZonedDateTime.now());
+			taskRepository.save(task);
+			if (!sameEntity(oldSupportLine, supportLine)) {
+				publishTaskEvent(TriggerType.TASK_GROUP_CHANGED, task, ctx,
+						"oldSupportLine", oldSupportLine,
+						"newSupportLine", supportLine);
+			}
+			if (!sameEntity(oldExecutor, executor)) {
+				publishTaskEvent(TriggerType.TASK_ASSIGNEE_CHANGED, task, ctx,
+						"oldExecutor", oldExecutor,
+						"newExecutor", executor);
+			}
+			notifyTaskUpdated(taskId);
+			log.info(
+					"AUTO task.assignToLeastLoadedMember(taskId={}, groupId={}, userId={})",
+					taskId, groupId, executor == null ? null : executor.getId()
+			);
+		}
+	}
+
+
+	private void publishTaskEvent(
+			TriggerType triggerType,
+			Task task,
+			AutomationExecutionContext ctx,
+			Object... values
+	) {
+		if (triggerType == null || task == null || task.getId() == null) {
+			return;
+		}
+		Map<String, Object> payload = new LinkedHashMap<>();
+		payload.put("task", task);
+		payload.put("source", "AUTOMATION");
+		if (ctx != null && ctx.getTrigger() != null) {
+			Map<String, Object> automation = new LinkedHashMap<>();
+			automation.put("id", ctx.getTrigger().getId());
+			automation.put("name", ctx.getTrigger().getName());
+			payload.put("automation", automation);
+		}
+		if (values != null) {
+			for (int i = 0; i + 1 < values.length; i += 2) {
+				payload.put(String.valueOf(values[i]), values[i + 1]);
+			}
+		}
+		eventPublisher.publish(triggerType, payload);
+	}
+
+	private Map<String, Object> taskChange(String field, String label, Object oldValue, Object newValue) {
+		Map<String, Object> change = new LinkedHashMap<>();
+		change.put("field", field);
+		change.put("label", label);
+		change.put("oldValue", Objects.toString(oldValue, ""));
+		change.put("newValue", Objects.toString(newValue, ""));
+		return change;
+	}
+
+	private boolean sameEntity(Object left, Object right) {
+		if (left == right) {
+			return true;
+		}
+		if (left == null || right == null) {
+			return false;
+		}
+		try {
+			Method leftId = left.getClass().getMethod("getId");
+			Method rightId = right.getClass().getMethod("getId");
+			return Objects.equals(leftId.invoke(left), rightId.invoke(right));
+		} catch (Exception ignored) {
+			return Objects.equals(left, right);
+		}
+	}
+
+	private void notifyTaskUpdated(Long taskId) {
+		if (taskId == null) {
+			return;
+		}
+		try {
+			webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(null, taskId));
+		} catch (Exception e) {
+			log.warn("Unable to send task update after automation, taskId={}", taskId, e);
 		}
 	}
 
@@ -309,6 +589,13 @@ public class AutomationActionExecutor {
 	// ======================================================================
 
 	private void invoke(Object target, String methodName, List<Object> rawArgs) throws Exception {
+		// Критичные системные действия вызываем явно. Это исключает зависимость
+		// от порядка/видимости методов reflection и одинаково принимает числа,
+		// пришедшие от Jackson как Integer, Long, BigDecimal и другие Number.
+		if (invokeKnownAction(target, methodName, rawArgs)) {
+			return;
+		}
+
 		Method[] methods = target.getClass().getMethods();
 		for (Method m : methods) {
 			if (!m.getName().equals(methodName)) continue;
@@ -332,6 +619,53 @@ public class AutomationActionExecutor {
 			return;
 		}
 		throw new NoSuchMethodException("No method '%s' for %s args=%s".formatted(methodName, target.getClass().getSimpleName(), rawArgs));
+	}
+
+	private boolean invokeKnownAction(Object target, String methodName, List<Object> rawArgs) {
+		if (!(target instanceof TaskApi taskApi)) {
+			return false;
+		}
+
+		switch (methodName) {
+			case "assignToGroup" -> {
+				taskApi.assignToGroup(requireLongArg(methodName, rawArgs, 0));
+				return true;
+			}
+			case "assignToLeastLoadedMember" -> {
+				taskApi.assignToLeastLoadedMember(requireLongArg(methodName, rawArgs, 0));
+				return true;
+			}
+			case "assignToUser" -> {
+				taskApi.assignToUser(requireLongArg(methodName, rawArgs, 0));
+				return true;
+			}
+			case "setDeadlineAfterMinutes" -> {
+				taskApi.setDeadlineAfterMinutes(requireLongArg(methodName, rawArgs, 0));
+				return true;
+			}
+			default -> {
+				return false;
+			}
+		}
+	}
+
+	private Long requireLongArg(String methodName, List<Object> rawArgs, int index) {
+		if (rawArgs == null || index < 0 || index >= rawArgs.size()) {
+			throw new IllegalArgumentException("Method '%s' requires numeric argument #%d"
+					.formatted(methodName, index + 1));
+		}
+		Long value = asLong(rawArgs.get(index));
+		if (value == null) {
+			Object raw = rawArgs.get(index);
+			throw new IllegalArgumentException("Method '%s' requires numeric argument #%d, got %s (%s)"
+					.formatted(
+							methodName,
+							index + 1,
+							raw,
+							raw == null ? "null" : raw.getClass().getName()
+					));
+		}
+		return value;
 	}
 
 	private Object convertArg(Object raw, Class<?> targetType) {
@@ -422,15 +756,19 @@ public class AutomationActionExecutor {
 
 	private Object unwrap(JsonNode n) {
 		if (n == null || n.isNull()) return null;
+		if (n instanceof POJONode pojoNode) {
+			Object pojo = pojoNode.getPojo();
+			return pojo instanceof JsonNode nestedNode ? unwrap(nestedNode) : pojo;
+		}
 		if (n.isTextual()) return n.asText();
 		if (n.isBoolean()) return n.asBoolean();
-		if (n.isNumber()) return n.decimalValue();
+		if (n.isNumber()) return n.numberValue();
 		if (n.isArray()) {
 			List<Object> list = new ArrayList<>();
 			for (JsonNode x : n) list.add(unwrap(x));
 			return list;
 		}
-		// object — оставим JsonNode, чтобы не терять структуру
+		// Обычный JSON-объект оставляем JsonNode, чтобы не терять структуру.
 		return n;
 	}
 
@@ -460,6 +798,33 @@ public class AutomationActionExecutor {
 		}
 	}
 
+	private static String normalizeOutgoingMessageText(String text) {
+		if (text == null || text.isEmpty()) {
+			return text;
+		}
+
+		String normalized = text;
+		String previous;
+		do {
+			previous = normalized;
+			normalized = normalized
+					// Старые сохранённые сценарии могли содержать несколько
+					// уровней экранирования: \\n -> \n -> перевод строки.
+					.replace("\\\\n", "\\n")
+					.replace("\\\\r", "\\r")
+					.replace("\\\\t", "\\t")
+					.replace("\\\"", "\"")
+					.replace("\\'", "'");
+		} while (!normalized.equals(previous));
+
+		return normalized
+				.replace("\\r\\n", "\n")
+				.replace("\\n", "\n")
+				.replace("\\r", "\r")
+				.replace("\\t", "\t");
+	}
+
+
 	private String stripOuterQuotes(String s) {
 		if (s == null) return null;
 		s = s.trim();
@@ -473,28 +838,40 @@ public class AutomationActionExecutor {
 	}
 
 
-	private Long asLong(Object v) {
-		switch (v) {
-			case Long l -> {
-				return l;
+	private Long asLong(Object value) {
+		// Значение может пройти через несколько Jackson-обёрток:
+		// POJONode(JsonNode/Number), ArrayNode из одного элемента и т. п.
+		for (int depth = 0; depth < 8; depth++) {
+			if (value instanceof POJONode pojoNode) {
+				value = pojoNode.getPojo();
+				continue;
 			}
-			case Integer i -> {
-				return i.longValue();
+			if (value instanceof JsonNode node) {
+				value = unwrap(node);
+				continue;
 			}
-			case BigDecimal bd -> {
-				return bd.longValue();
+			if (value instanceof List<?> list && list.size() == 1) {
+				value = list.getFirst();
+				continue;
 			}
-			case String s -> {
-				try {
-					return Long.parseLong(s.trim());
-				} catch (Exception ignored) {
-					return null;
-				}
-			}
-			case null, default -> {
+			break;
+		}
+
+		if (value instanceof Number number) {
+			try {
+				return new BigDecimal(number.toString()).longValueExact();
+			} catch (ArithmeticException | NumberFormatException ignored) {
 				return null;
 			}
 		}
+		if (value instanceof String text) {
+			try {
+				return new BigDecimal(text.trim()).longValueExact();
+			} catch (ArithmeticException | NumberFormatException ignored) {
+				return null;
+			}
+		}
+		return null;
 	}
 
 	// ======================================================================

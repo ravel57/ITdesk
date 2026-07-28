@@ -39,6 +39,7 @@ public class TaskService {
 	private final EntityManager entityManager;
 	private final UserService userService;
 	private final UserNotificationService userNotificationService;
+	private final SupportLineRepository supportLineRepository;
 
 
 	@Transactional(readOnly = true)
@@ -1227,6 +1228,7 @@ public class TaskService {
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
+		TaskType oldType = olderTask.getType();
 		Status oldStatus = olderTask.getStatus();
 		Status statusBeforeUpdate = olderTask.getStatus();
 		Boolean oldCompleted = olderTask.getCompleted();
@@ -1238,6 +1240,7 @@ public class TaskService {
 		validateExecutorIsPresentWhenClosing(task, requestedStatus, completedStatus);
 		boolean oldFrozen = Boolean.TRUE.equals(olderTask.getFrozen());
 		User oldExecutor = olderTask.getExecutor();
+		SupportLine oldSupportLine = olderTask.getSupportLine();
 		ZonedDateTime oldDeadline = olderTask.getDeadline();
 		ZonedDateTime oldFrozenUntil = olderTask.getFrozenUntil();
 		Set<Tag> oldTags = new HashSet<>(Objects.requireNonNullElse(olderTask.getTags(), Collections.emptyList()));
@@ -1249,6 +1252,7 @@ public class TaskService {
 		addChange(changes, "checklist", "Чек-лист", checklistToHistoryValue(olderTask.getChecklist()), checklistToHistoryValue(task.getChecklist()));
 		addChange(changes, "deadline", "Дедлайн", olderTask.getDeadline(), task.getDeadline());
 		addChange(changes, "executor", "Исполнитель", getUserDisplayName(olderTask.getExecutor()), getUserDisplayName(task.getExecutor()));
+		addChange(changes, "supportLine", "Линия поддержки", getSupportLineName(olderTask.getSupportLine()), getSupportLineName(task.getSupportLine()));
 		addChange(changes, "priority", "Приоритет", getName(olderTask.getPriority()), getName(task.getPriority()));
 		addChange(changes, "status", "Статус", getName(olderTask.getStatus()), getName(task.getStatus()));
 		addChange(changes, "completed", "Закрыта", olderTask.getCompleted(), task.getCompleted());
@@ -1264,6 +1268,7 @@ public class TaskService {
 		boolean reopening = Boolean.TRUE.equals(olderTask.getCompleted()) && Boolean.FALSE.equals(task.getCompleted());
 		olderTask.setDeadline(task.getDeadline());
 		olderTask.setExecutor(task.getExecutor());
+		olderTask.setSupportLine(task.getSupportLine());
 		olderTask.setTags(task.getTags());
 		olderTask.setLinkedMessageId(task.getLinkedMessageId());
 		if (task.getFrozen() != null) {
@@ -1430,6 +1435,14 @@ public class TaskService {
 					"newPriority", savedTask.getPriority()
 			));
 		}
+		if (!Objects.equals(oldType, savedTask.getType())) {
+			eventPublisher.publish(TriggerType.TASK_TYPE_CHANGED, eventPayload(
+					"task", savedTask,
+					"client", client,
+					"oldType", oldType,
+					"newType", savedTask.getType()
+			));
+		}
 		if (!Objects.equals(oldExecutor, savedTask.getExecutor())) {
 			eventPublisher.publish(TriggerType.TASK_ASSIGNEE_CHANGED, eventPayload(
 					"task", savedTask,
@@ -1444,6 +1457,14 @@ public class TaskService {
 						savedTask.getExecutor().getId()
 				));
 			}
+		}
+		if (!Objects.equals(oldSupportLine, savedTask.getSupportLine())) {
+			eventPublisher.publish(TriggerType.TASK_GROUP_CHANGED, eventPayload(
+					"task", savedTask,
+					"client", client,
+					"oldSupportLine", oldSupportLine,
+					"newSupportLine", savedTask.getSupportLine()
+			));
 		}
 		if (!Objects.equals(oldDeadline, savedTask.getDeadline())) {
 			eventPublisher.publish(TriggerType.TASK_DUE_DATE_CHANGED, eventPayload(
@@ -1660,6 +1681,7 @@ public class TaskService {
 		addCreatedField(changes, "checklist", "Чек-лист", checklistToHistoryValue(task.getChecklist()));
 		addCreatedField(changes, "deadline", "Дедлайн", task.getDeadline());
 		addCreatedField(changes, "executor", "Исполнитель", getUserDisplayName(task.getExecutor()));
+		addCreatedField(changes, "supportLine", "Линия поддержки", getSupportLineName(task.getSupportLine()));
 		addCreatedField(changes, "priority", "Приоритет", getName(task.getPriority()));
 		addCreatedField(changes, "status", "Статус", getName(task.getStatus()));
 		addCreatedField(changes, "tags", "Теги", tagsToHistoryValue(task.getTags()));
@@ -1702,6 +1724,11 @@ public class TaskService {
 				.toList()
 				.toString();
 	}
+
+	private static String getSupportLineName(SupportLine supportLine) {
+		return supportLine == null || supportLine.getName() == null ? "" : supportLine.getName();
+	}
+
 
 	private static String getName(Object object) {
 		return switch (object) {
@@ -1860,6 +1887,12 @@ public class TaskService {
 							"newValue", ""
 					))
 			));
+			eventPublisher.publish(TriggerType.TASK_TYPE_CHANGED, eventPayload(
+					"task", savedTask,
+					"client", client,
+					"oldType", oldType,
+					"newType", null
+			));
 		}
 		boolean wasDefault = Boolean.TRUE.equals(taskType.getDefaultSelection());
 		taskTypeRepository.delete(taskType);
@@ -1885,7 +1918,22 @@ public class TaskService {
 			return;
 		}
 		task.setType(resolveTaskType(task.getType()));
+		task.setSupportLine(resolveSupportLine(task.getSupportLine()));
 		task.setChecklist(normalizeChecklist(task.getChecklist()));
+	}
+
+
+	private SupportLine resolveSupportLine(SupportLine requestLine) {
+		if (requestLine != null && requestLine.getId() != null) {
+			return supportLineRepository.findById(requestLine.getId())
+					.orElseThrow(() -> new IllegalArgumentException(
+							"Линия поддержки не найдена: %d".formatted(requestLine.getId())
+					));
+		}
+		return supportLineRepository.findByDefaultSelectionTrue()
+				.filter(line -> !Boolean.FALSE.equals(line.getActive()))
+				.or(() -> supportLineRepository.findFirstByActiveTrueOrderByOrderNumberAsc())
+				.orElse(null);
 	}
 
 

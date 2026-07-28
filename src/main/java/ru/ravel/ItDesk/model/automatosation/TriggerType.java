@@ -28,6 +28,7 @@ public enum TriggerType {
 	TASK_UPDATED,                  // любое изменение (грубый триггер)
 	TASK_STATUS_CHANGED,
 	TASK_PRIORITY_CHANGED,
+	TASK_TYPE_CHANGED,                // изменён тип заявки
 	TASK_ASSIGNEE_CHANGED,
 	TASK_GROUP_CHANGED,
 	TASK_TAG_ADDED,

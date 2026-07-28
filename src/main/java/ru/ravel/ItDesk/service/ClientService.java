@@ -253,6 +253,16 @@ public class ClientService {
 
 
 	public Message sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
+		return sendMessageInternal(clientId, message, user, true);
+	}
+
+
+	public Message sendMessageForSystem(Long clientId, @NotNull Message message) {
+		return sendMessageInternal(clientId, message, SystemUser.getInstance(), false);
+	}
+
+
+	private Message sendMessageInternal(Long clientId, @NotNull Message message, User user, boolean checkCurrentUserAccess) {
 		if (clientId == null) {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
@@ -261,7 +271,9 @@ public class ClientService {
 		message.setIsSent(true);
 		message.setIsRead(true);
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
-		Client client = getClientForCurrentUser(clientId);
+		Client client = checkCurrentUserAccess
+				? getClientForCurrentUser(clientId)
+				: clientsRepository.findById(clientId).orElseThrow();
 		hydrateReplyData(message, client.getMessages());
 		Message savedMessage = messageRepository.saveAndFlush(message);
 		hydrateReplyData(savedMessage, client.getMessages());

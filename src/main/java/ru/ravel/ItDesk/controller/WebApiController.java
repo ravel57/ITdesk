@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.service.*;
@@ -41,6 +42,10 @@ public class WebApiController {
 	private final ExportService exportService;
 	private final LlmService llmService;
 	private final AutomationTriggerService automationTriggerService;
+	private final AutomationRoutingTestService automationRoutingTestService;
+	private final AutomationWorkflowEngine automationWorkflowEngine;
+	private final AutomationWorkflowRunService automationWorkflowRunService;
+	private final AutomationExpressionMetadataService automationExpressionMetadataService;
 	private final SlaService slaService;
 	private final TaskRepository taskRepository;    // TODO remove from here
 	private final AnalyticsService analyticsService;
@@ -50,6 +55,7 @@ public class WebApiController {
 	private final WebSocketService webSocketService;
 	private final AppSettingsService appSettingsService;
 	private final AppSettingsRepository appSettingsRepository;
+	private final SupportLineService supportLineService;
 
 
 	@GetMapping("/clients")
@@ -1038,6 +1044,49 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/support-lines")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getSupportLines() {
+		return ResponseEntity.ok(supportLineService.getSupportLines());
+	}
+
+
+	@PostMapping("/support-line")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> createSupportLine(@RequestBody SupportLine supportLine) {
+		return ResponseEntity.ok(supportLineService.create(supportLine));
+	}
+
+
+	@PatchMapping("/support-line")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> updateSupportLine(@RequestBody SupportLine supportLine) {
+		return ResponseEntity.ok(supportLineService.update(supportLine));
+	}
+
+
+	@DeleteMapping("/support-line/{supportLineId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> deleteSupportLine(@PathVariable Long supportLineId) {
+		supportLineService.delete(supportLineId);
+		return ResponseEntity.noContent().build();
+	}
+
+
+	@PatchMapping("/support-line/set-default")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> setDefaultSupportLine(@RequestBody SupportLine supportLine) {
+		return ResponseEntity.ok(supportLineService.setDefault(supportLine));
+	}
+
+
+	@PatchMapping("/support-lines/resort")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> resortSupportLines(@RequestBody List<SupportLine> supportLines) {
+		return ResponseEntity.ok(supportLineService.resort(supportLines));
+	}
+
+
 	@GetMapping("/triggers")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getAllTriggers() {
@@ -1099,10 +1148,84 @@ public class WebApiController {
 	}
 
 
+
+	@PostMapping("/automation/test")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> testAutomationRouting(@RequestBody AutomationRoutingTestRequest request) {
+		return ResponseEntity.ok(automationRoutingTestService.test(request));
+	}
+
+
+	@PostMapping("/automation/validate")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> validateAutomationWorkflow(@RequestBody AutomationWorkflowValidationRequest request) {
+		return ResponseEntity.ok(automationWorkflowEngine.validateAsMap(request.getWorkflowDefinition()));
+	}
+
+
+	@GetMapping("/automation/expression/roots")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getAutomationExpressionRoots() {
+		return ResponseEntity.ok(automationExpressionMetadataService.roots());
+	}
+
+
+	@PostMapping("/automation/expression/suggestions")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getAutomationExpressionSuggestions(
+			@RequestBody AutomationExpressionSuggestionRequest request
+	) {
+		return ResponseEntity.ok(automationExpressionMetadataService.suggest(request));
+	}
+
+
+	@GetMapping("/automation/runs")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> getAutomationRuns(@RequestParam Long triggerId) {
+		return ResponseEntity.ok(automationWorkflowRunService.recent(triggerId));
+	}
+
+
+	@PostMapping("/automation/runs/{runId}/retry")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> retryAutomationRun(@PathVariable Long runId) {
+		return ResponseEntity.ok(automationWorkflowRunService.retry(runId));
+	}
+
+
+	@PostMapping("/automation/runs/{runId}/approve")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> approveAutomationRun(
+			@PathVariable Long runId,
+			@RequestBody(required = false) AutomationApprovalDecisionRequest request
+	) {
+		return ResponseEntity.ok(automationWorkflowRunService.approve(runId, request));
+	}
+
+
+	@PostMapping("/automation/runs/{runId}/reject")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> rejectAutomationRun(
+			@PathVariable Long runId,
+			@RequestBody(required = false) AutomationApprovalDecisionRequest request
+	) {
+		return ResponseEntity.ok(automationWorkflowRunService.reject(runId, request));
+	}
+
+
+	@DeleteMapping("/automation/runs/{runId}")
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<Object> cancelAutomationRun(@PathVariable Long runId) {
+		return ResponseEntity.ok(automationWorkflowRunService.cancel(runId));
+	}
+
+
 	@GetMapping("/trigger-types")
 	@PreAuthorize("hasAnyRole('ADMIN')")
 	public ResponseEntity<Object> getTriggerTypes() {
-		return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		return ResponseEntity.ok(
+				Arrays.stream(TriggerType.values()).map(Enum::name).toList()
+		);
 	}
 
 

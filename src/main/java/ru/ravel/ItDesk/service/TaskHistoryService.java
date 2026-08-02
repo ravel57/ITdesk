@@ -70,6 +70,12 @@ public class TaskHistoryService {
 				boolean paused = isPausedValue(slaPauseChange.getNewValue());
 				return paused ? "SLA поставлен на паузу" : "SLA снят с паузы";
 			}
+			TaskHistoryChangeDto linkedMessageChange = findChange(changes, "linkedMessageId");
+			if (linkedMessageChange != null) {
+				return isUnlinkedMessageValue(linkedMessageChange.getOldValue())
+						? "Сообщение привязано к заявке"
+						: "Сообщение перепривязано";
+			}
 		}
 		if (triggerType == null) {
 			return "Изменение заявки";
@@ -105,6 +111,13 @@ public class TaskHistoryService {
 			if (slaPauseChange != null) {
 				boolean paused = isPausedValue(slaPauseChange.getNewValue());
 				return paused ? "SLA поставлен на паузу вручную" : "SLA снят с паузы вручную";
+			}
+			TaskHistoryChangeDto linkedMessageChange = findChange(changes, "linkedMessageId");
+			if (linkedMessageChange != null) {
+				return "Связанное сообщение: %s → %s".formatted(
+						linkedMessageChange.getOldValue(),
+						linkedMessageChange.getNewValue()
+				);
 			}
 		}
 		return switch (triggerType) {
@@ -397,6 +410,17 @@ public class TaskHistoryService {
 				.filter(change -> field.equals(change.getField()))
 				.findFirst()
 				.orElse(null);
+	}
+
+
+	private boolean isUnlinkedMessageValue(String value) {
+		if (value == null || value.isBlank()) {
+			return true;
+		}
+		String normalized = value.trim().toLowerCase();
+		return normalized.equals("—")
+				|| normalized.equals("не привязано")
+				|| normalized.equals("null");
 	}
 
 

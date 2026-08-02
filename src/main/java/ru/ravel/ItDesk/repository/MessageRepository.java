@@ -133,6 +133,29 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 	);
 
 
+	@Query("""
+			select
+				m.id as id,
+				c.id as clientId,
+				m.date as date,
+				m.isSent as sent,
+				m.isComment as commentFlag,
+				m.deleted as deleted,
+				m.answerRequired as answerRequired,
+				sender as sender
+			from Client c
+			join c.messages m
+			left join m.user sender
+			where m.date is not null
+			  and m.date <= :to
+			  and coalesce(m.deleted, false) = false
+			order by c.id asc, m.date asc, m.id asc
+			""")
+	List<MessageAnalyticsRow> findClientMessageAnalyticsRowsUntil(
+			@Param("to") ZonedDateTime to
+	);
+
+
 	interface MessageAnalyticsRow {
 		Long getId();
 

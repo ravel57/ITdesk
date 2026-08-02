@@ -8,6 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 class MvcConfig implements WebMvcConfigurer {
 
+
 	@Override
 	public void addViewControllers(@NotNull ViewControllerRegistry registry) {
 		String spa = "forward:/index.html";
@@ -30,6 +31,7 @@ class MvcConfig implements WebMvcConfigurer {
 		registry.addViewController("/my-tasks").setViewName(spa);
 		registry.addViewController("/orgs").setViewName(spa);
 		registry.addViewController("/knowledge-base").setViewName(spa);
+		registry.addViewController("/my-lines").setViewName(spa);
 	}
 
 }

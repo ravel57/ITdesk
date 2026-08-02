@@ -69,6 +69,19 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 	long countOpenByExecutorId(@Param("executorId") Long executorId);
 
 
+	@Query(value = """
+			select t.*
+			from task t
+			where t.client_id = :clientId
+			  and coalesce(t.unread_ping_tasks_messages ->> cast(:userId as text), 'false') = 'true'
+			order by coalesce(t.last_activity, t.created_at) desc nulls last, t.id desc
+			""", nativeQuery = true)
+	List<Task> findPingedTasksByClientIdAndUserId(
+			@Param("clientId") Long clientId,
+			@Param("userId") Long userId
+	);
+
+
 	@Query("""
 			select t
 			from Client c

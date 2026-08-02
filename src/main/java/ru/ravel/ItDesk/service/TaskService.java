@@ -94,6 +94,21 @@ public class TaskService {
 
 
 	@Transactional(readOnly = true)
+	public List<Map<String, Object>> getTaskPingsForCurrentUser(Long clientId) {
+		Client client = getClientForCurrentUser(clientId);
+		User currentUser = userService.getCurrentUser();
+
+		if (currentUser.getId() == null) {
+			return List.of();
+		}
+
+		return taskRepository.findPingedTasksByClientIdAndUserId(clientId, currentUser.getId()).stream()
+				.map(task -> toTaskPageDto(task, client))
+				.toList();
+	}
+
+
+	@Transactional(readOnly = true)
 	public TaskUpdatedDto buildTaskUpdatedDto(Long clientId, Long taskId) {
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");

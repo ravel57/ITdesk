@@ -443,6 +443,7 @@ public class ClientService {
 	}
 
 
+	@Transactional
 	public MessageTask linkToTask(@NotNull MessageTask messageTask) {
 		if (messageTask == null) {
 			throw new IllegalArgumentException("messageTask must not be null");
@@ -453,10 +454,46 @@ public class ClientService {
 		if (messageTask.getMessage() == null || messageTask.getMessage().getId() == null) {
 			throw new IllegalArgumentException("message.id must not be null");
 		}
-		getClientByTaskForCurrentUser(messageTask.getTask().getId());
-		Task task = taskRepository.findById(messageTask.getTask().getId()).orElseThrow();
-		task.setLinkedMessageId(messageTask.getMessage().getId());
-		taskRepository.save(task);
+
+		Long taskId = messageTask.getTask().getId();
+		Long newLinkedMessageId = messageTask.getMessage().getId();
+		Client client = getClientByTaskForCurrentUser(taskId);
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		Message newLinkedMessage = messageRepository.findById(newLinkedMessageId).orElseThrow();
+
+		boolean belongsToClient = safeCollection(client.getMessages()).stream()
+				.anyMatch(message -> Objects.equals(message.getId(), newLinkedMessageId));
+		if (!belongsToClient) {
+			throw new IllegalArgumentException("message does not belong to task client");
+		}
+
+		Long oldLinkedMessageId = task.getLinkedMessageId();
+		if (Objects.equals(oldLinkedMessageId, newLinkedMessageId)) {
+			return messageTask;
+		}
+
+		Message oldLinkedMessage = oldLinkedMessageId == null
+				? null
+				: messageRepository.findById(oldLinkedMessageId).orElse(null);
+		task.setLinkedMessageId(newLinkedMessageId);
+		Task savedTask = taskRepository.saveAndFlush(task);
+
+		String oldValue = describeLinkedMessage(oldLinkedMessageId, oldLinkedMessage);
+		String newValue = describeLinkedMessage(newLinkedMessageId, newLinkedMessage);
+		eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
+				"task", savedTask,
+				"client", client,
+				"message", newLinkedMessage,
+				"oldLinkedMessageId", oldLinkedMessageId,
+				"newLinkedMessageId", newLinkedMessageId,
+				"changes", List.of(Map.of(
+						"field", "linkedMessageId",
+						"label", "Связанное сообщение",
+						"oldValue", oldValue,
+						"newValue", newValue
+				))
+		));
+		globalSearchService.indexTask(client, savedTask);
 		return messageTask;
 	}
 
@@ -824,6 +861,21 @@ public class ClientService {
 						m.getDate()
 				))
 				.toList();
+	}
+
+
+	private String describeLinkedMessage(Long messageId, Message message) {
+		if (messageId == null) {
+			return "Не привязано";
+		}
+		String text = message == null ? "" : Objects.toString(message.getText(), "");
+		text = text.replaceAll("\\s+", " ").trim();
+		if (text.length() > 80) {
+			text = text.substring(0, 77) + "...";
+		}
+		return text.isBlank()
+				? "Сообщение №" + messageId
+				: "Сообщение №%d «%s»".formatted(messageId, text);
 	}
 
 

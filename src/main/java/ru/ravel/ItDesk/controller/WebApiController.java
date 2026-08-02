@@ -96,6 +96,13 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/client/{clientId}/task-pings")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	public ResponseEntity<Object> getTaskPings(@PathVariable Long clientId) {
+		return ResponseEntity.ok().body(taskService.getTaskPingsForCurrentUser(clientId));
+	}
+
+
 	@GetMapping("/client-files/{clientId}")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getClientFiles(@PathVariable Long clientId) {

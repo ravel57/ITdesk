@@ -20,6 +20,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AutomationTriggerService {
 
+	private static final EnumSet<AutomationWorkflowRunStatus> ACTIVE_RUN_STATUSES = EnumSet.of(
+			AutomationWorkflowRunStatus.NEW,
+			AutomationWorkflowRunStatus.PROCESSING,
+			AutomationWorkflowRunStatus.WAITING_EVENT,
+			AutomationWorkflowRunStatus.WAITING_APPROVAL
+	);
+
 	private final AutomationTriggerRepository repository;
 	private final AutomationWorkflowRunRepository workflowRunRepository;
 	private final AutomationWorkflowEngine workflowEngine;
@@ -46,7 +53,7 @@ public class AutomationTriggerService {
 				.elseAction(normalizeOptionalAction(dto.getElseAction()))
 				.workflowDefinition(normalizedWorkflow)
 				.workflowVersion(dto.getWorkflowVersion() == null ? 1 : dto.getWorkflowVersion())
-				.automationRuleStatus(resolveStatus(dto.getAutomationRuleStatus()))
+				.automationRuleStatus(resolveStatus(dto.getAutomationRuleStatus(), AutomationRuleStatus.ENABLED))
 				.stopProcessing(Boolean.TRUE.equals(dto.getStopProcessing()))
 				.orderNumber(nextOrder)
 				.build();
@@ -59,10 +66,16 @@ public class AutomationTriggerService {
 		if (dto.getId() == null) {
 			throw new IllegalArgumentException("id is required");
 		}
+
 		validate(dto);
 		AutomationTrigger entity = repository.findById(dto.getId()).orElseThrow();
+		AutomationRuleStatus previousStatus = entity.getAutomationRuleStatus() == null
+				? AutomationRuleStatus.ENABLED
+				: entity.getAutomationRuleStatus();
+		AutomationRuleStatus newStatus = resolveStatus(dto.getAutomationRuleStatus(), previousStatus);
 		String normalizedWorkflow = normalizeWorkflow(dto.getWorkflowDefinition());
 		TriggerType triggerType = resolveTriggerType(dto, normalizedWorkflow);
+
 		entity.setName(dto.getName().trim());
 		entity.setDescription(dto.getDescription());
 		entity.setTriggerType(triggerType);
@@ -71,30 +84,40 @@ public class AutomationTriggerService {
 		entity.setElseAction(normalizeOptionalAction(dto.getElseAction()));
 		entity.setWorkflowDefinition(normalizedWorkflow);
 		entity.setWorkflowVersion(dto.getWorkflowVersion() == null ? 1 : dto.getWorkflowVersion());
-		entity.setAutomationRuleStatus(resolveStatus(dto.getAutomationRuleStatus()));
+		entity.setAutomationRuleStatus(newStatus);
 		entity.setStopProcessing(Boolean.TRUE.equals(dto.getStopProcessing()));
 		if (dto.getOrderNumber() != null) {
 			entity.setOrderNumber(dto.getOrderNumber());
 		}
-		return toDto(repository.save(entity));
+
+		AutomationTrigger saved = repository.save(entity);
+		if (newStatus == AutomationRuleStatus.DISABLED
+				&& previousStatus != AutomationRuleStatus.DISABLED) {
+			cancelActiveRuns(saved.getId(), "Сценарий отключён");
+		}
+
+		return toDto(saved);
 	}
 
 
 	@Transactional
 	public void delete(Long id) {
-		workflowRunRepository.cancelActiveRuns(
-				id,
-				EnumSet.of(
-						AutomationWorkflowRunStatus.NEW,
-						AutomationWorkflowRunStatus.PROCESSING,
-						AutomationWorkflowRunStatus.WAITING_EVENT,
-						AutomationWorkflowRunStatus.WAITING_APPROVAL
-				),
-				AutomationWorkflowRunStatus.CANCELLED,
-				Instant.now(),
-				"Сценарий удалён"
-		);
+		cancelActiveRuns(id, "Сценарий удалён");
 		repository.deleteById(id);
+	}
+
+
+	/**
+	 * Используйте этот метод в обработчике событий вместо repository.findAll()
+	 * или нефильтрованной выборки по triggerType.
+	 */
+	@Transactional(readOnly = true)
+	public List<AutomationTrigger> listEnabledByTriggerType(TriggerType triggerType) {
+		return repository.findAll().stream()
+				.filter(trigger -> trigger.getAutomationRuleStatus() == AutomationRuleStatus.ENABLED)
+				.filter(trigger -> trigger.getTriggerType() == triggerType)
+				.sorted()
+				.toList();
 	}
 
 
@@ -181,15 +204,27 @@ public class AutomationTriggerService {
 	}
 
 
-	private AutomationRuleStatus resolveStatus(String value) {
+	private AutomationRuleStatus resolveStatus(String value, AutomationRuleStatus defaultStatus) {
 		if (value == null || value.isBlank()) {
-			return AutomationRuleStatus.ENABLED;
+			return defaultStatus;
 		}
+
 		try {
-			return AutomationRuleStatus.valueOf(value);
-		} catch (Exception ignored) {
-			return AutomationRuleStatus.ENABLED;
+			return AutomationRuleStatus.valueOf(value.trim().toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException("unknown automationRuleStatus: %s".formatted(value), e);
 		}
+	}
+
+
+	private void cancelActiveRuns(Long triggerId, String reason) {
+		workflowRunRepository.cancelActiveRuns(
+				triggerId,
+				ACTIVE_RUN_STATUSES,
+				AutomationWorkflowRunStatus.CANCELLED,
+				Instant.now(),
+				reason
+		);
 	}
 
 
@@ -205,7 +240,9 @@ public class AutomationTriggerService {
 				.workflowDefinition(entity.getWorkflowDefinition())
 				.workflowVersion(entity.getWorkflowVersion() == null ? 1 : entity.getWorkflowVersion())
 				.orderNumber(entity.getOrderNumber())
-				.automationRuleStatus(entity.getAutomationRuleStatus().name())
+				.automationRuleStatus((entity.getAutomationRuleStatus() == null
+						? AutomationRuleStatus.ENABLED
+						: entity.getAutomationRuleStatus()).name())
 				.stopProcessing(Boolean.TRUE.equals(entity.getStopProcessing()))
 				.matchCount(entity.getMatchCount() == null ? 0L : entity.getMatchCount())
 				.lastMatchedAt(entity.getLastMatchedAt())

@@ -11,7 +11,7 @@ import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
-import ru.ravel.ItDesk.repository.TaskRepository;
+import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.service.*;
 
 import java.math.BigDecimal;
@@ -47,7 +47,6 @@ public class WebApiController {
 	private final AutomationWorkflowRunService automationWorkflowRunService;
 	private final AutomationExpressionMetadataService automationExpressionMetadataService;
 	private final SlaService slaService;
-	private final TaskRepository taskRepository;    // TODO remove from here
 	private final AnalyticsService analyticsService;
 	private final GlobalSearchService globalSearchService;
 	private final TaskHistoryService taskHistoryService;
@@ -56,6 +55,7 @@ public class WebApiController {
 	private final AppSettingsService appSettingsService;
 	private final AppSettingsRepository appSettingsRepository;
 	private final SupportLineService supportLineService;
+	private final ClientRepository clientRepository;
 
 
 	@GetMapping("/clients")
@@ -932,12 +932,15 @@ public class WebApiController {
 
 
 	@GetMapping("/task/{taskId}/sla/info")
+	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<SlaInfoDto> getTaskSlaInfo(@PathVariable Long taskId) {
-		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
-		if (taskOpt.isEmpty()) {
+		Task task;
+		try {
+			task = taskService.getTaskForCurrentUser(taskId);
+		} catch (NoSuchElementException | IllegalArgumentException e) {
 			return ResponseEntity.notFound().build();
 		}
-		Sla sla = taskOpt.get().getSla();
+		Sla sla = task.getSla();
 		if (sla == null) {
 			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L, 0.0, 0L));
 		}
@@ -1326,6 +1329,7 @@ public class WebApiController {
 			@RequestParam(required = false) String priorityIds,
 			@RequestParam(required = false) String executorIds,
 			@RequestParam(required = false) String tagIds,
+			@RequestParam(required = false) String supportLineIds,
 			HttpSession session
 	) {
 		try {
@@ -1337,7 +1341,8 @@ public class WebApiController {
 					typeIds,
 					priorityIds,
 					executorIds,
-					tagIds
+					tagIds,
+					supportLineIds
 			));
 		} catch (CancellationException ignored) {
 			return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
@@ -1405,6 +1410,7 @@ public class WebApiController {
 	@GetMapping("/task/{taskId}/history")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getTaskHistory(@PathVariable Long taskId) {
+		taskService.getTaskForCurrentUser(taskId);
 		return ResponseEntity.ok(taskHistoryService.getTaskHistory(taskId));
 	}
 
@@ -1556,11 +1562,16 @@ public class WebApiController {
 	@GetMapping("/client/{clientId}/task/{taskId}/sla/info")
 	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
 	public ResponseEntity<Object> getClientTaskSlaInfo(@PathVariable Long clientId, @PathVariable Long taskId) {
-		Optional<Task> taskOpt = taskRepository.findByIdWithSla(taskId);
-		if (taskOpt.isEmpty()) {
+		Task task;
+		try {
+			task = taskService.getTaskForCurrentUser(taskId);
+		} catch (NoSuchElementException | IllegalArgumentException e) {
 			return ResponseEntity.notFound().build();
 		}
-		Task task = taskOpt.get();
+		Client client = clientRepository.findByTaskId(taskId).orElse(null);
+		if (client == null || !Objects.equals(client.getId(), clientId)) {
+			return ResponseEntity.notFound().build();
+		}
 		if (task.getSla() == null) {
 			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L, 0.0, 0L));
 		}

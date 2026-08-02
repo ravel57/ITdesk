@@ -5,13 +5,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.AnswerRequired;
 import ru.ravel.ItDesk.model.AppSettings;
+import ru.ravel.ItDesk.model.OlaStatus;
 import ru.ravel.ItDesk.model.Sla;
+import ru.ravel.ItDesk.model.SupportLine;
 import ru.ravel.ItDesk.model.Task;
+import ru.ravel.ItDesk.model.TaskSupportLineStage;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
+import ru.ravel.ItDesk.repository.TaskSupportLineStageRepository;
 
 import java.lang.reflect.Method;
 import java.time.*;
@@ -35,6 +39,8 @@ public class AnalyticsService {
 	private final AutomationOutboxRepository automationOutboxRepository;
 	private final SlaService slaService;
 	private final AppSettingsService appSettingsService;
+	private final TaskSupportLineStageRepository taskSupportLineStageRepository;
+	private final OlaWorkingTimeService olaWorkingTimeService;
 	private final ConcurrentMap<String, AnalyticsCancellationToken> activeAnalyticsRequests = new ConcurrentHashMap<>();
 
 
@@ -48,7 +54,7 @@ public class AnalyticsService {
 			String executorIds,
 			String tagIds
 	) {
-		return getSummary(null, from, to, groupBy, typeIds, priorityIds, executorIds, tagIds);
+		return getSummary(null, from, to, groupBy, typeIds, priorityIds, executorIds, tagIds, null);
 	}
 
 
@@ -61,7 +67,8 @@ public class AnalyticsService {
 			String typeIds,
 			String priorityIds,
 			String executorIds,
-			String tagIds
+			String tagIds,
+			String supportLineIds
 	) {
 		AnalyticsCancellationToken cancellationToken = registerAnalyticsRequest(requestKey);
 		try {
@@ -76,7 +83,8 @@ public class AnalyticsService {
 					parseIds(typeIds),
 					parseIds(priorityIds),
 					parseIds(executorIds),
-					parseIds(tagIds)
+					parseIds(tagIds),
+					parseIds(supportLineIds)
 			);
 
 			Set<Long> repositoryExecutorIds = filters.repositoryExecutorIds();
@@ -87,6 +95,8 @@ public class AnalyticsService {
 					idsOrDummy(filters.priorityIds()),
 					!repositoryExecutorIds.isEmpty(),
 					idsOrDummy(repositoryExecutorIds),
+					!filters.supportLineIds().isEmpty(),
+					idsOrDummy(filters.supportLineIds()),
 					!filters.tagIds().isEmpty(),
 					idsOrDummy(filters.tagIds())
 			);
@@ -149,6 +159,8 @@ public class AnalyticsService {
 			long closedTasks = 0L;
 			long overdueDeadlines = 0L;
 			long deadlineWarnings = 0L;
+			long overdueOla = 0L;
+			long olaWarnings = 0L;
 			long unassignedTasks = 0L;
 
 			for (TaskRepository.AnalyticsTaskRow row : taskRows) {
@@ -197,6 +209,39 @@ public class AnalyticsService {
 								tags,
 								"openTasks"
 						);
+					}
+					if (isOlaBreached(row, now)) {
+						overdueOla++;
+						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "overdueOla");
+						if (includeInBreakdown) {
+							incrementBreakdowns(
+								taskTypeBreakdownMap,
+								priorityBreakdownMap,
+								executorBreakdownMap,
+								tagBreakdownMap,
+								row.getType(),
+								row.getPriority(),
+								row.getExecutor(),
+								tags,
+								"overdueOla"
+							);
+						}
+					} else if (isOlaWarning(row, now)) {
+						olaWarnings++;
+						incrementOperatorLoad(operatorLoadMap, row.getExecutor(), "olaWarnings");
+						if (includeInBreakdown) {
+							incrementBreakdowns(
+								taskTypeBreakdownMap,
+								priorityBreakdownMap,
+								executorBreakdownMap,
+								tagBreakdownMap,
+								row.getType(),
+								row.getPriority(),
+								row.getExecutor(),
+								tags,
+								"olaWarnings"
+							);
+						}
 					}
 					if (isTaskDeadlineOverdue(row.getDeadline(), now)) {
 						overdueDeadlines++;
@@ -372,6 +417,18 @@ public class AnalyticsService {
 						"reopenedTasks"
 				);
 			}
+			SupportLineAnalytics supportLineAnalytics = buildSupportLineAnalytics(
+					taskRows,
+					breakdownTaskIds,
+					closedEvents,
+					reopenedEvents,
+					safeFrom,
+					safeTo,
+					now,
+					filters,
+					cancellationToken
+			);
+
 			Map<String, Object> result = new LinkedHashMap<>();
 			result.put("from", safeFrom);
 			result.put("to", safeTo);
@@ -387,6 +444,9 @@ public class AnalyticsService {
 			result.put("overdueSla", overdueSla);
 			result.put("overdueDeadlines", overdueDeadlines);
 			result.put("deadlineWarnings", deadlineWarnings);
+			result.put("overdueOla", overdueOla);
+			result.put("olaWarnings", olaWarnings);
+			result.put("avgLineTimeSeconds", supportLineAnalytics.avgLineTimeSeconds());
 			result.put("deadlineWarningMinutes", DEFAULT_DEADLINE_WARNING_MINUTES);
 			result.put("unansweredMessages", unansweredMessages);
 			result.put("avgFirstResponseSeconds", avgFirstResponseSeconds);
@@ -403,6 +463,9 @@ public class AnalyticsService {
 			result.put("priorityBreakdown", toBreakdownRows(priorityBreakdownMap));
 			result.put("executorBreakdown", toBreakdownRows(executorBreakdownMap));
 			result.put("tagBreakdown", toBreakdownRows(tagBreakdownMap));
+			result.put("supportLineBreakdown", supportLineAnalytics.rows());
+			result.put("lineLoad", supportLineAnalytics.rows());
+			result.put("lineTransitions", supportLineAnalytics.transitions());
 			return result;
 		} finally {
 			completeAnalyticsRequest(cancellationToken);
@@ -492,6 +555,8 @@ public class AnalyticsService {
 				idsOrDummy(filters.priorityIds()),
 				!repositoryExecutorIds.isEmpty(),
 				idsOrDummy(repositoryExecutorIds),
+				!filters.supportLineIds().isEmpty(),
+				idsOrDummy(filters.supportLineIds()),
 				!filters.tagIds().isEmpty(),
 				idsOrDummy(filters.tagIds())
 		);
@@ -542,6 +607,8 @@ public class AnalyticsService {
 				idsOrDummy(filters.priorityIds()),
 				!filters.repositoryExecutorIds().isEmpty(),
 				idsOrDummy(filters.repositoryExecutorIds()),
+				!filters.supportLineIds().isEmpty(),
+				idsOrDummy(filters.supportLineIds()),
 				!filters.tagIds().isEmpty(),
 				idsOrDummy(filters.tagIds())
 		);
@@ -735,6 +802,30 @@ public class AnalyticsService {
 	}
 
 
+	private boolean isOlaBreached(TaskRepository.AnalyticsTaskRow row, ZonedDateTime now) {
+		if (row == null || row.getOlaDeadline() == null || now == null) {
+			return false;
+		}
+		OlaStatus status = row.getOlaStatus();
+		if (status == OlaStatus.DISABLED || status == OlaStatus.PAUSED || status == OlaStatus.COMPLETED) {
+			return false;
+		}
+		return now.isAfter(row.getOlaDeadline());
+	}
+
+
+	private boolean isOlaWarning(TaskRepository.AnalyticsTaskRow row, ZonedDateTime now) {
+		if (row == null || row.getOlaWarningAt() == null || row.getOlaDeadline() == null || now == null) {
+			return false;
+		}
+		OlaStatus status = row.getOlaStatus();
+		if (status == OlaStatus.DISABLED || status == OlaStatus.PAUSED || status == OlaStatus.COMPLETED) {
+			return false;
+		}
+		return !now.isBefore(row.getOlaWarningAt()) && !now.isAfter(row.getOlaDeadline());
+	}
+
+
 	private boolean isTaskDeadlineOverdue(ZonedDateTime deadline, ZonedDateTime now) {
 		return deadline != null && deadline.isBefore(now);
 	}
@@ -810,6 +901,8 @@ public class AnalyticsService {
 			created.put("closedTasks", 0L);
 			created.put("overdueSla", 0L);
 			created.put("overdueDeadlines", 0L);
+			created.put("overdueOla", 0L);
+			created.put("olaWarnings", 0L);
 			created.put("reopenedTasks", 0L);
 			created.put("firstResponseCount", 0L);
 			created.put("firstResponseTotalSeconds", 0L);
@@ -886,6 +979,8 @@ public class AnalyticsService {
 			created.put("reopenedTasks", 0L);
 			created.put("overdueSla", 0L);
 			created.put("overdueDeadlines", 0L);
+			created.put("overdueOla", 0L);
+			created.put("olaWarnings", 0L);
 			created.put("unassignedTasks", 0L);
 			return created;
 		});
@@ -1218,6 +1313,259 @@ public class AnalyticsService {
 	}
 
 
+	private SupportLineAnalytics buildSupportLineAnalytics(
+			List<TaskRepository.AnalyticsTaskRow> taskRows,
+			Set<Long> breakdownTaskIds,
+			List<AnalyticsEvent> closedEvents,
+			List<AnalyticsEvent> reopenedEvents,
+			ZonedDateTime from,
+			ZonedDateTime to,
+			ZonedDateTime now,
+			AnalyticsFilters filters,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		Map<Long, Map<String, Object>> rowsByLineId = new LinkedHashMap<>();
+		Map<Long, TaskRepository.AnalyticsTaskRow> rowsByTaskId = taskRows.stream()
+				.filter(row -> row.getId() != null)
+				.collect(java.util.stream.Collectors.toMap(
+						TaskRepository.AnalyticsTaskRow::getId,
+						row -> row,
+						(first, second) -> first,
+						LinkedHashMap::new
+				));
+		Set<Long> filteredTaskIds = rowsByTaskId.keySet();
+		Set<Long> closedInPeriod = closedEvents.stream()
+				.filter(event -> event.taskId() != null && isBetween(event.date(), from, to))
+				.map(AnalyticsEvent::taskId)
+				.filter(filteredTaskIds::contains)
+				.collect(java.util.stream.Collectors.toSet());
+		Map<Long, Long> reopenedCounts = reopenedEvents.stream()
+				.filter(event -> event.taskId() != null && isBetween(event.date(), from, to))
+				.filter(event -> filteredTaskIds.contains(event.taskId()))
+				.collect(java.util.stream.Collectors.groupingBy(
+						AnalyticsEvent::taskId,
+						LinkedHashMap::new,
+						java.util.stream.Collectors.counting()
+				));
+
+		for (TaskRepository.AnalyticsTaskRow taskRow : taskRows) {
+			checkAnalyticsCancelled(cancellationToken);
+			Map<String, Object> lineRow = getOrCreateSupportLineRow(rowsByLineId, taskRow.getSupportLine());
+			boolean includeInBreakdown = taskRow.getId() != null && breakdownTaskIds.contains(taskRow.getId());
+			if (includeInBreakdown) {
+				incrementMetric(lineRow, "totalTasks");
+			}
+			if (isBetween(taskRow.getCreatedAt(), from, to)) {
+				incrementMetric(lineRow, "createdTasks");
+			}
+			if (!Boolean.TRUE.equals(taskRow.getCompleted())) {
+				incrementMetric(lineRow, "openTasks");
+				if (isUnassignedExecutor(taskRow.getExecutor())) {
+					incrementMetric(lineRow, "unassignedTasks");
+				}
+				if (isTaskDeadlineOverdue(taskRow.getDeadline(), now)) {
+					incrementMetric(lineRow, "overdueDeadlines");
+				}
+				if (isOlaBreached(taskRow, now)) {
+					incrementMetric(lineRow, "overdueOla");
+				} else if (isOlaWarning(taskRow, now)) {
+					incrementMetric(lineRow, "olaWarnings");
+				}
+			}
+			if (closedInPeriod.contains(taskRow.getId())
+					|| (Boolean.TRUE.equals(taskRow.getCompleted()) && isBetween(taskRow.getClosedAt(), from, to))) {
+				incrementMetric(lineRow, "closedTasks");
+			}
+			long reopened = reopenedCounts.getOrDefault(taskRow.getId(), 0L);
+			if (reopened > 0) {
+				lineRow.put("reopenedTasks", asLong(lineRow.get("reopenedTasks")) + reopened);
+			}
+		}
+
+		Set<Long> repositoryExecutorIds = filters.repositoryExecutorIds();
+		List<TaskRepository.SlaAnalyticsRow> slaRows = taskRepository.findSlaAnalyticsRows(
+				!filters.typeIds().isEmpty(),
+				idsOrDummy(filters.typeIds()),
+				!filters.priorityIds().isEmpty(),
+				idsOrDummy(filters.priorityIds()),
+				!repositoryExecutorIds.isEmpty(),
+				idsOrDummy(repositoryExecutorIds),
+				!filters.supportLineIds().isEmpty(),
+				idsOrDummy(filters.supportLineIds()),
+				!filters.tagIds().isEmpty(),
+				idsOrDummy(filters.tagIds())
+		);
+		for (TaskRepository.SlaAnalyticsRow slaRow : slaRows) {
+			checkAnalyticsCancelled(cancellationToken);
+			if (!filters.matchesExecutor(slaRow.getExecutor()) || !breakdownTaskIds.contains(slaRow.getId())) {
+				continue;
+			}
+			ZonedDateTime deadline = slaRow.getSla() == null ? null : slaService.deadline(slaRow.getSla());
+			if (deadline != null && deadline.isBefore(now)) {
+				incrementMetric(getOrCreateSupportLineRow(rowsByLineId, slaRow.getSupportLine()), "overdueSla");
+			}
+		}
+
+		List<TaskSupportLineStage> stages = taskSupportLineStageRepository.findOverlappingPeriod(
+				from,
+				to,
+				!filters.supportLineIds().isEmpty(),
+				idsOrDummy(filters.supportLineIds())
+		).stream()
+				.filter(stage -> stage.getTask() != null && stage.getTask().getId() != null)
+				.filter(stage -> filteredTaskIds.contains(stage.getTask().getId()))
+				.toList();
+
+		long allLineSeconds = 0L;
+		long allLineStages = 0L;
+		Set<String> countedTaskLineKeys = new HashSet<>();
+		Map<Long, List<TaskSupportLineStage>> stagesByTask = new LinkedHashMap<>();
+		for (TaskSupportLineStage stage : stages) {
+			checkAnalyticsCancelled(cancellationToken);
+			ZonedDateTime stageStart = maxDateTime(stage.getEnteredAt(), from);
+			ZonedDateTime rawEnd = stage.getLeftAt() == null ? minDateTime(now, to) : minDateTime(stage.getLeftAt(), to);
+			long seconds = calculateStageSeconds(stage, stageStart, rawEnd);
+			Map<String, Object> lineRow = getOrCreateSupportLineRow(rowsByLineId, stage.getSupportLine());
+			lineRow.put("lineTimeSecondsTotal", asLong(lineRow.get("lineTimeSecondsTotal")) + seconds);
+			String taskLineKey = stage.getTask().getId() + ":" + getSupportLineId(stage.getSupportLine());
+			if (countedTaskLineKeys.add(taskLineKey)) {
+				lineRow.put("lineStageCount", asLong(lineRow.get("lineStageCount")) + 1L);
+				allLineStages++;
+			}
+			allLineSeconds += seconds;
+			stagesByTask.computeIfAbsent(stage.getTask().getId(), ignored -> new ArrayList<>()).add(stage);
+		}
+
+		Map<String, Map<String, Object>> transitionMap = new LinkedHashMap<>();
+		for (List<TaskSupportLineStage> taskStages : stagesByTask.values()) {
+			taskStages.sort(Comparator.comparing(TaskSupportLineStage::getEnteredAt, Comparator.nullsLast(ZonedDateTime::compareTo)));
+			for (int index = 1; index < taskStages.size(); index++) {
+				TaskSupportLineStage previous = taskStages.get(index - 1);
+				TaskSupportLineStage current = taskStages.get(index);
+				if (!isBetween(current.getEnteredAt(), from, to)) {
+					continue;
+				}
+				Long fromId = getSupportLineId(previous.getSupportLine());
+				Long toId = getSupportLineId(current.getSupportLine());
+				if (Objects.equals(fromId, toId)) {
+					continue;
+				}
+				String key = fromId + ":" + toId;
+				Map<String, Object> transition = transitionMap.computeIfAbsent(key, ignored -> {
+					Map<String, Object> created = new LinkedHashMap<>();
+					created.put("key", key);
+					created.put("fromLineId", fromId);
+					created.put("fromLine", getSupportLineName(previous.getSupportLine()));
+					created.put("toLineId", toId);
+					created.put("toLine", getSupportLineName(current.getSupportLine()));
+					created.put("count", 0L);
+					created.put("transitionSecondsTotal", 0L);
+					return created;
+				});
+				long previousSeconds = calculateStageSeconds(
+						previous,
+						previous.getEnteredAt(),
+						Objects.requireNonNullElse(previous.getLeftAt(), current.getEnteredAt())
+				);
+				transition.put("count", asLong(transition.get("count")) + 1L);
+				transition.put("transitionSecondsTotal", asLong(transition.get("transitionSecondsTotal")) + previousSeconds);
+			}
+		}
+
+		List<Map<String, Object>> rows = rowsByLineId.values().stream()
+				.map(row -> {
+					Map<String, Object> result = new LinkedHashMap<>(row);
+					long stageCount = asLong(result.remove("lineStageCount"));
+					long secondsTotal = asLong(result.remove("lineTimeSecondsTotal"));
+					result.put("avgLineTimeSeconds", stageCount == 0 ? 0L : Math.round((double) secondsTotal / stageCount));
+					return result;
+				})
+				.sorted(Comparator.comparingLong((Map<String, Object> row) -> asLong(row.get("openTasks"))).reversed()
+						.thenComparing(row -> Objects.toString(row.get("name"), "")))
+				.toList();
+		List<Map<String, Object>> transitions = transitionMap.values().stream()
+				.map(row -> {
+					Map<String, Object> result = new LinkedHashMap<>(row);
+					long count = asLong(result.get("count"));
+					long totalSeconds = asLong(result.remove("transitionSecondsTotal"));
+					result.put("avgTransitionSeconds", count == 0 ? 0L : Math.round((double) totalSeconds / count));
+					return result;
+				})
+				.sorted(Comparator.comparingLong((Map<String, Object> row) -> asLong(row.get("count"))).reversed())
+				.toList();
+		long average = allLineStages == 0L ? 0L : Math.round((double) allLineSeconds / allLineStages);
+		return new SupportLineAnalytics(average, rows, transitions);
+	}
+
+
+	private Map<String, Object> getOrCreateSupportLineRow(
+			Map<Long, Map<String, Object>> rowsByLineId,
+			SupportLine line
+	) {
+		Long lineId = getSupportLineId(line);
+		return rowsByLineId.computeIfAbsent(lineId, ignored -> {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("key", lineId);
+			row.put("id", lineId);
+			row.put("supportLineId", lineId);
+			row.put("name", getSupportLineName(line));
+			row.put("level", line == null ? null : line.getLevel());
+			row.put("totalTasks", 0L);
+			row.put("createdTasks", 0L);
+			row.put("openTasks", 0L);
+			row.put("closedTasks", 0L);
+			row.put("reopenedTasks", 0L);
+			row.put("overdueSla", 0L);
+			row.put("overdueDeadlines", 0L);
+			row.put("unassignedTasks", 0L);
+			row.put("overdueOla", 0L);
+			row.put("olaWarnings", 0L);
+			row.put("lineTimeSecondsTotal", 0L);
+			row.put("lineStageCount", 0L);
+			return row;
+		});
+	}
+
+
+	private void incrementMetric(Map<String, Object> row, String metric) {
+		row.put(metric, asLong(row.get(metric)) + 1L);
+	}
+
+
+	private Long getSupportLineId(SupportLine line) {
+		return line == null || line.getId() == null ? EMPTY_GROUP_ID : line.getId();
+	}
+
+
+	private String getSupportLineName(SupportLine line) {
+		return line == null || line.getName() == null || line.getName().isBlank() ? "Без линии" : line.getName();
+	}
+
+
+	private long calculateStageSeconds(TaskSupportLineStage stage, ZonedDateTime start, ZonedDateTime end) {
+		if (stage == null || start == null || end == null || !end.isAfter(start)) {
+			return 0L;
+		}
+		boolean useWorkingTime = Boolean.TRUE.equals(stage.getUseWorkingTime());
+		long seconds = useWorkingTime
+				? olaWorkingTimeService.secondsBetween(start, end, true)
+				: Duration.between(start, end).getSeconds();
+		long pausedSeconds = Objects.requireNonNullElse(stage.getPausedSeconds(), 0L);
+		Task stageTask = stage.getTask();
+		if (stage.getLeftAt() == null && stageTask != null && stageTask.getOlaPausedAt() != null) {
+			ZonedDateTime pauseStart = stageTask.getOlaPausedAt().isAfter(start)
+					? stageTask.getOlaPausedAt()
+					: start;
+			if (end.isAfter(pauseStart)) {
+				pausedSeconds += useWorkingTime
+						? olaWorkingTimeService.secondsBetween(pauseStart, end, true)
+						: Duration.between(pauseStart, end).getSeconds();
+			}
+		}
+		return Math.max(0L, seconds - pausedSeconds);
+	}
+
+
 	private static <T> Collection<T> safeCollection(Collection<T> collection) {
 		return collection == null ? List.of() : collection;
 	}
@@ -1277,6 +1625,14 @@ public class AnalyticsService {
 	}
 
 
+	private record SupportLineAnalytics(
+			long avgLineTimeSeconds,
+			List<Map<String, Object>> rows,
+			List<Map<String, Object>> transitions
+	) {
+	}
+
+
 	private record AnalyticsMessageRow(
 			Long id,
 			Long clientId,
@@ -1294,9 +1650,16 @@ public class AnalyticsService {
 	}
 
 
-	private record AnalyticsFilters(Set<Long> typeIds, Set<Long> priorityIds, Set<Long> executorIds, Set<Long> tagIds) {
+	private record AnalyticsFilters(
+			Set<Long> typeIds,
+			Set<Long> priorityIds,
+			Set<Long> executorIds,
+			Set<Long> tagIds,
+			Set<Long> supportLineIds
+	) {
 		private boolean hasAny() {
-			return !typeIds.isEmpty() || !priorityIds.isEmpty() || !executorIds.isEmpty() || !tagIds.isEmpty();
+			return !typeIds.isEmpty() || !priorityIds.isEmpty() || !executorIds.isEmpty()
+					|| !tagIds.isEmpty() || !supportLineIds.isEmpty();
 		}
 
 		private boolean executorFilterNeedsInMemory() {
@@ -1326,6 +1689,7 @@ public class AnalyticsService {
 			result.put("priorityIds", priorityIds);
 			result.put("executorIds", executorIds);
 			result.put("tagIds", tagIds);
+			result.put("supportLineIds", supportLineIds);
 			return result;
 		}
 	}

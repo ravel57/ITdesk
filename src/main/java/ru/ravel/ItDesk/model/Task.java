@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
@@ -11,6 +12,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+import ru.ravel.ItDesk.dto.OlaInfoDto;
 
 
 @Entity
@@ -54,6 +59,39 @@ public class Task {
 	@ManyToOne(fetch = FetchType.EAGER)
 	@JoinColumn(name = "support_line_id")
 	private SupportLine supportLine;
+
+	private ZonedDateTime enteredCurrentLineAt;
+
+	private ZonedDateTime olaDeadline;
+
+	private ZonedDateTime olaWarningAt;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 24)
+	@Builder.Default
+	private OlaStatus olaStatus = OlaStatus.DISABLED;
+
+	private Long olaDurationSeconds;
+
+	@Builder.Default
+	private Boolean olaUseWorkingTime = false;
+
+	private ZonedDateTime olaPausedAt;
+
+	private Long olaRemainingSecondsOnPause;
+
+	@Transient
+	private OlaInfoDto olaInfo;
+
+	@JsonIgnore
+	@ManyToMany(fetch = FetchType.LAZY)
+	@JoinTable(
+			name = "task_access_users",
+			joinColumns = @JoinColumn(name = "task_id"),
+			inverseJoinColumns = @JoinColumn(name = "user_id")
+	)
+	@Builder.Default
+	private Set<User> accessUsers = new LinkedHashSet<>();
 
 	@ManyToMany(fetch = FetchType.EAGER)
 	private List<Tag> tags;

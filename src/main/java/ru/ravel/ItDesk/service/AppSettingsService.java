@@ -37,6 +37,9 @@ public class AppSettingsService {
 		if (!end.isAfter(start)) {
 			throw new IllegalArgumentException("Конец рабочего дня должен быть позже начала");
 		}
+		if (Boolean.TRUE.equals(payload.getWorkingTimeEnabled()) && !hasAnyWorkingDay(payload)) {
+			throw new IllegalArgumentException("Выберите хотя бы один рабочий день");
+		}
 		AppSettings settings = getOrCreate();
 		settings.setTimezone(payload.getTimezone());
 		settings.setWorkingTimeEnabled(Boolean.TRUE.equals(payload.getWorkingTimeEnabled()));
@@ -49,6 +52,11 @@ public class AppSettingsService {
 		settings.setFridayEnabled(Boolean.TRUE.equals(payload.getFridayEnabled()));
 		settings.setSaturdayEnabled(Boolean.TRUE.equals(payload.getSaturdayEnabled()));
 		settings.setSundayEnabled(Boolean.TRUE.equals(payload.getSundayEnabled()));
+		settings.setSupportLineAccessMode(
+			payload.getSupportLineAccessMode() == null
+					? ru.ravel.ItDesk.model.SupportLineAccessMode.HYBRID
+					: payload.getSupportLineAccessMode()
+		);
 		return appSettingsRepository.save(settings);
 	}
 
@@ -60,6 +68,17 @@ public class AppSettingsService {
 					return appSettingsRepository.findById(SETTINGS_ID)
 							.orElseThrow(() -> new IllegalStateException("Не удалось создать общие настройки приложения"));
 				});
+	}
+
+
+	private boolean hasAnyWorkingDay(AppSettings settings) {
+		return Boolean.TRUE.equals(settings.getMondayEnabled())
+				|| Boolean.TRUE.equals(settings.getTuesdayEnabled())
+				|| Boolean.TRUE.equals(settings.getWednesdayEnabled())
+				|| Boolean.TRUE.equals(settings.getThursdayEnabled())
+				|| Boolean.TRUE.equals(settings.getFridayEnabled())
+				|| Boolean.TRUE.equals(settings.getSaturdayEnabled())
+				|| Boolean.TRUE.equals(settings.getSundayEnabled());
 	}
 
 

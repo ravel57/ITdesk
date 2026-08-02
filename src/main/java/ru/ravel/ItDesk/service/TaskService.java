@@ -40,6 +40,8 @@ public class TaskService {
 	private final UserService userService;
 	private final UserNotificationService userNotificationService;
 	private final SupportLineRepository supportLineRepository;
+	private final TaskRoutingService taskRoutingService;
+	private final OlaService olaService;
 
 
 	@Transactional(readOnly = true)
@@ -58,6 +60,7 @@ public class TaskService {
 		List<Map<String, Object>> requiredFilterChain = getRequestFilterChainValue(request, "requiredFilterChain");
 		Long clientId = getLongRequestValue(request, "clientId", null);
 		Long taskId = getLongRequestValue(request, "taskId", null);
+		String scope = getStringRequestValue(request, "scope", "").trim().toUpperCase(Locale.ROOT);
 		TaskPageQueryContext queryContext = buildTaskPageQueryContext(
 				includeCompleted,
 				search,
@@ -65,7 +68,8 @@ public class TaskService {
 				requiredFilterChain,
 				filterJoinOperator,
 				clientId,
-				taskId
+				taskId,
+				scope
 		);
 		long totalElements = countTaskPageRows(queryContext);
 		int totalPages = totalElements == 0
@@ -103,6 +107,7 @@ public class TaskService {
 		}
 
 		return taskRepository.findPingedTasksByClientIdAndUserId(clientId, currentUser.getId()).stream()
+				.filter(task -> userService.canUserAccessTask(currentUser, client, task))
 				.map(task -> toTaskPageDto(task, client))
 				.toList();
 	}
@@ -150,6 +155,8 @@ public class TaskService {
 				    end)
 				from Client c
 				join c.tasks t
+				left join t.executor executor
+				left join t.supportLine supportLine
 				left join c.organization organization
 				where organization.id is not null
 				""");
@@ -255,7 +262,8 @@ public class TaskService {
 			List<Map<String, Object>> requiredFilterChain,
 			String filterJoinOperator,
 			Long clientId,
-			Long taskId
+			Long taskId,
+			String scope
 	) {
 		Map<String, Object> params = new HashMap<>();
 
@@ -266,6 +274,7 @@ public class TaskService {
 				left join t.status taskStatus
 				left join t.type taskType
 				left join t.executor executor
+				left join t.supportLine supportLine
 				left join t.sla sla
 				left join c.organization organization
 				where 1 = 1
@@ -286,6 +295,9 @@ public class TaskService {
 					  and coalesce(t.frozen, false) = false
 					""");
 		}
+		if ("MY_SUPPORT_LINES".equals(scope)) {
+			addMySupportLinesScopeCondition(fromWhere, params);
+		}
 		if (search != null && !search.isBlank()) {
 			params.put("taskPageSearch", "%" + search + "%");
 			fromWhere.append("""
@@ -295,6 +307,7 @@ public class TaskService {
 					    or lower(coalesce(priority.name, '')) like :taskPageSearch
 					    or lower(coalesce(taskStatus.name, '')) like :taskPageSearch
 					    or lower(coalesce(taskType.type, '')) like :taskPageSearch
+					    or lower(coalesce(supportLine.name, '')) like :taskPageSearch
 					    or lower(coalesce(organization.name, '')) like :taskPageSearch
 					    or lower(concat(concat(coalesce(c.lastname, ''), ' '), coalesce(c.firstname, ''))) like :taskPageSearch
 					  )
@@ -318,19 +331,61 @@ public class TaskService {
 
 
 	private void addCurrentUserAccessCondition(StringBuilder fromWhere, Map<String, Object> params) {
+		User currentUser = userService.getCurrentUser();
+		if (hasTaskPageRole(currentUser, "ADMIN")) {
+			return;
+		}
 		List<Long> availableOrganizationIds = getCurrentUserAvailableOrganizationIdsForTaskPage();
 
-		if (availableOrganizationIds == null) {
-			return;
+		if (availableOrganizationIds != null) {
+			if (availableOrganizationIds.isEmpty()) {
+				fromWhere.append(" and 1 = 0 ");
+				return;
+			}
+			params.put("availableOrganizationIds", availableOrganizationIds);
+			fromWhere.append(" and organization.id in :availableOrganizationIds ");
 		}
 
-		if (availableOrganizationIds.isEmpty()) {
-			fromWhere.append(" and 1 = 0 ");
+		SupportLineAccessMode globalMode = appSettingsRepository.findAll().stream()
+				.findFirst()
+				.map(AppSettings::getSupportLineAccessMode)
+				.orElse(SupportLineAccessMode.HYBRID);
+		params.put("taskPageCurrentUser", currentUser);
+		params.put("taskPageVisibilityInherit", SupportLineVisibilityMode.INHERIT);
+		params.put("taskPageVisibilityAll", SupportLineVisibilityMode.ALL_OPERATORS);
+		params.put("taskPageVisibilityMembers", SupportLineVisibilityMode.LINE_MEMBERS);
+		params.put("taskPageVisibilityMembersObservers", SupportLineVisibilityMode.LINE_MEMBERS_AND_OBSERVERS);
+
+		String member = "(supportLine.responsible = :taskPageCurrentUser or :taskPageCurrentUser member of supportLine.members)";
+		String observer = "(:taskPageCurrentUser member of supportLine.observers)";
+		String hybrid = "(" + member + " or " + observer
+				+ " or executor = :taskPageCurrentUser or :taskPageCurrentUser member of t.accessUsers)";
+		String inherited = switch (globalMode) {
+			case ALL_OPERATORS -> "1 = 1";
+			case LINE_MEMBERS -> member;
+			case HYBRID -> hybrid;
+		};
+
+		fromWhere.append(" and (")
+				.append("supportLine.visibilityMode = :taskPageVisibilityAll")
+				.append(" or (supportLine.visibilityMode = :taskPageVisibilityMembers and ").append(member).append(")")
+				.append(" or (supportLine.visibilityMode = :taskPageVisibilityMembersObservers and (").append(member).append(" or ").append(observer).append("))")
+				.append(" or ((supportLine is null or supportLine.visibilityMode = :taskPageVisibilityInherit) and (").append(inherited).append("))")
+				.append(") ");
+	}
+
+
+	private void addMySupportLinesScopeCondition(StringBuilder fromWhere, Map<String, Object> params) {
+		User currentUser = userService.getCurrentUser();
+		if (hasTaskPageRole(currentUser, "ADMIN")) {
 			return;
 		}
-
-		params.put("availableOrganizationIds", availableOrganizationIds);
-		fromWhere.append(" and organization.id in :availableOrganizationIds ");
+		params.putIfAbsent("taskPageCurrentUser", currentUser);
+		fromWhere.append(" and supportLine is not null and (")
+				.append("supportLine.responsible = :taskPageCurrentUser")
+				.append(" or :taskPageCurrentUser member of supportLine.members")
+				.append(" or :taskPageCurrentUser member of supportLine.observers")
+				.append(") ");
 	}
 
 
@@ -446,6 +501,13 @@ public class TaskService {
 					selectedOptions,
 					params
 			);
+			case "supportLine" -> buildInTaskPageFilterCondition(
+					"lower(supportLine.name) in :taskPageSupportLineNames" + index,
+					"taskPageSupportLineNames" + index,
+					selectedOptions,
+					params
+			);
+			case "supportLineLevel" -> buildSupportLineLevelFilterCondition(selectedOptions, params, index);
 			case "createdAt" -> buildDateRangeTaskPageFilterCondition(
 					"t.createdAt",
 					filter,
@@ -461,6 +523,27 @@ public class TaskService {
 			case "deadline" -> buildDeadlineTaskPageFilterCondition(filter, params, index);
 			default -> null;
 		};
+	}
+
+
+	private String buildSupportLineLevelFilterCondition(
+			List<String> selectedOptions,
+			Map<String, Object> params,
+			int index
+	) {
+		List<Integer> levels = selectedOptions == null ? List.of() : selectedOptions.stream()
+				.map(value -> Objects.toString(value, "").trim().toUpperCase(Locale.ROOT).replace("L", ""))
+				.map(value -> {
+					try { return Integer.valueOf(value); } catch (Exception ignored) { return null; }
+				})
+				.filter(Objects::nonNull)
+				.toList();
+		if (levels.isEmpty()) {
+			return null;
+		}
+		String paramName = "taskPageSupportLineLevels" + index;
+		params.put(paramName, levels);
+		return "supportLine.level in :" + paramName;
 	}
 
 
@@ -704,6 +787,13 @@ public class TaskService {
 					    t.id desc
 					""".formatted(direction);
 
+			case "ola" -> """
+					order by
+					    case when t.olaDeadline is null then 1 else 0 end asc,
+					    t.olaDeadline %s,
+					    t.id desc
+					""".formatted(direction);
+
 			case "status" -> """
 					order by
 					    case when taskStatus.orderNumber is null then 1 else 0 end asc,
@@ -917,6 +1007,8 @@ public class TaskService {
 			case "status" -> task.getStatus() != null && selectedOptions.contains(task.getStatus().getName());
 			case "client" -> selectedOptions.contains(getClientFullName(client));
 			case "type" -> selectedOptions.contains(getTaskTypeName(task.getType()));
+			case "supportLine" -> task.getSupportLine() != null && selectedOptions.contains(task.getSupportLine().getName());
+			case "supportLineLevel" -> task.getSupportLine() != null && selectedOptions.stream().anyMatch(value -> ("L" + task.getSupportLine().getLevel()).equalsIgnoreCase(value) || Objects.toString(task.getSupportLine().getLevel()).equals(value));
 			case "createdAt" -> isTaskDateMatchesRangeFilter(task.getCreatedAt(), filter);
 			case "lastActivity" -> isTaskDateMatchesRangeFilter(task.getLastActivity(), filter);
 			case "deadline" -> isDeadlineMatchesTaskPageFilter(task, filter);
@@ -939,6 +1031,8 @@ public class TaskService {
 			case "Статус" -> "status";
 			case "Клиент" -> "client";
 			case "Тип заявки" -> "type";
+			case "Линия поддержки" -> "supportLine";
+			case "Уровень линии" -> "supportLineLevel";
 			case "Дата создания" -> "createdAt";
 			case "Дата последней активности" -> "lastActivity";
 			case "Дедлайн" -> "deadline";
@@ -1086,6 +1180,7 @@ public class TaskService {
 
 
 	private Map<String, Object> toTaskPageDto(Task task, Client client) {
+		olaService.enrich(task);
 		Map<String, Object> taskDto = objectMapper.convertValue(task, new TypeReference<>() {
 		});
 		putZonedDateTime(taskDto, "createdAt", task.getCreatedAt());
@@ -1094,6 +1189,17 @@ public class TaskService {
 		putZonedDateTime(taskDto, "closedAt", task.getClosedAt());
 		putZonedDateTime(taskDto, "frozenFrom", task.getFrozenFrom());
 		putZonedDateTime(taskDto, "frozenUntil", task.getFrozenUntil());
+		putZonedDateTime(taskDto, "enteredCurrentLineAt", task.getEnteredCurrentLineAt());
+		putZonedDateTime(taskDto, "olaDeadline", task.getOlaDeadline());
+		putZonedDateTime(taskDto, "olaWarningAt", task.getOlaWarningAt());
+		putZonedDateTime(taskDto, "olaPausedAt", task.getOlaPausedAt());
+		if (taskDto.get("olaInfo") instanceof Map<?, ?> rawOlaMap && task.getOlaInfo() != null) {
+			@SuppressWarnings("unchecked")
+			Map<String, Object> olaMap = (Map<String, Object>) rawOlaMap;
+			putZonedDateTime(olaMap, "startedAt", task.getOlaInfo().getStartedAt());
+			putZonedDateTime(olaMap, "deadline", task.getOlaInfo().getDeadline());
+			putZonedDateTime(olaMap, "warningAt", task.getOlaInfo().getWarningAt());
+		}
 		if (task.getSla() != null && taskDto.get("sla") instanceof Map<?, ?> rawSlaMap) {
 			@SuppressWarnings("unchecked")
 			Map<String, Object> slaMap = (Map<String, Object>) rawSlaMap;
@@ -1239,7 +1345,11 @@ public class TaskService {
 		}
 		prepareTaskBeforeSave(task);
 		Task olderTask = taskRepository.findById(task.getId()).orElseThrow();
-		Client client = getClientForCurrentUser(clientId);
+		Client client = getClientByTaskForCurrentUser(task.getId());
+		if (!Objects.equals(client.getId(), clientId)) {
+			throw new IllegalArgumentException("Заявка не принадлежит указанному клиенту");
+		}
+		TaskRoutingService.RoutingResult routingResult = taskRoutingService.normalizeUpdateRequest(olderTask, task);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
@@ -1282,8 +1392,12 @@ public class TaskService {
 		}
 		boolean reopening = Boolean.TRUE.equals(olderTask.getCompleted()) && Boolean.FALSE.equals(task.getCompleted());
 		olderTask.setDeadline(task.getDeadline());
-		olderTask.setExecutor(task.getExecutor());
-		olderTask.setSupportLine(task.getSupportLine());
+		taskRoutingService.applyNormalizedUpdate(
+				olderTask,
+				routingResult,
+				currentUserOrNull(),
+				statusChangeReason
+		);
 		olderTask.setTags(task.getTags());
 		olderTask.setLinkedMessageId(task.getLinkedMessageId());
 		if (task.getFrozen() != null) {
@@ -1421,6 +1535,17 @@ public class TaskService {
 		if (statusChangeReason != null && (statusChanged || completedChanged || frozenChanged)) {
 			olderTask.setStatusChangeReason(statusChangeReason);
 		}
+		if (routingResult.lineChanged()) {
+			olaService.synchronizeWithTaskState(olderTask);
+		} else if (!Boolean.TRUE.equals(oldCompleted) && Boolean.TRUE.equals(olderTask.getCompleted())) {
+			olaService.complete(olderTask);
+		} else if (Boolean.TRUE.equals(oldCompleted) && !Boolean.TRUE.equals(olderTask.getCompleted())) {
+			olaService.restart(olderTask, currentUserOrNull(), statusChangeReason);
+		} else if (!oldFrozen && newFrozen) {
+			olaService.pause(olderTask);
+		} else if (oldFrozen && !newFrozen) {
+			olaService.resume(olderTask);
+		}
 		syncSlaPauseState(olderTask);
 		olderTask.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(olderTask);
@@ -1523,7 +1648,7 @@ public class TaskService {
 				));
 			}
 		}
-		return savedTask;
+		return olaService.enrich(savedTask);
 	}
 
 
@@ -1922,9 +2047,17 @@ public class TaskService {
 
 	@Transactional
 	public Task saveTask(Task task) {
+		boolean isNew = task != null && task.getId() == null;
 		task.setType(resolveTaskType(task.getType()));
 		task.setChecklist(normalizeChecklist(task.getChecklist()));
-		return taskRepository.save(task);
+		if (isNew) {
+			taskRoutingService.prepareNewTask(task);
+		}
+		Task saved = taskRepository.save(task);
+		if (isNew) {
+			taskRoutingService.afterTaskCreated(saved, currentUserOrNull(), null);
+		}
+		return olaService.enrich(saved);
 	}
 
 
@@ -1933,7 +2066,6 @@ public class TaskService {
 			return;
 		}
 		task.setType(resolveTaskType(task.getType()));
-		task.setSupportLine(resolveSupportLine(task.getSupportLine()));
 		task.setChecklist(normalizeChecklist(task.getChecklist()));
 	}
 
@@ -2114,6 +2246,7 @@ public class TaskService {
 		if (task.getPreviousStatus() != null) {
 			task.setStatus(task.getPreviousStatus());
 		}
+		olaService.resume(task);
 		boolean newFrozen = Boolean.TRUE.equals(task.getFrozen());
 		List<Map<String, Object>> changes = new ArrayList<>();
 		if (oldFrozen != newFrozen) {
@@ -2165,7 +2298,10 @@ public class TaskService {
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientByTaskForCurrentUser(taskId);
+		if (!Objects.equals(client.getId(), clientId)) {
+			throw new IllegalArgumentException("Заявка не принадлежит указанному клиенту");
+		}
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		if (task.getSla() == null || task.getSla().getId() == null) {
 			throw new IllegalStateException("У заявки нет SLA");
@@ -2207,7 +2343,10 @@ public class TaskService {
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
-		Client client = clientsRepository.findById(clientId).orElseThrow();
+		Client client = getClientByTaskForCurrentUser(taskId);
+		if (!Objects.equals(client.getId(), clientId)) {
+			throw new IllegalArgumentException("Заявка не принадлежит указанному клиенту");
+		}
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		if (task.getSla() == null || task.getSla().getId() == null) {
 			throw new IllegalStateException("У заявки нет SLA");
@@ -2419,17 +2558,35 @@ public class TaskService {
 
 
 	private Client getClientByTaskForCurrentUser(Long taskId) {
+		Task task = getTaskForCurrentUser(taskId);
+		return clientsRepository.findByTaskId(task.getId()).orElseThrow();
+	}
+
+
+	@Transactional(readOnly = true)
+	public Task getTaskForCurrentUser(Long taskId) {
 		if (taskId == null) {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
 		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
-		userService.assertCurrentUserCanAccessClient(client);
-		return client;
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		userService.assertCurrentUserCanAccessTask(client, task);
+		return olaService.enrich(task);
+	}
+
+
+	private User currentUserOrNull() {
+		try {
+			return userService.getCurrentUser();
+		} catch (Exception ignored) {
+			return null;
+		}
 	}
 
 
 	private Task createTaskForClient(Client client, Task task) {
 		prepareTaskBeforeSave(task);
+		taskRoutingService.prepareNewTask(task);
 		validateExecutorIsPresentWhenClosing(task, task.getStatus(), CompletedStatus.getInstance());
 		setSla(client, task);
 		if (task.getMessages() != null && !task.getMessages().isEmpty()) {
@@ -2437,6 +2594,7 @@ public class TaskService {
 		}
 		task.setLastActivity(ZonedDateTime.now());
 		Task savedTask = taskRepository.save(task);
+		taskRoutingService.afterTaskCreated(savedTask, currentUserOrNull(), "Создание заявки");
 		if (client.getTasks() == null) {
 			client.setTasks(new ArrayList<>());
 		}
@@ -2456,7 +2614,7 @@ public class TaskService {
 					savedTask.getExecutor().getId()
 			));
 		}
-		return savedTask;
+		return olaService.enrich(savedTask);
 	}
 
 

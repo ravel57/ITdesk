@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.*;
@@ -111,38 +110,54 @@ public class ClientService {
 		if (client == null || client.getId() == null) {
 			return;
 		}
-		client.setOpenTasksCount(safeLong(clientsRepository.countOpenTasksByClientId(client.getId())));
-		client.setTasksWithoutAssigneeCount(safeLong(clientsRepository.countOpenTasksWithoutAssigneeByClientId(client.getId())));
-		client.setHasCriticalTasks(safeLong(clientsRepository.countOpenCriticalTasksByClientId(client.getId())) > 0);
+		User currentUser;
+		try {
+			currentUser = userService.getCurrentUser();
+		} catch (Exception ignored) {
+			currentUser = null;
+		}
+		User accessUser = currentUser;
+		List<Task> accessibleOpenTasks = safeCollection(client.getTasks()).stream()
+				.filter(Objects::nonNull)
+				.filter(task -> accessUser == null || userService.canUserAccessTask(accessUser, client, task))
+				.filter(task -> !Boolean.TRUE.equals(task.getCompleted()))
+				.filter(task -> !Boolean.TRUE.equals(task.getFrozen()))
+				.toList();
 
-		Long currentUserId = Optional.ofNullable(userService.getCurrentUser())
-				.map(User::getId)
-				.orElse(null);
+		client.setOpenTasksCount((long) accessibleOpenTasks.size());
+		client.setTasksWithoutAssigneeCount(accessibleOpenTasks.stream()
+				.filter(task -> task.getExecutor() == null)
+				.count());
+		client.setHasCriticalTasks(accessibleOpenTasks.stream()
+				.map(Task::getPriority)
+				.filter(Objects::nonNull)
+				.anyMatch(priority -> Boolean.TRUE.equals(priority.getCritical())));
+
+		Long currentUserId = currentUser == null ? null : currentUser.getId();
 		if (currentUserId == null) {
 			client.setTaskPingCount(0L);
 			client.setHasTaskPing(false);
 		} else {
-			long taskPingCount = safeLong(clientsRepository.countOpenTaskPingsByClientIdAndUserId(client.getId(), currentUserId));
+			long taskPingCount = accessibleOpenTasks.stream()
+					.filter(task -> task.getUnreadPingTasksMessages() != null)
+					.filter(task -> Boolean.TRUE.equals(task.getUnreadPingTasksMessages().get(currentUserId)))
+					.count();
 			client.setTaskPingCount(taskPingCount);
 			client.setHasTaskPing(taskPingCount > 0);
 		}
 
-		clientsRepository.findFirstOpenSlaTaskByClientId(client.getId(), PageRequest.of(0, 1))
-				.stream()
-				.findFirst()
+		accessibleOpenTasks.stream()
+				.filter(task -> task.getSla() != null)
+				.filter(task -> getDeadline(task.getSla()) != null)
+				.min(Comparator.comparing(task -> getDeadline(task.getSla())))
 				.ifPresent(task -> {
 					Sla sla = task.getSla();
 					client.setMinimalSlaTaskId(task.getId());
-					client.setMinimalSlaStartDate(sla == null ? null : sla.getStartDate());
-					client.setMinimalSlaDurationSeconds(sla == null || sla.getDuration() == null ? null : sla.getDuration().getSeconds());
+					client.setMinimalSlaStartDate(sla.getStartDate());
+					client.setMinimalSlaDurationSeconds(sla.getDuration() == null ? null : sla.getDuration().getSeconds());
 					client.setMinimalSlaDeadline(getDeadline(sla));
 					client.setMinimalSlaPaused(isPaused(sla));
 				});
-	}
-
-
-	private long safeLong(Long value) {
-		return value == null ? 0L : value;
 	}
 
 
@@ -307,7 +322,11 @@ public class ClientService {
 			while (matcher.find()) {
 				String fullName = matcher.group(1);
 				users.stream()
-						.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
+						.filter(u -> {
+						String firstLast = (Objects.toString(u.getFirstname(), "") + " " + Objects.toString(u.getLastname(), "")).trim();
+						String lastFirst = (Objects.toString(u.getLastname(), "") + " " + Objects.toString(u.getFirstname(), "")).trim();
+						return fullName.equals(firstLast) || fullName.equals(lastFirst) || fullName.equals(u.getUsername());
+					})
 						.findFirst()
 						.ifPresent(u -> {
 							client.getUnreadPingMessages().put(u.getId(), true);
@@ -648,10 +667,18 @@ public class ClientService {
 		while (matcher.find()) {
 			String fullName = matcher.group(1);
 			users.stream()
-					.filter(u -> ("%s %s".formatted(u.getLastname(), u.getFirstname())).equals(fullName))
+					.filter(u -> {
+						String firstLast = (Objects.toString(u.getFirstname(), "") + " " + Objects.toString(u.getLastname(), "")).trim();
+						String lastFirst = (Objects.toString(u.getLastname(), "") + " " + Objects.toString(u.getFirstname(), "")).trim();
+						return fullName.equals(firstLast) || fullName.equals(lastFirst) || fullName.equals(u.getUsername());
+					})
 					.findFirst()
 					.ifPresent(u -> {
 						task.getUnreadPingTasksMessages().put(u.getId(), true);
+						if (task.getAccessUsers() == null) {
+							task.setAccessUsers(new LinkedHashSet<>());
+						}
+						task.getAccessUsers().add(u);
 						eventPublisher.publish(
 								TriggerType.TASK_MESSAGE_MENTIONED_USER,
 								eventPayload(
@@ -795,6 +822,7 @@ public class ClientService {
 		if (taskId == null || messageText == null || messageText.getText() == null || messageText.getText().isBlank()) {
 			return Collections.emptyList();
 		}
+		getClientByTaskForCurrentUser(taskId);
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		String query = messageText.getText().toLowerCase(Locale.ROOT);
 		return safeCollection(task.getMessages()).stream()
@@ -810,7 +838,12 @@ public class ClientService {
 			logger.warn("mark task message read skipped: taskId or userId is null");
 			return;
 		}
+		getClientByTaskForCurrentUser(taskId);
 		Task task = taskRepository.findById(taskId).orElseThrow();
+		User currentUser = userService.getCurrentUser();
+		if (!userService.isAdmin(currentUser) && !Objects.equals(currentUser.getId(), userId.getUserId())) {
+			throw new org.springframework.security.access.AccessDeniedException("Нельзя изменить отметку упоминания другого пользователя");
+		}
 		User user = userRepository.findById(userId.getUserId()).orElseThrow();
 		if (task.getUnreadPingTasksMessages() != null) {
 			task.getUnreadPingTasksMessages().put(user.getId(), false);
@@ -1130,7 +1163,8 @@ public class ClientService {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
 		Client client = clientsRepository.findByTaskId(taskId).orElseThrow();
-		userService.assertCurrentUserCanAccessClient(client);
+		Task task = taskRepository.findById(taskId).orElseThrow();
+		userService.assertCurrentUserCanAccessTask(client, task);
 		return client;
 	}
 

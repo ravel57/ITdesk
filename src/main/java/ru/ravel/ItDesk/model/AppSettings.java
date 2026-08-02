@@ -64,6 +64,11 @@ public class AppSettings {
 	@Builder.Default
 	private Boolean sundayEnabled = false;
 
+	@Enumerated(EnumType.STRING)
+	@Column(name = "support_line_access_mode", nullable = false, length = 32)
+	@Builder.Default
+	private SupportLineAccessMode supportLineAccessMode = SupportLineAccessMode.HYBRID;
+
 
 	public Duration getWorkdayDuration() {
 		LocalTime start = LocalTime.parse(workdayStart);

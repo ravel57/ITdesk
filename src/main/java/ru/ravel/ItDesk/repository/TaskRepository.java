@@ -5,7 +5,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import ru.ravel.ItDesk.model.OlaStatus;
 import ru.ravel.ItDesk.model.Sla;
+import ru.ravel.ItDesk.model.SupportLine;
 import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 
@@ -58,6 +60,18 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 
 	boolean existsBySupportLineId(Long supportLineId);
+
+
+	List<Task> findAllBySupportLineId(Long supportLineId);
+
+
+	@Query("""
+			select t
+			from Task t
+			where t.supportLine.id = :supportLineId
+			  and coalesce(t.completed, false) = false
+			""")
+	List<Task> findOpenBySupportLineId(@Param("supportLineId") Long supportLineId);
 
 
 	@Query("""
@@ -117,12 +131,19 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.type as type,
 				t.priority as priority,
 				executor as executor,
+				supportLine as supportLine,
+				t.enteredCurrentLineAt as enteredCurrentLineAt,
+				t.olaDeadline as olaDeadline,
+				t.olaWarningAt as olaWarningAt,
+				t.olaStatus as olaStatus,
 				t.linkedMessageId as linkedMessageId
 			from Task t
 			left join t.executor executor
+			left join t.supportLine supportLine
 			where (:hasTypeIds = false or t.type.id in :typeIds)
 			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
 			  and (:hasExecutorIds = false or executor.id in :executorIds)
+			  and (:hasSupportLineIds = false or supportLine.id in :supportLineIds)
 			  and (
 				  :hasTagIds = false
 				  or exists (
@@ -139,6 +160,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			@Param("priorityIds") Set<Long> priorityIds,
 			@Param("hasExecutorIds") boolean hasExecutorIds,
 			@Param("executorIds") Set<Long> executorIds,
+			@Param("hasSupportLineIds") boolean hasSupportLineIds,
+			@Param("supportLineIds") Set<Long> supportLineIds,
 			@Param("hasTagIds") boolean hasTagIds,
 			@Param("tagIds") Set<Long> tagIds
 	);
@@ -150,10 +173,12 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				tag as tag
 			from Task t
 			left join t.executor executor
+			left join t.supportLine supportLine
 			join t.tags tag
 			where (:hasTypeIds = false or t.type.id in :typeIds)
 			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
 			  and (:hasExecutorIds = false or executor.id in :executorIds)
+			  and (:hasSupportLineIds = false or supportLine.id in :supportLineIds)
 			  and (
 				  :hasTagIds = false
 				  or exists (
@@ -170,6 +195,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			@Param("priorityIds") Set<Long> priorityIds,
 			@Param("hasExecutorIds") boolean hasExecutorIds,
 			@Param("executorIds") Set<Long> executorIds,
+			@Param("hasSupportLineIds") boolean hasSupportLineIds,
+			@Param("supportLineIds") Set<Long> supportLineIds,
 			@Param("hasTagIds") boolean hasTagIds,
 			@Param("tagIds") Set<Long> tagIds
 	);
@@ -181,14 +208,17 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.sla as sla,
 				t.type as type,
 				t.priority as priority,
-				executor as executor
+				executor as executor,
+				supportLine as supportLine
 			from Task t
 			left join t.executor executor
+			left join t.supportLine supportLine
 			where coalesce(t.completed, false) = false
 			  and t.sla is not null
 			  and (:hasTypeIds = false or t.type.id in :typeIds)
 			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
 			  and (:hasExecutorIds = false or executor.id in :executorIds)
+			  and (:hasSupportLineIds = false or supportLine.id in :supportLineIds)
 			  and (
 				  :hasTagIds = false
 				  or exists (
@@ -205,6 +235,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			@Param("priorityIds") Set<Long> priorityIds,
 			@Param("hasExecutorIds") boolean hasExecutorIds,
 			@Param("executorIds") Set<Long> executorIds,
+			@Param("hasSupportLineIds") boolean hasSupportLineIds,
+			@Param("supportLineIds") Set<Long> supportLineIds,
 			@Param("hasTagIds") boolean hasTagIds,
 			@Param("tagIds") Set<Long> tagIds
 	);
@@ -227,6 +259,16 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 		User getExecutor();
 
+		SupportLine getSupportLine();
+
+		ZonedDateTime getEnteredCurrentLineAt();
+
+		ZonedDateTime getOlaDeadline();
+
+		ZonedDateTime getOlaWarningAt();
+
+		OlaStatus getOlaStatus();
+
 		Long getLinkedMessageId();
 	}
 
@@ -248,5 +290,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 		Object getPriority();
 
 		User getExecutor();
+
+		SupportLine getSupportLine();
 	}
 }

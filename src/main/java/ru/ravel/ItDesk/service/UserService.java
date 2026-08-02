@@ -43,6 +43,7 @@ public class UserService {
 	private final TaskRepository taskRepository;
 	private final EventPublisher eventPublisher;
 	private final GlobalSearchService globalSearchService;
+	private final AppSettingsService appSettingsService;
 
 
 	public List<User> getUsers() {
@@ -423,6 +424,85 @@ public class UserService {
 		if (!canUserAccessClient(currentUser, client)) {
 			throw new AccessDeniedException("Нет доступа к клиенту");
 		}
+	}
+
+
+	public void assertCurrentUserCanAccessTask(Client client, Task task) throws AccessDeniedException {
+		User currentUser = getCurrentUser();
+		if (!canUserAccessTask(currentUser, client, task)) {
+			throw new AccessDeniedException("Нет доступа к заявке");
+		}
+	}
+
+
+	public boolean canCurrentUserAccessTask(Client client, Task task) {
+		return canUserAccessTask(getCurrentUser(), client, task);
+	}
+
+
+	public boolean canUserAccessTask(User user, Client client, Task task) {
+		if (user == null || task == null) {
+			return false;
+		}
+		if (isAdmin(user)) {
+			return true;
+		}
+		if (!isOperator(user) || !canUserAccessClient(user, client)) {
+			return false;
+		}
+
+		SupportLine line = task.getSupportLine();
+		SupportLineVisibilityMode lineMode = line == null
+				? SupportLineVisibilityMode.INHERIT
+				: Objects.requireNonNullElse(line.getVisibilityMode(), SupportLineVisibilityMode.INHERIT);
+		if (lineMode == SupportLineVisibilityMode.ALL_OPERATORS) {
+			return true;
+		}
+
+		boolean member = isSupportLineMember(line, user);
+		boolean observer = isSupportLineObserver(line, user);
+		if (lineMode == SupportLineVisibilityMode.LINE_MEMBERS) {
+			return member;
+		}
+		if (lineMode == SupportLineVisibilityMode.LINE_MEMBERS_AND_OBSERVERS) {
+			return member || observer;
+		}
+
+		SupportLineAccessMode globalMode = appSettingsService.getGeneralSettings().getSupportLineAccessMode();
+		globalMode = Objects.requireNonNullElse(globalMode, SupportLineAccessMode.HYBRID);
+		if (globalMode == SupportLineAccessMode.ALL_OPERATORS) {
+			return true;
+		}
+		if (globalMode == SupportLineAccessMode.LINE_MEMBERS) {
+			return member;
+		}
+
+		boolean executor = task.getExecutor() != null && Objects.equals(task.getExecutor().getId(), user.getId());
+		boolean mentioned = task.getAccessUsers() != null && task.getAccessUsers().stream()
+				.filter(Objects::nonNull)
+				.anyMatch(item -> Objects.equals(item.getId(), user.getId()));
+		return member || observer || executor || mentioned;
+	}
+
+
+	private boolean isSupportLineMember(SupportLine line, User user) {
+		if (line == null || user == null || user.getId() == null) {
+			return false;
+		}
+		if (line.getResponsible() != null && Objects.equals(line.getResponsible().getId(), user.getId())) {
+			return true;
+		}
+		return line.getMembers() != null && line.getMembers().stream()
+				.filter(Objects::nonNull)
+				.anyMatch(item -> Objects.equals(item.getId(), user.getId()));
+	}
+
+
+	private boolean isSupportLineObserver(SupportLine line, User user) {
+		return line != null && user != null && user.getId() != null && line.getObservers() != null
+				&& line.getObservers().stream()
+				.filter(Objects::nonNull)
+				.anyMatch(item -> Objects.equals(item.getId(), user.getId()));
 	}
 
 

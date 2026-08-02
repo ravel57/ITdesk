@@ -16,5 +16,7 @@ public interface SupportLineRepository extends JpaRepository<SupportLine, Long> 
 
     Optional<SupportLine> findByName(String name);
 
+    Optional<SupportLine> findByNameIgnoreCase(String name);
+
     boolean existsByNameIgnoreCase(String name);
 }

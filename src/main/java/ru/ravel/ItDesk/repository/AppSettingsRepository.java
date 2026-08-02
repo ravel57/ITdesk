@@ -21,7 +21,8 @@ public interface AppSettingsRepository extends JpaRepository<AppSettings, Long> 
 			    thursday_enabled,
 			    friday_enabled,
 			    saturday_enabled,
-			    sunday_enabled
+			    sunday_enabled,
+			    support_line_access_mode
 			)
 			values (
 			    1,
@@ -35,7 +36,8 @@ public interface AppSettingsRepository extends JpaRepository<AppSettings, Long> 
 			    true,
 			    true,
 			    false,
-			    false
+			    false,
+			    'HYBRID'
 			)
 			on conflict (id) do nothing
 			""", nativeQuery = true)

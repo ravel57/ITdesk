@@ -42,8 +42,8 @@ public class AutomationActionExecutor {
 	private final TaskRepository taskRepository;
 	private final TagRepository tagRepository;
 	private final TaskService taskService;
-	private final SupportLineRepository supportLineRepository;
 	private final UserRepository userRepository;
+	private final TaskRoutingService taskRoutingService;
 	private final WebSocketService webSocketService;
 	private final EventPublisher eventPublisher;
 
@@ -371,6 +371,7 @@ public class AutomationActionExecutor {
 			Task task = taskRepository.findById(taskId).orElseThrow();
 			User oldExecutor = task.getExecutor();
 			User newExecutor = userRepository.findById(userId).orElseThrow();
+			taskRoutingService.validateExecutor(task.getSupportLine(), newExecutor);
 			if (sameEntity(oldExecutor, newExecutor)) {
 				return;
 			}
@@ -410,32 +411,7 @@ public class AutomationActionExecutor {
 				log.warn("task.assignToGroup skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			Task task = taskRepository.findById(taskId).orElseThrow();
-			SupportLine oldSupportLine = task.getSupportLine();
-			User oldExecutor = task.getExecutor();
-			SupportLine newSupportLine = supportLineRepository.findById(groupId).orElseThrow();
-			if (sameEntity(oldSupportLine, newSupportLine)
-					&& (oldExecutor == null || newSupportLine.getMembers().stream()
-					.anyMatch(user -> sameEntity(user, oldExecutor)))) {
-				return;
-			}
-			task.setSupportLine(newSupportLine);
-			if (task.getExecutor() != null && newSupportLine.getMembers().stream()
-					.noneMatch(user -> sameEntity(user, task.getExecutor()))) {
-				task.setExecutor(null);
-			}
-			task.setLastActivity(ZonedDateTime.now());
-			taskRepository.save(task);
-			if (!sameEntity(oldSupportLine, task.getSupportLine())) {
-				publishTaskEvent(TriggerType.TASK_GROUP_CHANGED, task, ctx,
-						"oldSupportLine", oldSupportLine,
-						"newSupportLine", task.getSupportLine());
-			}
-			if (!sameEntity(oldExecutor, task.getExecutor())) {
-				publishTaskEvent(TriggerType.TASK_ASSIGNEE_CHANGED, task, ctx,
-						"oldExecutor", oldExecutor,
-						"newExecutor", task.getExecutor());
-			}
+			taskRoutingService.routeExistingTask(taskId, groupId, false, "Автоматизация");
 			notifyTaskUpdated(taskId);
 			log.info("AUTO task.assignToGroup(taskId={}, groupId={})", taskId, groupId);
 		}
@@ -447,42 +423,14 @@ public class AutomationActionExecutor {
 				log.warn("task.assignToLeastLoadedMember skipped: invalid args, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			SupportLine supportLine = supportLineRepository.findById(groupId).orElseThrow();
-			User executor = supportLine.getMembers().stream()
-					.filter(Objects::nonNull)
-					.filter(User::isEnabled)
-					.filter(user -> user.getId() != null)
-					.min(java.util.Comparator
-							.comparingLong((User user) -> taskRepository.countOpenByExecutorId(user.getId()))
-							.thenComparing(User::getId))
-					.orElse(null);
-
-			Task task = taskRepository.findById(taskId).orElseThrow();
-			SupportLine oldSupportLine = task.getSupportLine();
-			User oldExecutor = task.getExecutor();
-			if (sameEntity(oldSupportLine, supportLine) && sameEntity(oldExecutor, executor)) {
-				return;
-			}
-			task.setSupportLine(supportLine);
-			task.setExecutor(executor);
-			task.setLastActivity(ZonedDateTime.now());
-			taskRepository.save(task);
-			if (!sameEntity(oldSupportLine, supportLine)) {
-				publishTaskEvent(TriggerType.TASK_GROUP_CHANGED, task, ctx,
-						"oldSupportLine", oldSupportLine,
-						"newSupportLine", supportLine);
-			}
-			if (!sameEntity(oldExecutor, executor)) {
-				publishTaskEvent(TriggerType.TASK_ASSIGNEE_CHANGED, task, ctx,
-						"oldExecutor", oldExecutor,
-						"newExecutor", executor);
-			}
+			Task saved = taskRoutingService.routeExistingTask(taskId, groupId, true, "Автоматизация");
 			notifyTaskUpdated(taskId);
 			log.info(
 					"AUTO task.assignToLeastLoadedMember(taskId={}, groupId={}, userId={})",
-					taskId, groupId, executor == null ? null : executor.getId()
+					taskId, groupId, saved.getExecutor() == null ? null : saved.getExecutor().getId()
 			);
 		}
+
 	}
 
 

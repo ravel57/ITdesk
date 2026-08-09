@@ -1,7 +1,9 @@
 package ru.ravel.ItDesk.config;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -11,14 +13,15 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
@@ -30,30 +33,40 @@ import ru.ravel.ItDesk.service.UserSessionService;
 @EnableMethodSecurity
 class WebSecurityConfig {
 
+	private static final String BEARER_PREFIX = "Bearer ";
+
 	private final AuthService authService;
-//	private final UserService userService;
 	private final UserSessionService userSessionService;
 	private final SingleSessionFilter singleSessionFilter;
+	private final JwtAuthenticationFilter jwtAuthenticationFilter;
+	private final JwtScopeAuthorizationFilter jwtScopeAuthorizationFilter;
+	private final LoginRateLimitFilter loginRateLimitFilter;
 
-
-	public WebSecurityConfig(AuthService authService, UserSessionService userSessionService, SingleSessionFilter singleSessionFilter) {
+	public WebSecurityConfig(
+			AuthService authService,
+			UserSessionService userSessionService,
+			SingleSessionFilter singleSessionFilter,
+			JwtAuthenticationFilter jwtAuthenticationFilter,
+			JwtScopeAuthorizationFilter jwtScopeAuthorizationFilter,
+			LoginRateLimitFilter loginRateLimitFilter
+	) {
 		this.authService = authService;
 		this.userSessionService = userSessionService;
 		this.singleSessionFilter = singleSessionFilter;
+		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+		this.jwtScopeAuthorizationFilter = jwtScopeAuthorizationFilter;
+		this.loginRateLimitFilter = loginRateLimitFilter;
 	}
-
 
 	@Bean
 	UserDetailsService userDetailsService() {
 		return authService;
 	}
 
-
 	@Bean
 	public SessionRegistry sessionRegistry() {
 		return new SessionRegistryImpl();
 	}
-
 
 	@Bean
 	public AuthenticationProvider authenticationProvider(PasswordEncoder passwordEncoder) {
@@ -62,22 +75,63 @@ class WebSecurityConfig {
 		return provider;
 	}
 
-
 	@Bean
 	public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
 		return authenticationConfiguration.getAuthenticationManager();
 	}
 
-
+	/**
+	 * Dedicated stateless chain for Bearer requests. It only matches /api/** and
+	 * therefore a JWT can never authenticate access to HTML/settings/WebSocket routes.
+	 * Browser API calls without Authorization: Bearer continue through the session chain below.
+	 */
 	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+	@Order(1)
+	SecurityFilterChain bearerApiSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http
+				.securityMatcher(WebSecurityConfig::isBearerApiRequest)
+				.cors(AbstractHttpConfigurer::disable)
+				.csrf(AbstractHttpConfigurer::disable)
+				.requestCache(AbstractHttpConfigurer::disable)
+				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+				.authorizeHttpRequests(requests -> requests
+						.requestMatchers("/api/v1/jwt/**").denyAll()
+						.requestMatchers("/api/v1/portal/**").denyAll()
+						.anyRequest().authenticated())
+				.exceptionHandling(exception -> exception
+						.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterAfter(jwtScopeAuthorizationFilter, JwtAuthenticationFilter.class)
+				.build();
+	}
+
+	/**
+	 * Browser/session chain. CSRF is enabled here because JSESSIONID is sent
+	 * automatically by the browser. XSRF-TOKEN is readable by the SPA and Axios
+	 * sends it back as X-XSRF-TOKEN for unsafe requests.
+	 */
+	@Bean
+	@Order(2)
+	SecurityFilterChain browserSecurityFilterChain(HttpSecurity http) throws Exception {
 		HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
 		requestCache.setMatchingRequestParameterName(null);
 
+		CookieCsrfTokenRepository csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+		csrfRepository.setCookiePath("/");
+
 		return http
 				.cors(AbstractHttpConfigurer::disable)
-				.csrf(AbstractHttpConfigurer::disable)
+				.csrf(csrf -> csrf
+						.csrfTokenRepository(csrfRepository)
+						.csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
+)
 				.authorizeHttpRequests(requests -> requests
+						.requestMatchers(
+								"/swagger-ui.html",
+								"/swagger-ui/**",
+								"/v3/api-docs",
+								"/v3/api-docs/**"
+						).hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
 						.requestMatchers(
 								"/",
 								"/index.html",
@@ -92,11 +146,13 @@ class WebSecurityConfig {
 								"/fonts/**",
 								"/img/**",
 								"/statics/**",
-								"/api/v1/login",
-								"/api/v1/support/resave-message",
 								"/api/v1/support/reset-password",
-								"/actuator/**"
+								"/actuator/health",
+								"/actuator/health/**",
+								"/actuator/prometheus"
 						).permitAll()
+						.requestMatchers("/actuator/**").hasRole("ADMIN")
+						.requestMatchers("/api/v1/jwt/**").hasRole("ADMIN")
 						.requestMatchers("/portal", "/portal/**", "/api/v1/portal/**").hasRole("CLIENT")
 						.requestMatchers("/client-portal-ws/**").hasRole("CLIENT")
 						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
@@ -104,6 +160,7 @@ class WebSecurityConfig {
 						.requestMatchers("/incidents/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 						.requestMatchers("/analytics/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 						.requestMatchers("/settings", "/settings/profile").authenticated()
+						.requestMatchers("/settings/jwt", "/settings/jwt/**").hasRole("ADMIN")
 						.requestMatchers("/settings/**").hasAnyRole("ADMIN", "MANAGER")
 						.requestMatchers("/ws/**").authenticated()
 						.anyRequest().authenticated())
@@ -116,6 +173,10 @@ class WebSecurityConfig {
 						.defaultAuthenticationEntryPointFor(
 								new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
 								PathPatternRequestMatcher.pathPattern("/api/**")
+						)
+						.defaultAuthenticationEntryPointFor(
+								new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+								PathPatternRequestMatcher.pathPattern("/v3/api-docs/**")
 						)
 				)
 				.formLogin(formLogin -> formLogin
@@ -149,13 +210,27 @@ class WebSecurityConfig {
 						.deleteCookies("JSESSIONID")
 						.permitAll())
 				.requestCache(cache -> cache.requestCache(requestCache))
+				.addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterAfter(singleSessionFilter, UsernamePasswordAuthenticationFilter.class)
 				.build();
 	}
 
-
 	@Bean
 	public HttpSessionEventPublisher httpSessionEventPublisher() {
 		return new HttpSessionEventPublisher();
+	}
+
+	private static boolean isBearerApiRequest(HttpServletRequest request) {
+		String contextPath = request.getContextPath() == null ? "" : request.getContextPath();
+		String uri = request.getRequestURI();
+		String path = contextPath.isBlank() || !uri.startsWith(contextPath)
+				? uri
+				: uri.substring(contextPath.length());
+		if (!(path.equals("/api") || path.startsWith("/api/"))) {
+			return false;
+		}
+		String authorization = request.getHeader("Authorization");
+		return authorization != null
+				&& authorization.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length());
 	}
 }

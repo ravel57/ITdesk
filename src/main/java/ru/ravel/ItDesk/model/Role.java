@@ -9,17 +9,23 @@ import java.util.Arrays;
 
 @Getter
 public enum Role implements GrantedAuthority {
-	ADMIN("Администратор"),
-	MANAGER("Менеджер поддержки"),
-	OPERATOR("Оператор поддержки"),
-	OBSERVER("Менеджер организации"),
-	CLIENT("Клиент"),
+	ADMIN("Администратор", true),
+	MANAGER("Менеджер поддержки", true),
+	OPERATOR("Оператор поддержки", true),
+	OBSERVER("Менеджер организации", false),
+	CLIENT("Клиент", false),
 	;
 
 	private final String name;
+	private final boolean consumesLicense;
 
-	Role(String name) {
+	Role(String name, boolean consumesLicense) {
 		this.name = name;
+		this.consumesLicense = consumesLicense;
+	}
+
+	public boolean consumesLicense() {
+		return consumesLicense;
 	}
 
 	public static Role getByName(String name) {

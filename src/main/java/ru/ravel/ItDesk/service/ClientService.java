@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.component.PendingFileUploadRegistry;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
@@ -42,6 +43,7 @@ public class ClientService {
 	private final GlobalSearchService globalSearchService;
 	private final SlaPauseRepository slaPauseRepository;
 	private final UserNotificationService userNotificationService;
+	private final PendingFileUploadRegistry pendingFileUploadRegistry;
 
 	private final Map<String, ExecuteFuture> clientUserMapTypingExecutorServices = new ConcurrentHashMap<>();
 	private final Map<String, ExecuteFuture> clientUserMapWatchingExecutorServices = new ConcurrentHashMap<>();
@@ -403,6 +405,9 @@ public class ClientService {
 		Client client = checkCurrentUserAccess
 				? getClientForCurrentUser(clientId)
 				: clientsRepository.findById(clientId).orElseThrow();
+		if (checkCurrentUserAccess && hasFileUuid(message)) {
+			pendingFileUploadRegistry.assertOwned(message.getFileUuid(), user.getUsername());
+		}
 		hydrateReplyData(message, client.getMessages());
 		Message savedMessage = messageRepository.saveAndFlush(message);
 		hydrateReplyData(savedMessage, client.getMessages());
@@ -453,6 +458,9 @@ public class ClientService {
 			client.getMessages().add(savedMessage);
 		}
 		Client savedClient = clientsRepository.saveAndFlush(client);
+		if (checkCurrentUserAccess && hasFileUuid(savedMessage)) {
+			pendingFileUploadRegistry.consumeAfterCommit(savedMessage.getFileUuid());
+		}
 		globalSearchService.indexClient(savedClient);
 		globalSearchService.indexClientMessage(savedClient, savedMessage);
 		eventPublisher.publish(TriggerType.MESSAGE_OUTGOING, eventPayload(
@@ -465,9 +473,9 @@ public class ClientService {
 
 
 	@Transactional
-	public Client markReadAndReturnClient(ClientUser clientUser) {
-		if (clientUser == null || clientUser.getClientId() == null || clientUser.getUserId() == null) {
-			logger.warn("mark-read skipped: clientId or userId is null, payload={}", clientUser);
+	public Client markReadAndReturnClient(ClientUser clientUser, User authenticatedUser) {
+		if (clientUser == null || clientUser.getClientId() == null || authenticatedUser == null || authenticatedUser.getId() == null) {
+			logger.warn("mark-read skipped: clientId or authenticated user is null");
 			return null;
 		}
 		Optional<Client> clientOpt = clientsRepository.findById(clientUser.getClientId());
@@ -475,13 +483,8 @@ public class ClientService {
 			logger.warn("mark-read skipped: client not found, clientId={}", clientUser.getClientId());
 			return null;
 		}
-		Optional<User> userOpt = userRepository.findById(clientUser.getUserId());
-		if (userOpt.isEmpty()) {
-			logger.warn("mark-read skipped: user not found, userId={}", clientUser.getUserId());
-			return null;
-		}
 		Client client = clientOpt.get();
-		User user = userOpt.get();
+		User user = authenticatedUser;
 		userService.assertUserCanAccessClient(user, client);
 		String watchKey = "%d:%d".formatted(client.getId(), user.getId());
 		Set<User> currentWatchers = watchingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
@@ -540,19 +543,20 @@ public class ClientService {
 	}
 
 
-	public void typing(@NotNull ClientUserText clientUserText) {
-		if (clientUserText == null || clientUserText.getClientId() == null || clientUserText.getUserId() == null) {
-			logger.warn("typing skipped: clientId or userId is null, payload={}", clientUserText);
+	public void typing(@NotNull ClientUserText clientUserText, User authenticatedUser) {
+		if (clientUserText == null || clientUserText.getClientId() == null || authenticatedUser == null || authenticatedUser.getId() == null) {
+			logger.warn("typing skipped: clientId or authenticated user is null");
 			return;
 		}
-		Client client = getClientForCurrentUser(clientUserText.getClientId());
-		User user = userRepository.findById(clientUserText.getUserId()).orElseThrow();
+		Client client = clientsRepository.findById(clientUserText.getClientId()).orElseThrow();
+		User user = authenticatedUser;
+		userService.assertUserCanAccessClient(user, client);
 		if (client.getTypingMessageText() == null) {
 			client.setTypingMessageText(new HashMap<>());
 		}
-		client.getTypingMessageText().put(clientUserText.getUserId(), Objects.toString(clientUserText.getText(), ""));
+		client.getTypingMessageText().put(user.getId(), Objects.toString(clientUserText.getText(), ""));
 		clientsRepository.save(client);
-		String typingKey = "%d:%d".formatted(client.getId(), clientUserText.getUserId());
+		String typingKey = "%d:%d".formatted(client.getId(), user.getId());
 		Set<User> currentTypingUsers = typingUsers.computeIfAbsent(client.getId(), ignored -> new ConcurrentSkipListSet<>());
 		currentTypingUsers.add(user);
 		ExecuteFuture executeFuture = clientUserMapTypingExecutorServices.get(typingKey);
@@ -756,11 +760,15 @@ public class ClientService {
 			throw new IllegalArgumentException("taskId must not be null");
 		}
 		Client client = getClientByTaskForCurrentUser(taskId);
+		User currentUser = userService.getCurrentUser();
 		message.setDate(ZonedDateTime.now());
-		message.setUser(userService.getCurrentUser());
+		message.setUser(currentUser);
 		message.setIsSent(Boolean.TRUE.equals(message.getIsSent()));
 		message.setIsRead(Boolean.TRUE.equals(message.getIsRead()));
 		message.setIsComment(Boolean.TRUE.equals(message.getIsComment()));
+		if (hasFileUuid(message)) {
+			pendingFileUploadRegistry.assertOwned(message.getFileUuid(), currentUser.getUsername());
+		}
 		Message savedMessage = messageRepository.saveAndFlush(message);
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		if (task.getMessages() == null) {
@@ -817,10 +825,18 @@ public class ClientService {
 			));
 		}
 		Task savedTask = taskRepository.saveAndFlush(task);
+		if (hasFileUuid(savedMessage)) {
+			pendingFileUploadRegistry.consumeAfterCommit(savedMessage.getFileUuid());
+		}
 		client = clientsRepository.findByTaskId(taskId).orElse(client);
 		globalSearchService.indexTask(client, savedTask);
 		globalSearchService.indexTaskMessage(client, savedTask, savedMessage);
 		return savedMessage;
+	}
+
+
+	private boolean hasFileUuid(Message message) {
+		return message != null && message.getFileUuid() != null && !message.getFileUuid().isBlank();
 	}
 
 

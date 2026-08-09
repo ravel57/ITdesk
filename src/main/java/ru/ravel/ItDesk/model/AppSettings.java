@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -68,6 +69,11 @@ public class AppSettings {
 	@Column(name = "support_line_access_mode", nullable = false, length = 32)
 	@Builder.Default
 	private SupportLineAccessMode supportLineAccessMode = SupportLineAccessMode.HYBRID;
+
+	@JsonIgnore
+	@ToString.Exclude
+	@Column(name = "jwt_signing_secret", length = 256)
+	private String jwtSigningSecret;
 
 
 	public Duration getWorkdayDuration() {

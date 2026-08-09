@@ -6,8 +6,10 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.model.AppSettings;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
 
+import java.security.SecureRandom;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Base64;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +23,25 @@ public class AppSettingsService {
 	@Transactional(readOnly = true)
 	public AppSettings getGeneralSettings() {
 		return getOrCreate();
+	}
+
+
+	@Transactional
+	public String getOrCreateJwtSigningSecret() {
+		appSettingsRepository.insertDefaultIfNotExists();
+		AppSettings settings = appSettingsRepository.findByIdForUpdate(SETTINGS_ID)
+				.orElseThrow(() -> new IllegalStateException("Не удалось загрузить настройки приложения"));
+		String existing = settings.getJwtSigningSecret();
+		if (existing != null && !existing.isBlank()) {
+			return existing;
+		}
+
+		byte[] secretBytes = new byte[64];
+		new SecureRandom().nextBytes(secretBytes);
+		String generated = Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
+		settings.setJwtSigningSecret(generated);
+		appSettingsRepository.save(settings);
+		return generated;
 	}
 
 

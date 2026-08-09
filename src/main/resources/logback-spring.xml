@@ -21,6 +21,7 @@
         <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
     </appender>
     <logger name="org.springframework" level="INFO"/>
+    <logger name="SECURITY_AUDIT" level="INFO"/>
     <!--<logger name="ru.ravel.ItDesk" level="INFO"/>-->
     <!--<logger name="ru.ravel.ItDesk" level="WARN"/>-->
     <logger name="ru.ravel.ItDesk" level="ERROR"/>

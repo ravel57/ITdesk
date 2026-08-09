@@ -41,6 +41,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 	Optional<Client> findFirstByEmail(String email);
 
 
+	Optional<Client> findFirstByEmailIgnoreCase(String email);
+
+
 	@Query("""
 			select
 				t.id as taskId,

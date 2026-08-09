@@ -376,7 +376,6 @@ public class AnalyticsService {
 				}
 			}
 			long overdueSla = countOverdueSla(
-					now,
 					filters,
 					accessibleTaskIds,
 					breakdownTaskIds,
@@ -833,7 +832,6 @@ public class AnalyticsService {
 
 
 	private long countOverdueSla(
-			ZonedDateTime now,
 			AnalyticsFilters filters,
 			Set<Long> accessibleTaskIds,
 			Set<Long> breakdownTaskIds,
@@ -874,8 +872,7 @@ public class AnalyticsService {
 				continue;
 			}
 
-			ZonedDateTime deadline = slaService.deadline(sla);
-			if (deadline == null || !deadline.isBefore(now)) {
+			if (!isSlaBreached(sla)) {
 				continue;
 			}
 
@@ -897,6 +894,15 @@ public class AnalyticsService {
 		}
 
 		return overdueSla;
+	}
+
+
+	private boolean isSlaBreached(Sla sla) {
+		if (sla == null || sla.getStartDate() == null || sla.getDuration() == null) {
+			return false;
+		}
+		Duration remaining = slaService.remaining(sla);
+		return remaining.isNegative() || remaining.isZero();
 	}
 
 
@@ -1710,8 +1716,7 @@ public class AnalyticsService {
 			if (!filters.matchesExecutor(slaRow.getExecutor()) || !breakdownTaskIds.contains(slaRow.getId())) {
 				continue;
 			}
-			ZonedDateTime deadline = slaRow.getSla() == null ? null : slaService.deadline(slaRow.getSla());
-			if (deadline != null && deadline.isBefore(now)) {
+			if (isSlaBreached(slaRow.getSla())) {
 				incrementMetric(getOrCreateSupportLineRow(rowsByLineId, slaRow.getSupportLine()), "overdueSla");
 			}
 		}

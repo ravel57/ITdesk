@@ -40,8 +40,17 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    build: '.'
+      plugin-runner:
+        condition: service_healthy
+    build:
+      context: '.'
+      target: webapp
     restart: unless-stopped
+    user: "10001:10000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     links:
       - postgres:postgres
       - minio:minio
@@ -55,23 +64,91 @@ services:
       promtail: "true"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
       - MINIO_URL=http://minio:9009
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
       - ALLOWED_ORIGIN=http://172.22.0.20:56481
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
       - LLM_URL=${LLM_URL}
       - PLUGINS_DIR=/home/java/plugins
+      - ULDESK_PLUGINS_RUNNER_SOCKET=/run/uldesk-ipc/plugin-runner.sock
+      - ULDESK_PLUGINS_BROKER_SOCKET=/run/uldesk-ipc/plugin-broker.sock
       - LOG_PATH=/home/java/logs
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTICSEARCH_INDEX=uldesk_global_search
       - REDIS_HOST=redis
+      - ULDESK_PLUGIN_SECRET_KEY=${ULDESK_PLUGIN_SECRET_KEY}
     volumes:
       - ./webapp-logs:/home/java/logs
       - ./plugins:/home/java/plugins
-      - ./logs:/home/java/logs
+      - plugin-ipc:/run/uldesk-ipc
     networks:
       - default
       - monitoring
+
+  plugin-ipc-init:
+    build:
+      context: .
+      target: webapp
+    user: "0:0"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - plugin-ipc:/run/uldesk-ipc
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        chown 0:10000 /run/uldesk-ipc
+        chmod 1770 /run/uldesk-ipc
+    restart: "no"
+
+  plugin-runner:
+    build:
+      context: '.'
+      target: plugin-runner
+    restart: unless-stopped
+    depends_on:
+      plugin-ipc-init:
+        condition: service_completed_successfully
+    user: "10002:10000"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./security/plugin-runner-seccomp.json
+      - apparmor=uldesk-plugin-runner
+    pids_limit: 128
+    mem_limit: 1536m
+    environment:
+      - ULDESK_PLUGIN_RUNNER_SOCKET=/run/uldesk-ipc/plugin-runner.sock
+      - ULDESK_PLUGIN_BROKER_SOCKET=/run/uldesk-ipc/plugin-broker.sock
+      - ULDESK_PLUGINS_DIR=/home/java/plugins
+      - ULDESK_APP_DIR=/home/java/app
+      - ULDESK_BWRAP=/usr/bin/bwrap
+      - ULDESK_PLUGIN_RUNNER_MAX_CONCURRENT=2
+    volumes:
+      - ./plugins:/home/java/plugins:ro
+      - plugin-ipc:/run/uldesk-ipc
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/home/java/app/BOOT-INF/classes:/home/java/app/BOOT-INF/lib/*", "ru.ravel.ItDesk.plugins.PluginRunnerMain", "--ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   grafana:
     build: './config/grafana'
@@ -171,6 +248,9 @@ services:
       - REDIS_PASSWORD=supersecret
     networks:
       - default
+
+volumes:
+  plugin-ipc:
 
 networks:
   default:

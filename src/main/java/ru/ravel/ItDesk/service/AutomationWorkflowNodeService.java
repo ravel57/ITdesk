@@ -13,10 +13,12 @@ import ru.ravel.ItDesk.dto.AutomationWorkflowDefinition;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.*;
 
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.*;
 import java.util.*;
 
@@ -28,6 +30,7 @@ public class AutomationWorkflowNodeService {
 
 	private final ObjectMapper objectMapper;
 	private final AutomationWorkflowValueService valueService;
+	private final OutboundUrlGuard outboundUrlGuard;
 	private final AutomationScriptRuntime scriptRuntime;
 	private final AppSettingsService appSettingsService;
 	private final AutomationThrottleRecordRepository throttleRepository;
@@ -40,48 +43,158 @@ public class AutomationWorkflowNodeService {
 	private final SupportLineRepository supportLineRepository;
 	private final ServiceRepository serviceRepository;
 
+	private static final int MAX_HTTP_RESPONSE_BYTES = 1024 * 1024;
+	private static final int MAX_HTTP_REDIRECTS = 3;
+	private static final Set<String> ALLOWED_HTTP_METHODS = Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD");
+	private static final Set<Integer> HTTP_REDIRECT_STATUSES = Set.of(301, 302, 303, 307, 308);
+	private static final Set<String> SENSITIVE_REDIRECT_HEADERS = Set.of("authorization", "proxy-authorization", "cookie");
+	private static final Set<String> FORBIDDEN_REQUEST_HEADERS = Set.of(
+			"host", "content-length", "connection", "transfer-encoding", "upgrade", "te", "trailer"
+	);
+
 	private final HttpClient httpClient = HttpClient.newBuilder()
-			.followRedirects(HttpClient.Redirect.NORMAL)
+			.followRedirects(HttpClient.Redirect.NEVER)
 			.connectTimeout(Duration.ofSeconds(15))
 			.build();
 
 
 	public HttpResult http(AutomationWorkflowDefinition.Node node, Event event, boolean dryRun) {
 		String method = configString(node, "method", "GET").toUpperCase(Locale.ROOT);
-		String url = valueService.renderTemplate(event.getPayload(), configString(node, "url", ""));
-		if (url == null || url.isBlank()) throw new IllegalArgumentException("URL не заполнен");
-		URI uri = URI.create(url);
-		if (!Set.of("http", "https").contains(uri.getScheme())) {
-			throw new IllegalArgumentException("Разрешены только http/https URL");
+		if (!ALLOWED_HTTP_METHODS.contains(method)) {
+			throw new IllegalArgumentException("HTTP method is not allowed");
 		}
+		String url = valueService.renderTemplate(event.getPayload(), configString(node, "url", ""));
+		URI initialUri = outboundUrlGuard.validate(url);
 		String body = valueService.renderTemplate(event.getPayload(), configString(node, "body", ""));
 		int timeout = Math.max(1, Math.min(120, (int) configLong(node, "timeoutSeconds", 15)));
 		String variable = configString(node, "resultVariable", "httpResponse");
 
 		if (dryRun) {
-			return new HttpResult(true, 0, "DRY_RUN", method + " " + url);
+			return new HttpResult(true, 0, "DRY_RUN", method + " " + initialUri);
 		}
 
 		try {
-			HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeout));
-			Map<String, String> headers = parseHeaders(configString(node, "headersText", "{}"), event.getPayload());
-			headers.forEach(builder::header);
-			HttpRequest.BodyPublisher publisher = body == null || body.isBlank()
-					? HttpRequest.BodyPublishers.noBody()
-					: HttpRequest.BodyPublishers.ofString(body);
-			builder.method(method, publisher);
-			HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-			Map<String, Object> result = new LinkedHashMap<>();
-			result.put("status", response.statusCode());
-			result.put("body", response.body());
-			result.put("headers", response.headers().map());
-			valueService.setVariable(event.getPayload(), variable, result);
-			boolean success = response.statusCode() >= 200 && response.statusCode() < 300;
-			return new HttpResult(success, response.statusCode(), response.body(), method + " " + url);
+			Map<String, String> originalHeaders = safeHttpHeaders(
+					parseHeaders(configString(node, "headersText", "{}"), event.getPayload())
+			);
+			URI currentUri = initialUri;
+			String currentMethod = method;
+			String currentBody = body;
+
+			for (int redirectCount = 0; ; redirectCount++) {
+				// Resolve again immediately before every connect. This reduces the DNS
+				// rebinding window; network-level egress filtering remains recommended.
+				outboundUrlGuard.validateResolvedAddresses(currentUri);
+				HttpRequest request = buildAutomationHttpRequest(
+						currentUri,
+						currentMethod,
+						currentBody,
+						filterRedirectHeaders(originalHeaders, initialUri, currentUri),
+						timeout
+				);
+				HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+				String responseBody;
+				try (InputStream input = response.body()) {
+					byte[] bytes = input.readNBytes(MAX_HTTP_RESPONSE_BYTES + 1);
+					if (bytes.length > MAX_HTTP_RESPONSE_BYTES) {
+						throw new IllegalStateException("HTTP response exceeds 1 MiB limit");
+					}
+					responseBody = new String(bytes, StandardCharsets.UTF_8);
+				}
+
+				if (HTTP_REDIRECT_STATUSES.contains(response.statusCode())
+						&& response.headers().firstValue("Location").isPresent()) {
+					if (redirectCount >= MAX_HTTP_REDIRECTS) {
+						throw new IllegalStateException("Too many HTTP redirects");
+					}
+					URI nextUri = outboundUrlGuard.validate(
+							currentUri.resolve(response.headers().firstValue("Location").orElseThrow()).toString()
+					);
+					if ("https".equalsIgnoreCase(currentUri.getScheme())
+							&& "http".equalsIgnoreCase(nextUri.getScheme())) {
+						throw new IllegalStateException("HTTPS to HTTP redirect is forbidden");
+					}
+					if (response.statusCode() == 303
+							|| ((response.statusCode() == 301 || response.statusCode() == 302)
+							&& "POST".equals(currentMethod))) {
+						currentMethod = "GET";
+						currentBody = "";
+					}
+					currentUri = nextUri;
+					continue;
+				}
+
+				Map<String, Object> result = new LinkedHashMap<>();
+				result.put("status", response.statusCode());
+				result.put("body", responseBody);
+				result.put("headers", response.headers().map());
+				valueService.setVariable(event.getPayload(), variable, result);
+				boolean success = response.statusCode() >= 200 && response.statusCode() < 300;
+				return new HttpResult(success, response.statusCode(), responseBody, method + " " + initialUri);
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			valueService.setVariable(event.getPayload(), variable, Map.of("error", "HTTP request interrupted"));
+			return new HttpResult(false, 0, "HTTP request interrupted", method + " " + initialUri);
 		} catch (Exception e) {
-			valueService.setVariable(event.getPayload(), variable, Map.of("error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-			return new HttpResult(false, 0, e.getMessage(), method + " " + url);
+			String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+			valueService.setVariable(event.getPayload(), variable, Map.of("error", message));
+			return new HttpResult(false, 0, message, method + " " + initialUri);
 		}
+	}
+
+
+	private HttpRequest buildAutomationHttpRequest(
+			URI uri,
+			String method,
+			String body,
+			Map<String, String> headers,
+			int timeoutSeconds
+	) {
+		HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(timeoutSeconds));
+		headers.forEach(builder::header);
+		HttpRequest.BodyPublisher publisher = body == null || body.isBlank() || "GET".equals(method) || "HEAD".equals(method)
+				? HttpRequest.BodyPublishers.noBody()
+				: HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
+		return builder.method(method, publisher).build();
+	}
+
+
+	private Map<String, String> safeHttpHeaders(Map<String, String> headers) {
+		if (headers == null || headers.isEmpty()) {
+			return Map.of();
+		}
+		Map<String, String> result = new LinkedHashMap<>();
+		headers.forEach((name, value) -> {
+			if (name == null || value == null) {
+				return;
+			}
+			String trimmedName = name.trim();
+			String lower = trimmedName.toLowerCase(Locale.ROOT);
+			if (trimmedName.isBlank()
+					|| !trimmedName.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+")
+					|| FORBIDDEN_REQUEST_HEADERS.contains(lower)
+					|| value.indexOf('\r') >= 0
+					|| value.indexOf('\n') >= 0) {
+				return;
+			}
+			result.put(trimmedName, value);
+		});
+		return result;
+	}
+
+
+	private Map<String, String> filterRedirectHeaders(Map<String, String> headers, URI initialUri, URI currentUri) {
+		if (outboundUrlGuard.sameOrigin(initialUri, currentUri)) {
+			return headers;
+		}
+		Map<String, String> result = new LinkedHashMap<>();
+		headers.forEach((name, value) -> {
+			if (!SENSITIVE_REDIRECT_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+				result.put(name, value);
+			}
+		});
+		return result;
 	}
 
 

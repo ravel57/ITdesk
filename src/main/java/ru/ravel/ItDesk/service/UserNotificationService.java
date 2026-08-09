@@ -62,7 +62,7 @@ public class UserNotificationService {
 									.createdAt(ZonedDateTime.now())
 									.build()
 					);
-					webSocketService.userNotification(toDto(saved));
+					webSocketService.userNotification(user.getUsername(), toDto(saved));
 				});
 	}
 

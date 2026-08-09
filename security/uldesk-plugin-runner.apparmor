@@ -1,0 +1,61 @@
+#include <tunables/global>
+
+# Dedicated outer profile for the trusted plugin-runner sidecar.
+# It is intentionally close to Moby's docker-default profile, but permits the
+# namespace/mount operations that bubblewrap needs. The runner container has
+# no Docker network, no Linux capabilities and a read-only root filesystem.
+profile uldesk-plugin-runner flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # bubblewrap briefly uses netlink while bringing up loopback in the inner
+  # network namespace. Docker network_mode:none removes external interfaces;
+  # the plugin then gets a second private network namespace. Keep AF_ALG denied.
+  network,
+  deny network alg,
+
+  # bwrap receives namespace-scoped capabilities only after CLONE_NEWUSER.
+  # Docker still drops every capability in the outer/initial user namespace.
+  capability,
+  file,
+
+  # Required by bubblewrap while constructing the inner mount namespace.
+  # The untrusted plugin is exec'd only after bwrap drops its capability set,
+  # and --disable-userns prevents it from creating another user namespace.
+  mount,
+  umount,
+  pivot_root,
+  userns create,
+
+  # Container-runtime lifecycle signals and signals within this profile.
+  signal (receive) peer=unconfined,
+  signal (receive) peer=runc,
+  signal (receive) peer=crun,
+  signal (send,receive) peer=uldesk-plugin-runner,
+
+  # Keep the same sensitive proc/sys write restrictions as docker-default.
+  deny @{PROC}/* w,
+  deny @{PROC}/{[^1-9/],[^1-9/][^0-9/],[^1-9s/][^0-9y/][^0-9s/],[^1-9/][^0-9/][^0-9/][^0-9/]*}/** w,
+  # Keep non-kernel sysctls blocked, except /proc/sys/user/**: bwrap's
+  # --disable-userns deliberately sets user.max_user_namespaces in its new
+  # user namespace. The outer runner has no capabilities, and the plugin has
+  # its capabilities dropped before exec, so kernel permission checks remain
+  # an independent enforcement layer for these user-namespace sysctls.
+  deny @{PROC}/sys/[^ku]** w,
+  deny @{PROC}/sys/u[^s]** w,
+  deny @{PROC}/sys/us[^e]** w,
+  deny @{PROC}/sys/use[^r]** w,
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  ptrace (trace,tracedby,read,readby) peer=uldesk-plugin-runner,
+}

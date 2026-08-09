@@ -13,6 +13,7 @@ public class PluginManifest {
 	private PluginRuntime runtime;
 	private FrontendConfig frontend;
 	private List<String> permissions = new ArrayList<>();
+	private List<PluginSecretDeclaration> secrets = new ArrayList<>();
 	private List<PluginHookDefinition> hooks = new ArrayList<>();
 	private List<PluginExtensionPointDefinition> extensionPoints = new ArrayList<>();
 
@@ -39,11 +40,39 @@ public class PluginManifest {
 		private String entrypoint;
 	}
 
+	/**
+	 * Описание секрета, который нужен плагину: как он называется, что о нём
+	 * написать администратору, куда и в каком виде его подставлять.
+	 * Значение секрета в манифест не попадает никогда.
+	 */
+	@Data
+	public static class PluginSecretDeclaration {
+		private String name;
+		private String title;
+		private String description;
+		/** header или query. */
+		private String injection = "header";
+		/** Имя заголовка или query-параметра. */
+		private String parameter;
+		/** Например «Bearer ». */
+		private String valuePrefix;
+		/** Префиксы URL, на которые допустимо отправлять этот секрет. */
+		private List<String> sendTo = new ArrayList<>();
+	}
+
 	@Data
 	public static class PluginHookDefinition {
 		private String name;
 		private String handler;
 		private Boolean enabled = true;
+		/**
+		 * Можно ли вызывать хук из интерфейса.
+		 * null — вызываем, только если хук привязан к frontend-расширению
+		 * плагина: так ведут себя ранее написанные плагины.
+		 */
+		private Boolean ui;
+		/** Роли, которым доступен вызов из интерфейса. Пусто — все роли. */
+		private List<String> roles = new ArrayList<>();
 		private Long cacheTtlMs;
 		private Long refreshIntervalMs;
 	}

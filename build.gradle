@@ -10,7 +10,7 @@ ext {
 }
 
 group = 'ru.ravel'
-version = '0.7.0'
+version = '0.8.0'
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_21
@@ -107,6 +107,9 @@ dependencies {
 //	elasticsearch
 	implementation 'org.springframework.boot:spring-boot-starter-json'
 	implementation 'co.elastic.clients:elasticsearch-java:8.15.0'
+
+//	swagger
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3")
 
 // tests
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'

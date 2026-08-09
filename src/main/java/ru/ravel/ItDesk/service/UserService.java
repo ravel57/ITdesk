@@ -19,6 +19,7 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -65,6 +66,13 @@ public class UserService {
 	}
 
 
+	public long getLicensedUsersCount() {
+		return getManageableUsers().stream()
+				.filter(this::consumesLicense)
+				.count();
+	}
+
+
 	public List<User> getAllUsersIncludingDisabled() {
 		return userRepository.findAll().stream()
 				.filter(user -> !Objects.equals(user, SystemUser.getInstance()))
@@ -80,11 +88,6 @@ public class UserService {
 	@Transactional
 	public User newUser(@NotNull UserDto userDto) {
 		Role requestedRole = Role.getByName(userDto.getAuthorities());
-		long licensedStaffUsers = getUsers().size();
-		if (requestedRole != Role.CLIENT && licensedStaffUsers >= LicenseStarter.maxUsers) {
-			logger.info("max staff users is {}", LicenseStarter.maxUsers);
-			throw new RuntimeException("max users is " + LicenseStarter.maxUsers);
-		}
 
 		Pattern pattern = Pattern.compile("^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
 		String username = Objects.toString(userDto.getUsername(), "").trim();
@@ -93,6 +96,7 @@ public class UserService {
 		}
 
 		User existingUser = userRepository.findByUsername(username).orElse(null);
+		validateLicenseSeatAvailable(requestedRole, existingUser != null && existingUser.isEnabled() && consumesLicense(existingUser));
 		Long clientId = resolveClientIdForNewUser(userDto, requestedRole, existingUser);
 		syncClientOrganization(clientId, requestedRole, userDto);
 		if (existingUser != null) {
@@ -104,6 +108,7 @@ public class UserService {
 			existingUser.setIsEnabled(true);
 			existingUser.setIsAccountNonLocked(true);
 			if (userDto.getPassword() != null && !userDto.getPassword().isBlank()) {
+				validateRawPassword(userDto.getPassword());
 				existingUser.setPassword(passwordEncoder.encode(userDto.getPassword()));
 			}
 //			User saved = userRepository.save(existingUser);
@@ -113,9 +118,7 @@ public class UserService {
 
 		try {
 			String rawPassword = Objects.toString(userDto.getPassword(), "");
-			if (rawPassword.isBlank()) {
-				throw new IllegalArgumentException("password must not be blank");
-			}
+			validateRawPassword(rawPassword);
 			User user = User.builder()
 					.username(username)
 					.firstname(userDto.getFirstname())
@@ -143,6 +146,7 @@ public class UserService {
 	public User updateUser(@NotNull UserDto userDto) {
 		User savedUser = userRepository.findById(userDto.getId()).orElseThrow();
 		Role requestedRole = Role.getByName(userDto.getAuthorities());
+		validateLicenseSeatAvailable(requestedRole, savedUser.isEnabled() && consumesLicense(savedUser));
 		Long clientId = resolveClientIdForUpdate(savedUser, userDto, requestedRole);
 		syncClientOrganization(clientId, requestedRole, userDto);
 		User user = User.builder()
@@ -235,9 +239,30 @@ public class UserService {
 
 	public User changePassword(@NotNull Password password) {
 		User user = getCurrentUser();
-		user.setPassword(passwordEncoder.encode(password.getPassword()));
+		String rawPassword = password == null ? null : password.getPassword();
+		validateRawPassword(rawPassword);
+		user.setPassword(passwordEncoder.encode(rawPassword));
 		userRepository.save(user);
 		return user;
+	}
+
+
+	public User changeClientPasswordByAdmin(Long userId, String rawPassword) {
+		if (userId == null) {
+			throw new IllegalArgumentException("Не указан пользователь");
+		}
+		String password = Objects.toString(rawPassword, "");
+		validateRawPassword(password);
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new NoSuchElementException("Пользователь не найден"));
+		if (!isClient(user)) {
+			throw new IllegalArgumentException("Смена пароля этим методом доступна только для клиентских учётных записей");
+		}
+		user.setPassword(passwordEncoder.encode(password));
+		User saved = userRepository.save(user);
+		globalSearchService.indexUser(saved);
+		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
+		return saved;
 	}
 
 
@@ -318,6 +343,16 @@ public class UserService {
 		});
 	}
 
+
+
+	private void validateRawPassword(String password) {
+		if (password == null || password.length() < 8) {
+			throw new IllegalArgumentException("Пароль должен содержать минимум 8 символов");
+		}
+		if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+			throw new IllegalArgumentException("Пароль слишком длинный (максимум 72 байта UTF-8)");
+		}
+	}
 
 	private Integer normalizeChatUnansweredTooLongMinutes(Integer minutes) {
 		if (minutes == null || minutes < 1) {
@@ -727,6 +762,31 @@ public class UserService {
 			return false;
 		}
 		return user.getAvailableOrganizations() == null || user.getAvailableOrganizations().isEmpty();
+	}
+
+
+	private void validateLicenseSeatAvailable(Role requestedRole, boolean alreadyConsumesLicense) {
+		if (requestedRole == null || !requestedRole.consumesLicense() || alreadyConsumesLicense) {
+			return;
+		}
+
+		long maxUsers = Objects.requireNonNullElse(LicenseStarter.maxUsers, Long.MAX_VALUE);
+		long licensedUsers = getLicensedUsersCount();
+		if (licensedUsers >= maxUsers) {
+			logger.info("max licensed users is {}", maxUsers);
+			throw new RuntimeException("max users is " + maxUsers);
+		}
+	}
+
+
+	private boolean consumesLicense(User user) {
+		if (user == null || user.getAuthorities() == null) {
+			return false;
+		}
+		return user.getAuthorities().stream()
+				.filter(Role.class::isInstance)
+				.map(Role.class::cast)
+				.anyMatch(Role::consumesLicense);
 	}
 
 

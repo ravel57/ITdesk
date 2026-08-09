@@ -1,8 +1,11 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
@@ -12,6 +15,7 @@ import org.springframework.http.*;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import ru.ravel.ItDesk.component.PendingFileUploadRegistry;
 import ru.ravel.ItDesk.component.SlidingFileCache;
 
 import java.io.InputStream;
@@ -30,15 +34,20 @@ import ru.ravel.ItDesk.service.UserService;
 @RestController
 @RequestMapping("/files")
 @RequiredArgsConstructor
+@Tag(name = "Файлы", description = "Загрузка и безопасная выдача файлов, связанных с сообщениями и заявками.")
 public class FileController {
 
 	private static final long MAX_MESSAGE_FILE_SIZE_BYTES = 10L * 1024L * 1024L;
+	private static final long MAX_UPLOAD_REQUEST_BYTES = 50L * 1024L * 1024L;
+	private static final int MAX_FILES_PER_REQUEST = 10;
+	private static final long MAX_SERVED_FILE_SIZE_BYTES = 64L * 1024L * 1024L;
 	private static final String MAX_MESSAGE_FILE_SIZE_LABEL = "10 МБ";
 
 	private final MinioClient minioClient;
 	private final ClientRepository clientRepository;
 	private final UserService userService;
 	private final SlidingFileCache slidingFileCache;
+	private final PendingFileUploadRegistry pendingFileUploadRegistry;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -46,11 +55,25 @@ public class FileController {
 	String bucketName;
 
 
+	@Operation(summary = "Загрузить файлы", description = "Загружает файлы сообщений в объектное хранилище с проверкой допустимого размера.")
 	@PostMapping("/upload")
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'CLIENT')")
 	public ResponseEntity<Object> uploadFiles(@RequestParam("files") List<MultipartFile> files) {
+		if (files == null || files.isEmpty()) {
+			return ResponseEntity.badRequest().body(Map.of("message", "Не переданы файлы"));
+		}
+		if (files.size() > MAX_FILES_PER_REQUEST) {
+			return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(Map.of(
+					"message", "Слишком много файлов в одном запросе",
+					"maxFiles", MAX_FILES_PER_REQUEST
+			));
+		}
+		long totalSize = 0L;
 		for (MultipartFile file : files) {
-			if (file != null && file.getSize() > MAX_MESSAGE_FILE_SIZE_BYTES) {
+			if (file == null || file.isEmpty()) {
+				return ResponseEntity.badRequest().body(Map.of("message", "Пустой файл не поддерживается"));
+			}
+			if (file.getSize() > MAX_MESSAGE_FILE_SIZE_BYTES) {
 				String fileName = file.getOriginalFilename();
 				if (fileName == null || fileName.isBlank()) {
 					fileName = "Файл";
@@ -60,29 +83,56 @@ public class FileController {
 						"maxSizeBytes", MAX_MESSAGE_FILE_SIZE_BYTES
 				));
 			}
+			if (file.getSize() > MAX_UPLOAD_REQUEST_BYTES - totalSize) {
+				return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(Map.of(
+						"message", "Суммарный размер файлов превышает 50 МБ",
+						"maxTotalSizeBytes", MAX_UPLOAD_REQUEST_BYTES
+				));
+			}
+			totalSize += file.getSize();
 		}
 
+		String username = userService.getCurrentUser().getUsername();
 		List<String> uuids = new ArrayList<>();
 		try {
 			for (MultipartFile file : files) {
 				String uuid = UUID.randomUUID().toString();
-				minioClient.putObject(
-						PutObjectArgs.builder()
-								.bucket(bucketName)
-								.object(uuid)
-								.stream(file.getInputStream(), file.getSize(), -1)
-								.contentType(file.getContentType())
-								.build()
-				);
+				try (InputStream inputStream = file.getInputStream()) {
+					minioClient.putObject(
+							PutObjectArgs.builder()
+									.bucket(bucketName)
+									.object(uuid)
+									.stream(inputStream, file.getSize(), -1)
+									.contentType(file.getContentType())
+									.build()
+					);
+				}
+				// Add before registering so a Redis failure still removes the
+				// already-created object in the catch block.
 				uuids.add(uuid);
+				pendingFileUploadRegistry.register(uuid, username);
 			}
 			return ResponseEntity.ok().body(uuids);
 		} catch (Exception e) {
-			return ResponseEntity.status(HttpStatus.CONFLICT).body(Collections.singletonList(e.getMessage()));
+			for (String uuid : uuids) {
+				try {
+					pendingFileUploadRegistry.consume(uuid);
+				} catch (Exception registryCleanupException) {
+					logger.warn("Failed to clean upload ownership metadata for {}", uuid, registryCleanupException);
+				}
+				try {
+					minioClient.removeObject(RemoveObjectArgs.builder().bucket(bucketName).object(uuid).build());
+				} catch (Exception cleanupException) {
+					logger.warn("Failed to clean partially uploaded object {}", uuid, cleanupException);
+				}
+			}
+			logger.warn("File upload failed", e);
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(Collections.singletonList("Не удалось загрузить файлы"));
 		}
 	}
 
 
+	@Operation(summary = "Получить изображение", description = "Возвращает изображение по UUID после проверки доступа текущего пользователя к связанному клиенту.")
 	@GetMapping(value = "/images/{uuid}", produces = MediaType.IMAGE_JPEG_VALUE)
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> imageFile(@PathVariable String uuid) {
@@ -95,6 +145,7 @@ public class FileController {
 	}
 
 
+	@Operation(summary = "Скачать документ", description = "Возвращает документ по UUID как вложение после проверки доступа к связанному сообщению.")
 	@GetMapping(value = "/documents/{uuid}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> documentFile(@PathVariable String uuid) {
@@ -115,6 +166,7 @@ public class FileController {
 	}
 
 
+	@Operation(summary = "Получить видео", description = "Возвращает видеофайл по UUID после проверки доступа к связанному сообщению.")
 	@GetMapping(value = "/videos/{uuid}", produces = "video/mp4")
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> videoFile(@PathVariable String uuid) {
@@ -129,6 +181,7 @@ public class FileController {
 	}
 
 
+	@Operation(summary = "Получить аудио", description = "Возвращает аудиофайл по UUID после проверки доступа к связанному сообщению.")
 	@GetMapping(value = "/audios/{uuid}", produces = "video/mp4")
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> audioFile(@PathVariable String uuid) {
@@ -189,7 +242,12 @@ public class FileController {
 	@Nullable
 	private byte[] getFileBytes(String uuid) {
 		try (InputStream inputStream = minioClient.getObject(GetObjectArgs.builder().bucket(bucketName).object(uuid).build())) {
-			return inputStream.readAllBytes();
+			byte[] bytes = inputStream.readNBytes((int) MAX_SERVED_FILE_SIZE_BYTES + 1);
+			if (bytes.length > MAX_SERVED_FILE_SIZE_BYTES) {
+				logger.warn("Refusing to buffer oversized object {}", uuid);
+				return null;
+			}
+			return bytes;
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);
 			return null;

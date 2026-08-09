@@ -51,6 +51,11 @@ public class SingleSessionFilter extends OncePerRequestFilter {
 
 	@Override
 	protected boolean shouldNotFilter(HttpServletRequest request) {
+		String authorization = request.getHeader("Authorization");
+		if (authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
+			return true;
+		}
+
 		String uri = request.getRequestURI();
 		String contextPath = request.getContextPath();
 		if (contextPath != null && !contextPath.isBlank() && uri.startsWith(contextPath)) {

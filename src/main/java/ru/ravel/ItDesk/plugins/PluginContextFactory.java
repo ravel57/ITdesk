@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.plugins;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.repository.ClientRepository;
+import ru.ravel.ItDesk.service.UserService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,25 +13,45 @@ import java.util.Map;
 public class PluginContextFactory {
 
 	private final ClientRepository clientRepository;
+	private final UserService userService;
 
 
-	public PluginContextFactory(ClientRepository clientRepository) {
+	public PluginContextFactory(ClientRepository clientRepository, UserService userService) {
 		this.clientRepository = clientRepository;
+		this.userService = userService;
 	}
 
 
 	public PluginExecutionContext createContext(NativeHookExecuteRequest request) {
+		if (request == null) {
+			throw new IllegalArgumentException("Plugin hook request is required");
+		}
+		if (request.getHook() == null || request.getHook().isBlank() || request.getHook().length() > 128) {
+			throw new IllegalArgumentException("Invalid plugin hook name");
+		}
+		if (request.getEntityType() != null && request.getEntityType().length() > 32) {
+			throw new IllegalArgumentException("Invalid plugin entity type");
+		}
+
+		var currentUser = userService.getCurrentUser();
 		Map<String, Object> entity = new HashMap<>();
+		Long organizationId = null;
 		if ("CLIENT".equals(request.getEntityType()) && request.getEntityId() != null) {
 			Client client = clientRepository.findById(request.getEntityId())
 					.orElseThrow(() -> new IllegalArgumentException("Client not found: " + request.getEntityId()));
+			// Do not let a plugin hook become an IDOR oracle: authorization is checked
+			// before any PII is copied into the sandbox context.
+			userService.assertUserCanAccessClient(currentUser, client);
 			entity = clientToMap(client);
+			organizationId = client.getOrganization() == null ? null : client.getOrganization().getId();
 		}
 		return PluginExecutionContext.builder()
+				.currentUserId(currentUser.getId())
+				.organizationId(organizationId)
 				.entityType(request.getEntityType())
 				.entityId(request.getEntityId())
 				.entity(entity)
-				.payload(request.getPayload())
+				.payload(request.getPayload() == null ? Map.of() : request.getPayload())
 				.build();
 	}
 

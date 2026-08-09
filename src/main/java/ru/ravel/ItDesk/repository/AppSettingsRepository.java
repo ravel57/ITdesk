@@ -1,11 +1,20 @@
 package ru.ravel.ItDesk.repository;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import ru.ravel.ItDesk.model.AppSettings;
 
+import java.util.Optional;
+
 public interface AppSettingsRepository extends JpaRepository<AppSettings, Long> {
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	@Query("select s from AppSettings s where s.id = :id")
+	Optional<AppSettings> findByIdForUpdate(@Param("id") Long id);
 
 	@Modifying
 	@Query(value = """

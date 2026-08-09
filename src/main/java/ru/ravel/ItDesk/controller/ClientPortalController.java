@@ -1,5 +1,7 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,20 +20,24 @@ import ru.ravel.ItDesk.service.ClientPortalService;
 @RequestMapping("/api/v1/portal")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('CLIENT')")
+@Tag(name = "Клиентский портал", description = "Профиль клиента и обмен сообщениями через клиентский портал.")
 public class ClientPortalController {
 
 	private final ClientPortalService clientPortalService;
 
+	@Operation(summary = "Получить профиль клиента", description = "Возвращает профиль текущего пользователя клиентского портала.")
 	@GetMapping("/profile")
 	public ResponseEntity<Object> profile() {
 		return ResponseEntity.ok(clientPortalService.getProfile());
 	}
 
+	@Operation(summary = "Получить сообщения клиентского портала", description = "Возвращает страницу сообщений текущего клиента.")
 	@GetMapping("/messages")
 	public ResponseEntity<Object> messages(@RequestParam(defaultValue = "1") Integer page) {
 		return ResponseEntity.ok(clientPortalService.getMessages(page));
 	}
 
+	@Operation(summary = "Отправить сообщение из клиентского портала", description = "Создаёт сообщение от текущего клиента с сохранением действующих лицензионных и бизнес-проверок.")
 	@PostMapping("/messages")
 	public ResponseEntity<Object> sendMessage(@RequestBody ClientPortalMessageRequest request) {
 		if (!LicenseStarter.isLicenseActive) {

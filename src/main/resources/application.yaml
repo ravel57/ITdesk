@@ -6,6 +6,7 @@ server:
       cookie:
         http-only: true
         secure: true
+        same-site: lax
         max-age: -1
   tomcat.max-swallow-size: 15MB
   forward-headers-strategy: framework
@@ -13,8 +14,8 @@ server:
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/itdesk}
-    username: postgres
-    password: postgres
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 100
@@ -34,13 +35,20 @@ spring:
       initialize-schema: always
   servlet:
     multipart:
-      max-file-size: 512MB
-      max-request-size: 512MB
+      max-file-size: 64MB
+      max-request-size: 64MB
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
     mode: HTML
     cache: false
+  cloud:
+    openfeign:
+      client:
+        config:
+          llm:
+            connectTimeout: 10000
+            readTimeout: 600000
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -58,19 +66,16 @@ spring:
 
 minio:
   url: ${MINIO_URL:http://localhost:9000}
-  accessKey: minioadmin
-  secretKey: minioadmin
+  accessKey: ${MINIO_ACCESS_KEY:minioadmin}
+  secretKey: ${MINIO_SECRET_KEY:minioadmin}
   bucket-name: ${MINIO_DEFAULT_BUCKET:main}
 
 management:
   server:
     port: 8081
-    address: 0.0.0.0
-  endpoints.web.exposure.include: health,prometheus,info,metrics,unistat,sessions,loggers,env
-  endpoint.health.show-details: always
-  security:
-    enabled: false
-    role: ADMIN
+    address: ${MANAGEMENT_ADDRESS:127.0.0.1}
+  endpoints.web.exposure.include: health,prometheus,info
+  endpoint.health.show-details: never
   metrics:
     export.prometheus.enabled: true
     distribution.percentiles-histogram."[http.server.requests]": true
@@ -84,16 +89,73 @@ app:
   instance-name: ${INSTANCE_NAME}
   license-server-url: https://admin.uldesk.ru
   is-demo: ${IS_DEMO:false}
+  demo:
+    allow-destructive-reset: ${ALLOW_DESTRUCTIVE_DEMO_RESET:false}
   llm-url: ${LLM_URL:''}
   automation:
     worker-delay-ms: 200
+    http:
+      private-host-allowlist: ${AUTOMATION_HTTP_PRIVATE_HOST_ALLOWLIST:}
   sla:
     worker:
       delay-ms: 60000
+  webhooks:
+    connect-timeout-ms: ${WEBHOOK_CONNECT_TIMEOUT_MS:3000}
+    request-timeout-ms: ${WEBHOOK_REQUEST_TIMEOUT_MS:10000}
+    max-redirects: ${WEBHOOK_MAX_REDIRECTS:3}
+    private-host-allowlist: ${WEBHOOK_PRIVATE_HOST_ALLOWLIST:}
+  jwt:
+    issuer: ${JWT_ISSUER:uldesk}
+    audience: ${JWT_AUDIENCE:uldesk-api}
+    secret: ${JWT_SECRET:}
+    max-validity-hours: ${JWT_MAX_VALIDITY_HOURS:2160}
+    usage-persist-interval-seconds: ${JWT_USAGE_PERSIST_INTERVAL_SECONDS:30}
 
 uldesk:
   plugins:
     dir: ${PLUGINS_DIR:./plugins}
+    sandbox:
+      mode: ${PLUGIN_SANDBOX_MODE:strict}
+      executable: ${PLUGIN_SANDBOX_EXECUTABLE:bwrap}
+      allow-degraded: ${PLUGIN_SANDBOX_ALLOW_DEGRADED:false}
+      max-concurrent: ${PLUGIN_SANDBOX_MAX_CONCURRENT:4}
+    hooks:
+      max-per-minute: ${PLUGIN_HOOK_MAX_PER_MINUTE:30}
+    http:
+      # Пусто = без дополнительного сужения: плагину доступно то, что одобрил
+      # администратор инсталляции. Заполняется, только если оператор хочет
+      # ограничить плагины конкретными адресами.
+      allowed-prefixes: ${PLUGIN_HTTP_ALLOWED_PREFIXES:}
+      denied-hosts: ${PLUGIN_HTTP_DENIED_HOSTS:}
+      # Разрешить плагинам обращаться во внутреннюю сеть инсталляции
+      # (1С, AD, мониторинг). Выключено по умолчанию: это снимает защиту от SSRF.
+      allow-private-targets: ${PLUGIN_HTTP_ALLOW_PRIVATE_TARGETS:false}
+      allow-plaintext: ${PLUGIN_HTTP_ALLOW_PLAINTEXT:false}
+      connect-timeout-ms: ${PLUGIN_HTTP_CONNECT_TIMEOUT_MS:3000}
+      request-timeout-ms: ${PLUGIN_HTTP_REQUEST_TIMEOUT_MS:5000}
+      max-requests-per-invocation: ${PLUGIN_HTTP_MAX_REQUESTS:16}
+      max-response-bytes: ${PLUGIN_HTTP_MAX_RESPONSE_BYTES:262144}
+      max-request-body-bytes: ${PLUGIN_HTTP_MAX_REQUEST_BODY_BYTES:65536}
+    secrets:
+      # Ключ шифрования секретов плагинов: openssl rand -base64 32
+      # Без него администратор не сможет сохранить ни одного секрета.
+      master-key: ${ULDESK_PLUGIN_SECRET_KEY:}
+      # Значения секретов конкретных плагинов задаются администратором через API
+      # и хранятся в БД. Имена и значения plugin-specific токенов здесь не задаются.
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/**
+  show-actuator: false
+  swagger-ui:
+    path: /swagger-ui.html
+    csrf:
+      enabled: true
+    try-it-out-enabled: true
+    operations-sorter: method
+    tags-sorter: alpha
+    persist-authorization: false
 
 logging:
   level:
@@ -103,6 +165,9 @@ logging:
     org.springframework:
       web.SimpLogging: INFO
       boot.autoconfigure: INFO
+#      web.socket.messaging.StompSubProtocolHandler: DEBUG
+#      security.messaging: TRACE
+#      messaging: DEBUG
     org.springframework.web.servlet:
       DispatcherServlet: INFO
     org.springframework.web.servlet.handler:

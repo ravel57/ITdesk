@@ -151,9 +151,9 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.closedAt as closedAt,
 				t.deadline as deadline,
 				coalesce(t.completed, false) as completed,
-				t.type as type,
-				t.priority as priority,
-				t.service as service,
+				taskType as type,
+				priority as priority,
+				taskService as service,
 				executor as executor,
 				supportLine as supportLine,
 				t.enteredCurrentLineAt as enteredCurrentLineAt,
@@ -162,10 +162,13 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.olaStatus as olaStatus,
 				t.linkedMessageId as linkedMessageId
 			from Task t
+			left join t.type taskType
+			left join t.priority priority
+			left join t.service taskService
 			left join t.executor executor
 			left join t.supportLine supportLine
-			where (:hasTypeIds = false or t.type.id in :typeIds)
-			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
+			where (:hasTypeIds = false or taskType.id in :typeIds)
+			  and (:hasPriorityIds = false or priority.id in :priorityIds)
 			  and (:hasExecutorIds = false or executor.id in :executorIds)
 			  and (:hasSupportLineIds = false or supportLine.id in :supportLineIds)
 			  and (
@@ -207,11 +210,13 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				t.id as taskId,
 				tag as tag
 			from Task t
+			left join t.type taskType
+			left join t.priority priority
 			left join t.executor executor
 			left join t.supportLine supportLine
 			join t.tags tag
-			where (:hasTypeIds = false or t.type.id in :typeIds)
-			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
+			where (:hasTypeIds = false or taskType.id in :typeIds)
+			  and (:hasPriorityIds = false or priority.id in :priorityIds)
 			  and (:hasExecutorIds = false or executor.id in :executorIds)
 			  and (:hasSupportLineIds = false or supportLine.id in :supportLineIds)
 			  and (
@@ -240,18 +245,20 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 	@Query("""
 			select
 				t.id as id,
-				t.sla as sla,
-				t.type as type,
-				t.priority as priority,
+				sla as sla,
+				taskType as type,
+				priority as priority,
 				executor as executor,
 				supportLine as supportLine
 			from Task t
+			join t.sla sla
+			left join t.type taskType
+			left join t.priority priority
 			left join t.executor executor
 			left join t.supportLine supportLine
 			where coalesce(t.completed, false) = false
-			  and t.sla is not null
-			  and (:hasTypeIds = false or t.type.id in :typeIds)
-			  and (:hasPriorityIds = false or t.priority.id in :priorityIds)
+			  and (:hasTypeIds = false or taskType.id in :typeIds)
+			  and (:hasPriorityIds = false or priority.id in :priorityIds)
 			  and (:hasExecutorIds = false or executor.id in :executorIds)
 			  and (:hasSupportLineIds = false or supportLine.id in :supportLineIds)
 			  and (

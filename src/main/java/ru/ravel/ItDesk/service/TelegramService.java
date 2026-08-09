@@ -29,8 +29,7 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.TelegramRepository;
 import ru.ravel.ItDesk.telegrammessagebuilder.MessageBuilder;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -44,6 +43,8 @@ import java.util.*;
 
 @Service
 public class TelegramService {
+
+	private static final int MAX_INBOUND_MEDIA_BYTES = 10 * 1024 * 1024;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 	private final TelegramRepository telegramRepository;
@@ -90,11 +91,12 @@ public class TelegramService {
 						.file(file)
 						.replyMessage(message.getReplyMessageMessengerId())
 						.execute();
-				if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
-					BufferedImage bufferedImage = ImageIO.read(file);
-					message.setFileWidth(bufferedImage.getWidth());
-					message.setFileHeight(bufferedImage.getHeight());
-				} else if (message.getFileType().equals("image/webp")) {
+				if (MediaType.IMAGE_JPEG_VALUE.equals(message.getFileType())
+						|| MediaType.IMAGE_PNG_VALUE.equals(message.getFileType())) {
+					SafeImageMetadata.Dimensions dimensions = SafeImageMetadata.read(file);
+					message.setFileWidth(dimensions.width());
+					message.setFileHeight(dimensions.height());
+				} else if ("image/webp".equals(message.getFileType())) {
 					message.setFileWidth(512);    // FIXME
 					message.setFileHeight(512);   // FIXME
 				}
@@ -144,12 +146,23 @@ public class TelegramService {
 
 
 	public TgBot newTelegramBot(@NotNull TgBot tgBot) {
+		if (tgBot.getToken() == null || tgBot.getToken().isBlank()) {
+			throw new IllegalArgumentException("Telegram token must not be blank");
+		}
 		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
 		return telegramRepository.save(tgBot);
 	}
 
 
 	public TgBot updateTelegramBot(@NotNull TgBot tgBot) {
+		if (tgBot.getId() == null) {
+			throw new IllegalArgumentException("Telegram bot id must not be null");
+		}
+		TgBot existing = telegramRepository.findById(tgBot.getId()).orElseThrow();
+		if (tgBot.getToken() == null || tgBot.getToken().isBlank()) {
+			tgBot.setToken(existing.getToken());
+		}
+		tgBot.setBot(null);
 		tgBot.getBot().setUpdatesListener(new BotUpdatesListener(tgBot.getBot()), exceptionHandler);
 		return telegramRepository.save(tgBot);
 	}
@@ -321,35 +334,59 @@ public class TelegramService {
 			} else {
 				return;
 			}
+			HttpURLConnection connection = null;
 			try {
 				String path = this.bot.getFullFilePath(bot.execute(request).file());
-				HttpURLConnection connection = (HttpURLConnection) URL.of(URI.create(path), null).openConnection();
-				InputStream inputStream = connection.getInputStream();
+				connection = (HttpURLConnection) URL.of(URI.create(path), null).openConnection();
+				connection.setConnectTimeout(10_000);
+				connection.setReadTimeout(30_000);
+				long declaredLength = connection.getContentLengthLong();
+				if (declaredLength > MAX_INBOUND_MEDIA_BYTES) {
+					throw new IllegalArgumentException("Telegram media exceeds upload limit");
+				}
+
+				byte[] mediaBytes;
+				try (InputStream inputStream = connection.getInputStream()) {
+					mediaBytes = inputStream.readNBytes(MAX_INBOUND_MEDIA_BYTES + 1);
+				}
+				if (mediaBytes.length > MAX_INBOUND_MEDIA_BYTES) {
+					throw new IllegalArgumentException("Telegram media exceeds upload limit");
+				}
+
+				SafeImageMetadata.Dimensions dimensions = null;
+				if (MediaType.IMAGE_JPEG_VALUE.equals(type) || MediaType.IMAGE_PNG_VALUE.equals(type)) {
+					try (InputStream imageInput = new ByteArrayInputStream(mediaBytes)) {
+						dimensions = SafeImageMetadata.read(imageInput);
+					}
+				}
+
 				String uuid = UUID.randomUUID().toString();
-				minioClient.putObject(PutObjectArgs.builder()
-						.bucket(bucketName)
-						.object(uuid)
-						.stream(inputStream, connection.getContentLengthLong(), -1)
-						.contentType(type)
-						.build());
-				inputStream.close();
+				try (InputStream boundedInput = new ByteArrayInputStream(mediaBytes)) {
+					minioClient.putObject(PutObjectArgs.builder()
+							.bucket(bucketName)
+							.object(uuid)
+							.stream(boundedInput, mediaBytes.length, -1)
+							.contentType(type == null ? MediaType.APPLICATION_OCTET_STREAM_VALUE : type)
+							.build());
+				}
 				if (update.message().caption() != null) {
 					message.setText(update.message().caption());
 				}
 				message.setFileType(type);
 				message.setFileUuid(uuid);
-				if (type != null && (type.equals(MediaType.IMAGE_JPEG_VALUE) /*||type.equals("image/webp")*/)) {
-					File file = minioService.getFile("none", message.getFileUuid());
-					BufferedImage bufferedImage = ImageIO.read(file);
-					message.setFileWidth(bufferedImage.getWidth());
-					message.setFileHeight(bufferedImage.getHeight());
-					boolean delete = file.delete();
-				} else if (type != null && type.equals("image/webp")) {
-					message.setFileWidth(512); // FIXME
-					message.setFileHeight(512); //FIXME
+				if (dimensions != null) {
+					message.setFileWidth(dimensions.width());
+					message.setFileHeight(dimensions.height());
+				} else if ("image/webp".equals(type)) {
+					message.setFileWidth(512); // Provider does not expose WebP dimensions here.
+					message.setFileHeight(512);
 				}
 			} catch (Exception e) {
-				logger.error(e.getMessage());
+				logger.warn("Skipping unsafe or invalid Telegram attachment: {}", e.getMessage());
+			} finally {
+				if (connection != null) {
+					connection.disconnect();
+				}
 			}
 		}
 	}

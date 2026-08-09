@@ -17,6 +17,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -28,6 +30,8 @@ import java.util.concurrent.atomic.AtomicLong;
 @RequiredArgsConstructor
 public class ZabbixMonitoringService {
 
+	private static final int MAX_ZABBIX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
 	private final ZabbixIntegrationRepository integrationRepository;
 	private final ServiceRepository serviceRepository;
 	private final ObjectMapper objectMapper;
@@ -35,7 +39,7 @@ public class ZabbixMonitoringService {
 	private final AtomicLong requestId = new AtomicLong(1);
 	private final HttpClient httpClient = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(15))
-			.followRedirects(HttpClient.Redirect.NORMAL)
+			.followRedirects(HttpClient.Redirect.NEVER)
 			.build();
 
 	@Transactional(readOnly = true)
@@ -304,11 +308,19 @@ public class ZabbixMonitoringService {
 		if (bearerToken != null && !bearerToken.isBlank()) {
 			builder.header("Authorization", "Bearer " + bearerToken);
 		}
-		HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-		if (response.statusCode() < 200 || response.statusCode() >= 300) {
-			throw new IllegalStateException("Zabbix HTTP " + response.statusCode() + ": " + truncate(response.body(), 500));
+		HttpResponse<InputStream> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
+		String responseBody;
+		try (InputStream bodyStream = response.body()) {
+			byte[] bytes = bodyStream.readNBytes(MAX_ZABBIX_RESPONSE_BYTES + 1);
+			if (bytes.length > MAX_ZABBIX_RESPONSE_BYTES) {
+				throw new IllegalStateException("Zabbix response exceeds 2 MiB");
+			}
+			responseBody = new String(bytes, StandardCharsets.UTF_8);
 		}
-		return objectMapper.readTree(response.body());
+		if (response.statusCode() < 200 || response.statusCode() >= 300) {
+			throw new IllegalStateException("Zabbix HTTP " + response.statusCode() + ": " + truncate(responseBody, 500));
+		}
+		return objectMapper.readTree(responseBody);
 	}
 
 	private boolean isVersionAtLeast(String version, int requiredMajor, int requiredMinor) {
@@ -353,8 +365,13 @@ public class ZabbixMonitoringService {
 	private void validate(ZabbixIntegrationRequest request, Long id) {
 		if (request == null || request.getName() == null || request.getName().isBlank()) throw new IllegalArgumentException("Название интеграции обязательно");
 		if (request.getBaseUrl() == null || request.getBaseUrl().isBlank()) throw new IllegalArgumentException("URL Zabbix обязателен");
-		URI uri = URI.create(normalizeApiUrl(request.getBaseUrl()));
-		if (!Set.of("http", "https").contains(uri.getScheme())) throw new IllegalArgumentException("Разрешены только http/https URL");
+		URI uri = URI.create(normalizeApiUrl(request.getBaseUrl())).normalize();
+		if (!Set.of("http", "https").contains(uri.getScheme())
+				|| uri.getHost() == null
+				|| uri.getUserInfo() != null
+				|| uri.getFragment() != null) {
+			throw new IllegalArgumentException("Некорректный Zabbix URL: разрешены только http/https host URL без userinfo/fragment");
+		}
 		if (integrationRepository.existsByNameIgnoreCaseAndIdNot(request.getName().trim(), id == null ? -1L : id)) {
 			throw new IllegalArgumentException("Интеграция с таким названием уже существует");
 		}

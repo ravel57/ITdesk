@@ -28,8 +28,6 @@ import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.EmailAccountRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -44,6 +42,8 @@ import java.util.regex.Pattern;
 
 @Service
 public class EmailService {
+
+	private static final int MAX_INBOUND_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
@@ -84,12 +84,22 @@ public class EmailService {
 
 
 	public EmailAccount newEmailAccount(EmailAccount emailAccount) {
+		if (emailAccount == null || emailAccount.getPassword() == null || emailAccount.getPassword().isBlank()) {
+			throw new IllegalArgumentException("Email account password must not be blank");
+		}
 		addMailAccount(emailAccount);
 		return emailAccountRepository.save(emailAccount);
 	}
 
 
 	public EmailAccount updateEmailAccount(EmailAccount emailAccount) {
+		if (emailAccount == null || emailAccount.getId() == null) {
+			throw new IllegalArgumentException("Email account id must not be null");
+		}
+		EmailAccount existing = emailAccountRepository.findById(emailAccount.getId()).orElseThrow();
+		if (emailAccount.getPassword() == null || emailAccount.getPassword().isBlank()) {
+			emailAccount.setPassword(existing.getPassword());
+		}
 		addMailAccount(emailAccount);
 		return emailAccountRepository.save(emailAccount);
 	}
@@ -113,10 +123,11 @@ public class EmailService {
 		if (message.getFileUuid() != null) {
 			file = minioService.getFile(message.getFileName(), message.getFileUuid());
 			emailMessage.addAttachment(file.getName(), file);
-			if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
-				BufferedImage bufferedImage = ImageIO.read(file);
-				message.setFileWidth(bufferedImage.getWidth());
-				message.setFileHeight(bufferedImage.getHeight());
+			if (MediaType.IMAGE_JPEG_VALUE.equals(message.getFileType())
+					|| MediaType.IMAGE_PNG_VALUE.equals(message.getFileType())) {
+				SafeImageMetadata.Dimensions dimensions = SafeImageMetadata.read(file);
+				message.setFileWidth(dimensions.width());
+				message.setFileHeight(dimensions.height());
 			}
 		}
 		mailSender.send(mimeMessage);
@@ -300,51 +311,62 @@ public class EmailService {
 
 
 	private void saveAttachments(@NotNull Message emailMessage, ru.ravel.ItDesk.model.Message message) throws Exception {
-		if (emailMessage.isMimeType("multipart/*")) {
-			Multipart multipart = (Multipart) emailMessage.getContent();
-			for (int i = 0; i < multipart.getCount(); i++) {
-				BodyPart bodyPart = multipart.getBodyPart(i);
-				if (Part.ATTACHMENT.equalsIgnoreCase(bodyPart.getDisposition()) ||
-						(bodyPart.getFileName() != null && !bodyPart.getFileName().isEmpty())) {
-					String uuid = UUID.randomUUID().toString();
-					try (InputStream is = bodyPart.getInputStream(); ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-						byte[] data = new byte[16384];
-						int nRead;
-						while ((nRead = is.read(data, 0, data.length)) != -1) {
-							buffer.write(data, 0, nRead);
-						}
-						buffer.flush();
-						byte[] attachmentData = buffer.toByteArray();
-						InputStream attachmentStream = new ByteArrayInputStream(attachmentData);
-						long contentLength = attachmentData.length;
-						String contentType = bodyPart.getContentType();
-						Pattern pattern = Pattern.compile("^[^;]+");
-						Matcher matcher = pattern.matcher(contentType);
-						if (matcher.find()) {
-							contentType = matcher.group();
-						}
-						minioClient.putObject(PutObjectArgs.builder()
-								.bucket(bucketName)
-								.object(uuid)
-								.stream(attachmentStream, contentLength, -1)
-								.contentType(contentType)
-								.build()
-						);
-						message.setFileUuid(uuid);
-						message.setFileName(bodyPart.getFileName());
-						message.setFileType(contentType);
-						if (bodyPart.isMimeType(MediaType.IMAGE_PNG_VALUE) || bodyPart.isMimeType(MediaType.IMAGE_JPEG_VALUE)) {
-							File file = minioService.getFile("none", message.getFileUuid());
-							BufferedImage bufferedImage = ImageIO.read(file);
-							message.setFileWidth(bufferedImage.getWidth());
-							message.setFileHeight(bufferedImage.getHeight());
-							boolean delete = file.delete();
-						}
-						logger.debug("Saved attachment to MinIO: {}", bodyPart.getFileName());
-					} catch (Exception e) {
-						logger.error("Error saving attachment: {}", e.getMessage(), e);
+		if (!emailMessage.isMimeType("multipart/*")) {
+			return;
+		}
+		Multipart multipart = (Multipart) emailMessage.getContent();
+		for (int i = 0; i < multipart.getCount(); i++) {
+			BodyPart bodyPart = multipart.getBodyPart(i);
+			if (!Part.ATTACHMENT.equalsIgnoreCase(bodyPart.getDisposition())
+					&& (bodyPart.getFileName() == null || bodyPart.getFileName().isEmpty())) {
+				continue;
+			}
+
+			String uuid = UUID.randomUUID().toString();
+			try (InputStream is = bodyPart.getInputStream()) {
+				byte[] attachmentData = is.readNBytes(MAX_INBOUND_ATTACHMENT_BYTES + 1);
+				if (attachmentData.length > MAX_INBOUND_ATTACHMENT_BYTES) {
+					logger.warn("Skipping email attachment larger than {} bytes", MAX_INBOUND_ATTACHMENT_BYTES);
+					continue;
+				}
+
+				String contentType = bodyPart.getContentType();
+				Pattern pattern = Pattern.compile("^[^;\\r\\n]+");
+				Matcher matcher = pattern.matcher(contentType == null ? "" : contentType);
+				contentType = matcher.find() ? matcher.group().trim() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+
+				SafeImageMetadata.Dimensions dimensions = null;
+				if (MediaType.IMAGE_PNG_VALUE.equalsIgnoreCase(contentType)
+						|| MediaType.IMAGE_JPEG_VALUE.equalsIgnoreCase(contentType)) {
+					try (InputStream imageInput = new ByteArrayInputStream(attachmentData)) {
+						dimensions = SafeImageMetadata.read(imageInput);
 					}
 				}
+
+				try (InputStream attachmentStream = new ByteArrayInputStream(attachmentData)) {
+					minioClient.putObject(PutObjectArgs.builder()
+							.bucket(bucketName)
+							.object(uuid)
+							.stream(attachmentStream, attachmentData.length, -1)
+							.contentType(contentType)
+							.build()
+					);
+				}
+				message.setFileUuid(uuid);
+				String fileName = bodyPart.getFileName();
+				message.setFileName(fileName != null && fileName.length() > 255
+						? fileName.substring(0, 255) : fileName);
+				message.setFileType(contentType);
+				if (dimensions != null) {
+					message.setFileWidth(dimensions.width());
+					message.setFileHeight(dimensions.height());
+				}
+				logger.debug("Saved attachment to MinIO: {}", bodyPart.getFileName());
+				// The message schema can reference one attachment only. Keeping the first
+				// valid attachment avoids creating unreachable objects for later parts.
+				return;
+			} catch (Exception e) {
+				logger.warn("Skipping unsafe or invalid email attachment: {}", e.getMessage());
 			}
 		}
 	}

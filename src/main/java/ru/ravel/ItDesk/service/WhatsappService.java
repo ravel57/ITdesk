@@ -22,8 +22,6 @@ import ru.ravel.ItDesk.repository.MessageRepository;
 import ru.ravel.ItDesk.repository.WhatsappAccountRepository;
 import ru.ravel.ItDesk.whatsappdto.*;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.*;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -36,6 +34,9 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 public class WhatsappService {
+
+	private static final int MAX_MEDIA_BYTES = 10 * 1024 * 1024;
+	private static final int MAX_BASE64_CHARS = ((MAX_MEDIA_BYTES + 2) / 3) * 4 + 4;
 
 	private final WhatsappFeign whatsappFeign;
 	private final WhatsappAccountRepository whatsappAccountRepository;
@@ -76,19 +77,37 @@ public class WhatsappService {
 
 
 	public WhatsappAccount newWhatsappAccount(WhatsappAccount whatsappAccount) {
-		whatsappAccountRepository.save(whatsappAccount);
-		whatsappAccounts.add(whatsappAccount);
-		return whatsappAccount;
+		if (whatsappAccount == null || whatsappAccount.getApiKey() == null || whatsappAccount.getApiKey().isBlank()) {
+			throw new IllegalArgumentException("WhatsApp API key must not be blank");
+		}
+		WhatsappAccount saved = whatsappAccountRepository.save(whatsappAccount);
+		whatsappAccounts.add(saved);
+		return saved;
 	}
 
 
 	public WhatsappAccount updateWhatsappAccount(WhatsappAccount whatsappAccount) {
-		return whatsappAccountRepository.save(whatsappAccount);
+		if (whatsappAccount == null || whatsappAccount.getId() == null) {
+			throw new IllegalArgumentException("WhatsApp account id must not be null");
+		}
+		WhatsappAccount existing = whatsappAccountRepository.findById(whatsappAccount.getId()).orElseThrow();
+		if (whatsappAccount.getApiKey() == null || whatsappAccount.getApiKey().isBlank()) {
+			whatsappAccount.setApiKey(existing.getApiKey());
+		}
+		WhatsappAccount saved = whatsappAccountRepository.save(whatsappAccount);
+		synchronized (whatsappAccounts) {
+			whatsappAccounts.removeIf(item -> Objects.equals(item.getId(), saved.getId()));
+			whatsappAccounts.add(saved);
+		}
+		return saved;
 	}
 
 
 	public void deleteWhatsappAccount(Long accountId) {
 		whatsappAccountRepository.deleteById(accountId);
+		synchronized (whatsappAccounts) {
+			whatsappAccounts.removeIf(item -> Objects.equals(item.getId(), accountId));
+		}
 	}
 
 
@@ -195,14 +214,18 @@ public class WhatsappService {
 		}
 		if (message.getFileUuid() != null) {
 			File file = minioService.getFile(message.getFileName(), message.getFileUuid());
-			messageBody.media.data = encodeFileToBase64(file);
-			if (message.getFileType().equals(MediaType.IMAGE_JPEG_VALUE) || message.getFileType().equals(MediaType.IMAGE_PNG_VALUE)) {
-				BufferedImage bufferedImage = ImageIO.read(file);
-				message.setFileWidth(bufferedImage.getWidth());
-				message.setFileHeight(bufferedImage.getHeight());
-			}
-			if (!file.delete()) {
-				logger.error("File not deleted {}", file.getAbsolutePath());
+			try {
+				messageBody.media.data = encodeFileToBase64(file);
+				if (MediaType.IMAGE_JPEG_VALUE.equals(message.getFileType())
+						|| MediaType.IMAGE_PNG_VALUE.equals(message.getFileType())) {
+					SafeImageMetadata.Dimensions dimensions = SafeImageMetadata.read(file);
+					message.setFileWidth(dimensions.width());
+					message.setFileHeight(dimensions.height());
+				}
+			} finally {
+				if (file.exists() && !file.delete()) {
+					logger.error("File not deleted {}", file.getAbsolutePath());
+				}
 			}
 		}
 		WhatsappAccount whatsappAccount = client.getWhatsappAccount();
@@ -217,43 +240,68 @@ public class WhatsappService {
 
 
 	private void decodeBase64ToMinio(@NotNull Media media, String uuid, Message message) {
-		byte[] decodedBytes = Base64.getDecoder().decode(media.data);
-		try (InputStream inputStream = new ByteArrayInputStream(decodedBytes)) {
-			minioClient.putObject(
-					PutObjectArgs.builder()
-							.bucket(bucketName)
-							.object(uuid)
-							.contentType(media.mimetype)
-							.stream(inputStream, decodedBytes.length, -1)
-							.build()
-			);
+		try {
+			if (media.data == null || media.data.isBlank() || media.data.length() > MAX_BASE64_CHARS) {
+				throw new IOException("WhatsApp media is empty or too large");
+			}
+			byte[] decodedBytes = Base64.getDecoder().decode(media.data);
+			if (decodedBytes.length > MAX_MEDIA_BYTES) {
+				throw new IOException("WhatsApp media exceeds upload limit");
+			}
+
+			SafeImageMetadata.Dimensions dimensions = null;
+			if (MediaType.IMAGE_JPEG_VALUE.equals(media.mimetype)
+					|| MediaType.IMAGE_PNG_VALUE.equals(media.mimetype)) {
+				try (InputStream imageInput = new ByteArrayInputStream(decodedBytes)) {
+					dimensions = SafeImageMetadata.read(imageInput);
+				}
+			}
+
+			try (InputStream inputStream = new ByteArrayInputStream(decodedBytes)) {
+				minioClient.putObject(
+						PutObjectArgs.builder()
+								.bucket(bucketName)
+								.object(uuid)
+								.contentType(media.mimetype == null ? MediaType.APPLICATION_OCTET_STREAM_VALUE : media.mimetype)
+								.stream(inputStream, decodedBytes.length, -1)
+								.build()
+				);
+			}
 			message.setFileType(media.mimetype);
 			message.setFileUuid(uuid);
-			message.setFileName(media.filename);
-			if (media.mimetype != null && media.mimetype.equals(MediaType.IMAGE_JPEG_VALUE)) {
-				File file = minioService.getFile("none", message.getFileUuid());
-				BufferedImage bufferedImage = ImageIO.read(file);
-				message.setFileWidth(bufferedImage.getWidth());
-				message.setFileHeight(bufferedImage.getHeight());
-				boolean delete = file.delete();
-			} else if (media.mimetype != null && media.mimetype.equals("image/webp")) {
-				message.setFileWidth(512); // FIXME
-				message.setFileHeight(512); //FIXME
+			String fileName = media.filename;
+			message.setFileName(fileName != null && fileName.length() > 255
+					? fileName.substring(0, 255) : fileName);
+			if (dimensions != null) {
+				message.setFileWidth(dimensions.width());
+				message.setFileHeight(dimensions.height());
+			} else if ("image/webp".equals(media.mimetype)) {
+				message.setFileWidth(512); // Provider does not expose WebP dimensions here.
+				message.setFileHeight(512);
 			}
 		} catch (Exception e) {
-			logger.error(e.getMessage(), e);
+			logger.warn("Skipping unsafe or invalid WhatsApp media: {}", e.getMessage());
 		}
 	}
 
 
 	public static String encodeFileToBase64(File file) throws IOException {
-		byte[] fileBytes;
-		try (FileInputStream fileInputStream = new FileInputStream(file)) {
-			fileBytes = new byte[(int) file.length()];
-			fileInputStream.read(fileBytes);
+		long size = file.length();
+		if (size < 0 || size > MAX_MEDIA_BYTES) {
+			throw new IOException("WhatsApp media exceeds upload limit");
 		}
-		String base64String = Base64.getEncoder().encodeToString(fileBytes);
-		return base64String;
+		byte[] fileBytes = new byte[(int) size];
+		try (FileInputStream fileInputStream = new FileInputStream(file)) {
+			int offset = 0;
+			while (offset < fileBytes.length) {
+				int read = fileInputStream.read(fileBytes, offset, fileBytes.length - offset);
+				if (read < 0) {
+					throw new EOFException("Unexpected end of media file");
+				}
+				offset += read;
+			}
+		}
+		return Base64.getEncoder().encodeToString(fileBytes);
 	}
 
 }

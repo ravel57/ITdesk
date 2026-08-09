@@ -47,6 +47,7 @@ public class AutomationActionExecutor {
 	private final TaskRoutingService taskRoutingService;
 	private final WebSocketService webSocketService;
 	private final EventPublisher eventPublisher;
+	private final WebhookService webhookService;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -534,13 +535,49 @@ public class AutomationActionExecutor {
 		}
 
 		public void call(String url, Object body) {
+			deliver(url, body, Map.of());
+		}
+
+		public void callWithHeaders(String url, Object body, Object headers) {
+			deliver(url, body, webhookHeaders(headers));
+		}
+
+		private void deliver(String url, Object body, Map<String, String> headers) {
 			if (url == null || url.isBlank()) {
 				log.warn("webhook.call skipped: url is blank, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
 
-			// TODO: webhookService.call(url, body)
-			log.info("AUTO webhook.call(url={}, body={})", url, body);
+			var result = webhookService.call(url, body, headers);
+			if (!result.successful()) {
+				throw new WebhookDeliveryException(
+						"Webhook вернул HTTP " + result.statusCode() + ": " + result.responseBody()
+				);
+			}
+			log.info("AUTO webhook.call(url={}, status={}, durationMs={})",
+					url, result.statusCode(), result.durationMs());
+		}
+
+		private Map<String, String> webhookHeaders(Object raw) {
+			if (raw == null) {
+				return Map.of();
+			}
+			Map<String, String> result = new LinkedHashMap<>();
+			if (raw instanceof Map<?, ?> map) {
+				map.forEach((name, value) -> {
+					if (name != null && value != null) {
+						result.put(String.valueOf(name), asString(value));
+					}
+				});
+				return result;
+			}
+			if (raw instanceof JsonNode node && node.isObject()) {
+				node.fields().forEachRemaining(entry ->
+						result.put(entry.getKey(), asString(entry.getValue()))
+			);
+				return result;
+			}
+			throw new IllegalArgumentException("Заголовки webhook должны быть JSON-объектом");
 		}
 	}
 

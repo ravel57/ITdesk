@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.converter.JacksonJsonMessageConverter;
@@ -42,6 +43,9 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 	private final JsonMapper objectMapper;
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
+	@Value("${app.allowed-origin:http://localhost:8080}")
+	private String allowedOrigins;
+
 	@Bean
 	public AuthorizationManager<Message<?>> messageAuthorizationManager(
 			MessageMatcherDelegatingAuthorizationManager.Builder messages
@@ -51,35 +55,51 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 				// OBSERVER is read-only and must not acknowledge support messages.
 				// Keep this matcher before the generic /app/** rule.
 				.simpDestMatchers("/app/mark-read").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-				.simpDestMatchers("/app/**").authenticated()
+				.simpDestMatchers("/app/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 				.simpSubscribeDestMatchers("/topic/authenticated-users/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/support-messages/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/clients/**").denyAll()
 				.simpSubscribeDestMatchers(
-						"/topic/client-messages/**",
-						"/topic/client-message-edited/**",
-						"/topic/client-message-deleted/**"
+						"/user/topic/client-messages/**",
+						"/user/topic/client-message-edited/**",
+						"/user/topic/client-message-deleted/**",
+						"/user/topic/mark-read/**"
 				).hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpSubscribeDestMatchers("/user/topic/clients/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+				.simpSubscribeDestMatchers(
+						"/user/topic/task-messages/**",
+						"/user/topic/task-updated/**",
+						"/user/topic/user-notification/**",
+						"/user/topic/force-logout/**"
+				).hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 				.simpSubscribeDestMatchers("/topic/clients-for-observer/**").denyAll()
 				.simpSubscribeDestMatchers(
 						"/user/topic/observer-client-messages/**",
 						"/user/topic/observer-client-message-edited/**",
 						"/user/topic/observer-client-message-deleted/**"
 				).hasRole("OBSERVER")
-				.simpSubscribeDestMatchers("/user/queue/client-portal-messages").hasRole("CLIENT")
-				.simpSubscribeDestMatchers("/user/**").authenticated()
-				.simpSubscribeDestMatchers("/queue/**").authenticated()
+				.simpSubscribeDestMatchers(
+						"/topic/client-messages/**",
+						"/topic/client-message-edited/**",
+						"/topic/client-message-deleted/**",
+						"/topic/mark-read/**",
+						"/topic/task-messages/**",
+						"/topic/task-updated/**",
+						"/topic/user-notification/**",
+						"/topic/force-logout/**"
+				).denyAll()
+				.simpSubscribeDestMatchers(
+						"/user/queue/client-portal-messages",
+						"/user/queue/client-portal-message-deleted"
+				).hasRole("CLIENT")
+				.simpSubscribeDestMatchers("/user/**").denyAll()
+				.simpSubscribeDestMatchers("/queue/**").denyAll()
 				// Клиентский портал не должен иметь доступ к общим операторским топикам.
 				.simpSubscribeDestMatchers("/topic/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 				.anyMessage().denyAll();
 		return messages.build();
 	}
 
-
-	@Bean(name = "csrfChannelInterceptor")
-	public ChannelInterceptor csrfChannelInterceptor() {
-		return new ChannelInterceptor() {
-		};
-	}
 
 
 	@Override
@@ -98,12 +118,27 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 
 	@Override
 	public void registerStompEndpoints(@NotNull StompEndpointRegistry registry) {
+		String[] origins = configuredAllowedOrigins();
 		registry.addEndpoint("/ws")
-				.setAllowedOriginPatterns("*")
+				.setAllowedOrigins(origins)
 				.withSockJS();
 		registry.addEndpoint("/client-portal-ws")
-				.setAllowedOriginPatterns("*")
+				.setAllowedOrigins(origins)
 				.withSockJS();
+	}
+
+
+	private String[] configuredAllowedOrigins() {
+		String[] origins = java.util.Arrays.stream(
+				allowedOrigins == null ? new String[0] : allowedOrigins.split(",")
+		)
+				.map(String::trim)
+				.filter(origin -> !origin.isBlank())
+				.toArray(String[]::new);
+		if (origins.length == 0 || java.util.Arrays.asList(origins).contains("*")) {
+			throw new IllegalStateException("app.allowed-origin must contain explicit trusted origins");
+		}
+		return origins;
 	}
 
 

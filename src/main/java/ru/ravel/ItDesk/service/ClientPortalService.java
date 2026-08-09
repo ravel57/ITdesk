@@ -5,6 +5,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.ravel.ItDesk.component.PendingFileUploadRegistry;
 import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.dto.ClientPortalMessageDto;
 import ru.ravel.ItDesk.dto.ClientPortalMessageRequest;
@@ -36,6 +37,7 @@ public class ClientPortalService {
 	private final GlobalSearchService globalSearchService;
 	private final EventPublisher eventPublisher;
 	private final WebSocketService webSocketService;
+	private final PendingFileUploadRegistry pendingFileUploadRegistry;
 
 
 	@Transactional(readOnly = true)
@@ -91,6 +93,9 @@ public class ClientPortalService {
 
 		User user = requirePortalUser();
 		Client client = requireCurrentClient(user);
+		if (!fileUuid.isBlank()) {
+			pendingFileUploadRegistry.assertOwned(fileUuid, user.getUsername());
+		}
 		Message message = Message.builder()
 				.text(text)
 				.date(ZonedDateTime.now())
@@ -112,6 +117,9 @@ public class ClientPortalService {
 		// message is visible through WebSocket but disappears after page reload.
 		// Persist the owning FK explicitly, then reload the client from the DB.
 		messageRepository.attachMessageToClient(client.getId(), savedMessage.getId());
+		if (!fileUuid.isBlank()) {
+			pendingFileUploadRegistry.consumeAfterCommit(fileUuid);
+		}
 		Client savedClient = clientRepository.findById(client.getId())
 				.orElseThrow(() -> new AccessDeniedException("Карточка клиента не найдена"));
 

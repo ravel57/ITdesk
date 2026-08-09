@@ -7,7 +7,7 @@ server:
         http-only: true
         secure: true
         max-age: -1
-  tomcat.max-swallow-size: 512MB
+  tomcat.max-swallow-size: 15MB
   forward-headers-strategy: framework
 
 spring:

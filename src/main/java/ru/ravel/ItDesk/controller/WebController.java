@@ -16,6 +16,8 @@ public class WebController {
 			"/login",
 			"/login-error",
 			"/session-expired",
+			"/portal",
+			"/portal/**",
 			"/chats",
 			"/chats/**",
 			"/tasks",

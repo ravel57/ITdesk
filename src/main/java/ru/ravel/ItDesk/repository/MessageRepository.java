@@ -1,6 +1,7 @@
 package ru.ravel.ItDesk.repository;
 
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -19,7 +20,33 @@ import java.util.Optional;
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
+	@Query("""
+			select m
+			from Client c
+			join c.messages m
+			where c.id = :clientId
+			  and coalesce(m.isComment, false) = false
+			  and coalesce(m.deleted, false) = false
+			order by m.date desc, m.id desc
+			""")
+	List<Message> findPortalMessagesPageFromEnd(
+			@Param("clientId") Long clientId,
+			Pageable pageable
+	);
+
 	Optional<Message> findByMessengerMessageId(Integer messengerMessageId);
+
+	@Query("""
+			select count(m) > 0
+			from Client c
+			join c.messages m
+			where c.id = :clientId
+			  and m.id = :messageId
+			""")
+	boolean existsByIdAndClientId(
+			@Param("messageId") Long messageId,
+			@Param("clientId") Long clientId
+	);
 
 	@Query(value = """
 			select *
@@ -36,6 +63,36 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 	);
 
 	@Query(value = """
+			select *
+			from message m
+			where m.client_id = :clientId
+			  and coalesce(m.deleted, false) = false
+			order by m.date desc nulls last, m.id desc
+			limit :limit
+			offset :offset
+			""", nativeQuery = true)
+	List<Message> findVisibleClientMessagesPageFromEnd(
+			@Param("clientId") Long clientId,
+			@Param("limit") int limit,
+			@Param("offset") int offset
+	);
+
+
+	@Query(value = """
+			select latest.client_id as "clientId", latest.id as "messageId"
+			from (
+				select distinct on (m.client_id) m.client_id, m.id
+				from message m
+				where m.client_id in (:clientIds)
+				  and coalesce(m.deleted, false) = false
+				order by m.client_id, m.date desc nulls last, m.id desc
+			) latest
+			""", nativeQuery = true)
+	List<LatestVisibleMessageRow> findLatestVisibleMessageIdsByClientIds(
+			@Param("clientIds") List<Long> clientIds
+	);
+
+	@Query(value = """
 			select count(*)
 			from message m
 			where m.client_id = :clientId
@@ -48,6 +105,24 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 			  )
 			""", nativeQuery = true)
 	long countClientMessagesAfterMessage(
+			@Param("clientId") Long clientId,
+			@Param("messageId") Long messageId
+	);
+
+	@Query(value = """
+			select count(*)
+			from message m
+			where m.client_id = :clientId
+			  and coalesce(m.deleted, false) = false
+			  and (
+			       m.date > (select lm.date from message lm where lm.id = :messageId)
+			    or (
+			         m.date = (select lm.date from message lm where lm.id = :messageId)
+			     and m.id > :messageId
+			    )
+			  )
+			""", nativeQuery = true)
+	long countVisibleClientMessagesAfterMessage(
 			@Param("clientId") Long clientId,
 			@Param("messageId") Long messageId
 	);
@@ -154,6 +229,13 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 	List<MessageAnalyticsRow> findClientMessageAnalyticsRowsUntil(
 			@Param("to") ZonedDateTime to
 	);
+
+
+	interface LatestVisibleMessageRow {
+		Long getClientId();
+
+		Long getMessageId();
+	}
 
 
 	interface MessageAnalyticsRow {

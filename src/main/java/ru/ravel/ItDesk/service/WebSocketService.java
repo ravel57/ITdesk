@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.dto.ForceLogoutDto;
 import ru.ravel.ItDesk.dto.TaskMessageDto;
+import ru.ravel.ItDesk.dto.UserNotificationHistoryDto;
 import ru.ravel.ItDesk.model.*;
 
 import java.util.List;
@@ -18,6 +19,7 @@ import ru.ravel.ItDesk.dto.TaskUpdatedDto;
 public class WebSocketService {
 
 	private final SimpMessagingTemplate simpMessaging;
+	private final ClientPortalSocketService clientPortalSocketService;
 
 
 	public void sendClients(List<Client> clients) {
@@ -32,11 +34,29 @@ public class WebSocketService {
 
 	public void sendNewMessages(ClientMessage clientMessage) {
 		simpMessaging.convertAndSend("/topic/client-messages/", clientMessage);
+		clientPortalSocketService.sendMessage(clientMessage.getClient(), clientMessage.getMessage());
 	}
 
 
 	public void editedMessage(ClientMessage clientMessage) {
 		simpMessaging.convertAndSend("/topic/client-message-edited/", clientMessage);
+		clientPortalSocketService.sendMessage(clientMessage.getClient(), clientMessage.getMessage());
+	}
+
+
+	public void deletedMessage(ClientMessage clientMessage) {
+		if (clientMessage == null || clientMessage.getMessage() == null) {
+			return;
+		}
+
+		// Операторский интерфейс должен получить deleted=true сразу, так же как
+		// он получает live-update при редактировании сообщения.
+		simpMessaging.convertAndSend("/topic/client-message-deleted/", clientMessage);
+
+		clientPortalSocketService.sendMessageDeleted(
+				clientMessage.getClient(),
+				clientMessage.getMessage().getId()
+		);
 	}
 
 
@@ -50,7 +70,7 @@ public class WebSocketService {
 	}
 
 
-	public void userNotification(UserNotification userNotification) {
+	public void userNotification(UserNotificationHistoryDto userNotification) {
 		simpMessaging.convertAndSend("/topic/user-notification/", userNotification);
 	}
 

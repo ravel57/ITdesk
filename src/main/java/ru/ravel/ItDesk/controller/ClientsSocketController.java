@@ -28,10 +28,7 @@ public class ClientsSocketController {
 		}
 
 		User user = userService.getUserByUsername(principal.getName());
-		List<Client> clients = userService.filterClientsByUser(
-				clientService.getClientsForSystem(),
-				user
-		);
+		List<Client> clients = clientService.getClientsForUser(user);
 
 		webSocketService.sendClientsToUser(principal.getName(), clients);
 	}

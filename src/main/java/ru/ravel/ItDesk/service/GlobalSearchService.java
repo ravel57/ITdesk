@@ -18,26 +18,10 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.GlobalSearchDocument;
 import ru.ravel.ItDesk.dto.GlobalSearchResultDto;
 import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.repository.ClientRepository;
-import ru.ravel.ItDesk.repository.MessageRepository;
-import ru.ravel.ItDesk.repository.TaskRepository;
-import ru.ravel.ItDesk.repository.UserRepository;
+import ru.ravel.ItDesk.repository.*;
 
 import java.io.IOException;
-import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 
 @Service
@@ -50,6 +34,7 @@ public class GlobalSearchService {
 	private final UserRepository userRepository;
 	private final KnowledgeService knowledgeService;
 	private final MessageRepository messageRepository;
+	private final ServiceRepository serviceRepository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -200,6 +185,8 @@ public class GlobalSearchService {
 					putDocument(documents, toKnowledgeDocument(knowledge));
 				}
 			});
+
+			serviceRepository.findAll().forEach(service -> putDocument(documents, toServiceDocument(service)));
 			BulkRequest.Builder bulk = new BulkRequest.Builder();
 			for (GlobalSearchDocument document : documents.values()) {
 				if (document == null || document.getId() == null) {
@@ -283,6 +270,21 @@ public class GlobalSearchService {
 			return;
 		}
 		indexDocument(toKnowledgeDocument(knowledge));
+	}
+
+
+	public void indexService(ru.ravel.ItDesk.model.Service service) {
+		if (service == null || service.getId() == null) {
+			return;
+		}
+		indexDocument(toServiceDocument(service));
+	}
+
+
+	public void deleteService(Long serviceId) {
+		if (serviceId != null) {
+			deleteDocument("SERVICE:" + serviceId);
+		}
 	}
 
 
@@ -435,6 +437,8 @@ public class GlobalSearchService {
 						nullToEmpty(task.getDescription()),
 						task.getStatus() == null ? "" : nullToEmpty(task.getStatus().getName()),
 						task.getPriority() == null ? "" : nullToEmpty(task.getPriority().getName()),
+						task.getService() == null ? "" : nullToEmpty(task.getService().getCode()),
+						task.getService() == null ? "" : nullToEmpty(task.getService().getName()),
 						task.getExecutor() == null ? "" : getUserName(task.getExecutor())
 				))
 				.url(client == null
@@ -446,7 +450,35 @@ public class GlobalSearchService {
 						"completed", Boolean.TRUE.equals(task.getCompleted()),
 						"status", task.getStatus() == null ? "" : nullToEmpty(task.getStatus().getName()),
 						"priority", task.getPriority() == null ? "" : nullToEmpty(task.getPriority().getName()),
+						"service", task.getService() == null ? "" : nullToEmpty(task.getService().getName()),
+						"serviceCode", task.getService() == null ? "" : nullToEmpty(task.getService().getCode()),
 						"number", taskNumber
+				))
+				.build();
+	}
+
+
+	private GlobalSearchDocument toServiceDocument(ru.ravel.ItDesk.model.Service service) {
+		String code = nullToEmpty(service.getCode()).trim();
+		String name = nullToEmpty(service.getName()).trim();
+		String criticality = service.getCriticality() == null ? "" : nullToEmpty(service.getCriticality().getName());
+		String owner = service.getOwner() == null ? "" : getUserName(service.getOwner());
+		String supportLine = service.getDefaultSupportLine() == null ? "" : nullToEmpty(service.getDefaultSupportLine().getName());
+		return GlobalSearchDocument.builder()
+				.id("SERVICE:" + service.getId())
+				.entityType("SERVICE")
+				.entityId(service.getId())
+				.title(code.isBlank() ? name : code + " · " + name)
+				.subtitle("Сервис")
+				.text(String.join(" ", "сервис", code, name, nullToEmpty(service.getDescription()), criticality, owner, supportLine))
+				.url("/settings/services?serviceId=%d".formatted(service.getId()))
+				.createdAt(null)
+				.updatedAt(service.getLastMonitoringAt())
+				.meta(Map.of(
+						"code", code,
+						"active", !Boolean.FALSE.equals(service.getActive()),
+						"criticality", criticality,
+						"monitoringStatus", Objects.toString(service.getMonitoringStatus(), "")
 				))
 				.build();
 	}
@@ -698,6 +730,7 @@ public class GlobalSearchService {
 				"USER",
 				"CLIENT",
 				"TASK",
+				"SERVICE",
 				"KNOWLEDGE",
 				"CLIENT_MESSAGE",
 				"TASK_MESSAGE"
@@ -724,9 +757,10 @@ public class GlobalSearchService {
 			case "USER" -> 0;
 			case "CLIENT" -> 1;
 			case "TASK" -> 2;
-			case "KNOWLEDGE" -> 3;
-			case "CLIENT_MESSAGE" -> 4;
-			case "TASK_MESSAGE" -> 5;
+			case "SERVICE" -> 3;
+			case "KNOWLEDGE" -> 4;
+			case "CLIENT_MESSAGE" -> 5;
+			case "TASK_MESSAGE" -> 6;
 			default -> 100;
 		};
 	}

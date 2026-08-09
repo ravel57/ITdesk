@@ -26,6 +26,33 @@ public class SupportLineService {
         return supportLineRepository.findAll().stream().sorted().toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<User> getAssignableUsers(Long supportLineId) {
+        if (supportLineId == null) {
+            return List.of();
+        }
+        SupportLine line = supportLineRepository.findById(supportLineId).orElseThrow();
+        LinkedHashMap<Long, User> usersById = new LinkedHashMap<>();
+        if (line.getMembers() != null) {
+            line.getMembers().stream()
+                    .filter(Objects::nonNull)
+                    .filter(user -> user.getId() != null)
+                    .forEach(user -> usersById.put(user.getId(), user));
+        }
+        User responsible = line.getResponsible();
+        if (responsible != null && responsible.getId() != null) {
+            usersById.put(responsible.getId(), responsible);
+        }
+        return usersById.values().stream()
+                .filter(User::isEnabled)
+                .filter(user -> userService.isAdmin(user) || userService.isManager(user) || userService.isOperator(user))
+                .sorted(Comparator
+                        .comparing((User user) -> Objects.toString(user.getLastname(), ""), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(user -> Objects.toString(user.getFirstname(), ""), String.CASE_INSENSITIVE_ORDER)
+                        .thenComparing(User::getId))
+                .toList();
+    }
+
     @Transactional
     public SupportLine create(SupportLine request) {
         validate(request, null);
@@ -107,13 +134,13 @@ public class SupportLineService {
     }
 
     private void apply(SupportLine line, SupportLine request) {
-        List<User> members = resolveUsers(request.getMembers());
-        User responsible = resolveUser(request.getResponsible());
+        List<User> members = resolveTeamUsers(request.getMembers(), "Участник линии");
+        User responsible = resolveTeamUser(request.getResponsible(), "Ответственный за линию");
         if (responsible != null && members.stream().noneMatch(user -> Objects.equals(user.getId(), responsible.getId()))) {
             members.add(responsible);
         }
         Set<Long> memberIds = members.stream().map(User::getId).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-        LinkedHashSet<User> observers = new LinkedHashSet<>(resolveUsers(request.getObservers()));
+        LinkedHashSet<User> observers = new LinkedHashSet<>(resolveTeamUsers(request.getObservers(), "Наблюдатель линии"));
         observers.removeIf(user -> user == null || memberIds.contains(user.getId()));
 
         line.setName(request.getName().trim());
@@ -159,6 +186,34 @@ public class SupportLineService {
         }
         return userRepository.findById(requested.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Пользователь не найден: " + requested.getId()));
+    }
+
+    private boolean isTeamUser(User user) {
+        return user != null
+                && user.isEnabled()
+                && (userService.isAdmin(user) || userService.isManager(user) || userService.isOperator(user));
+    }
+
+    private User resolveTeamUser(User requested, String fieldLabel) {
+        User user = resolveUser(requested);
+        if (user == null) {
+            return null;
+        }
+        if (!isTeamUser(user)) {
+            throw new IllegalArgumentException(fieldLabel + " должен иметь роль администратора, менеджера поддержки или оператора поддержки");
+        }
+        return user;
+    }
+
+    private List<User> resolveTeamUsers(Collection<User> requestedUsers, String fieldLabel) {
+        List<User> users = resolveUsers(requestedUsers);
+        users.stream()
+                .filter(user -> !isTeamUser(user))
+                .findFirst()
+                .ifPresent(user -> {
+                    throw new IllegalArgumentException(fieldLabel + " должен иметь роль администратора, менеджера поддержки или оператора поддержки");
+                });
+        return users;
     }
 
     private List<User> resolveUsers(Collection<User> requestedUsers) {

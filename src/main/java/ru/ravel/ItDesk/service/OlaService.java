@@ -16,6 +16,7 @@ public class OlaService {
 
     private final OlaWorkingTimeService workingTimeService;
     private final TaskSupportLineStageRepository stageRepository;
+    private final ServiceCatalogService serviceCatalogService;
 
     public void initializeFields(Task task, SupportLine line, ZonedDateTime now) {
         ZonedDateTime safeNow = Objects.requireNonNullElse(now, ZonedDateTime.now());
@@ -23,29 +24,42 @@ public class OlaService {
         task.setOlaPausedAt(null);
         task.setOlaRemainingSecondsOnPause(null);
 
-        long durationSeconds = workingTimeService.durationSeconds(line);
-        if (line == null || !Boolean.TRUE.equals(line.getOlaEnabled()) || durationSeconds <= 0) {
+        ServiceOlaStage serviceStage = serviceCatalogService.findOlaStage(task.getService(), line);
+        long durationSeconds = serviceStage != null
+                ? Math.max(0L, Objects.requireNonNullElse(serviceStage.getDurationSeconds(), 0L))
+                : workingTimeService.durationSeconds(line);
+        boolean enabled = serviceStage != null
+                ? !Boolean.FALSE.equals(serviceStage.getActive()) && durationSeconds > 0
+                : line != null && Boolean.TRUE.equals(line.getOlaEnabled()) && durationSeconds > 0;
+
+        if (!enabled) {
             task.setOlaStatus(OlaStatus.DISABLED);
             task.setOlaDurationSeconds(null);
             task.setOlaUseWorkingTime(false);
+            task.setOlaWarningPercent(null);
             task.setOlaDeadline(null);
             task.setOlaWarningAt(null);
             task.setOlaInfo(buildInfo(task, safeNow));
             return;
         }
 
-        boolean useWorkingTime = Boolean.TRUE.equals(line.getOlaUseWorkingTime())
-                || line.getOlaUnit() == OlaUnit.WORKING_DAYS;
-        int warningPercent = Math.max(1, Math.min(100, Objects.requireNonNullElse(line.getOlaWarningPercent(), 80)));
+        boolean useWorkingTime = serviceStage != null
+                ? Boolean.TRUE.equals(serviceStage.getUseWorkingTime())
+                : Boolean.TRUE.equals(line.getOlaUseWorkingTime()) || line.getOlaUnit() == OlaUnit.WORKING_DAYS;
+        int warningPercent = serviceStage != null
+                ? Math.max(1, Math.min(100, Objects.requireNonNullElse(serviceStage.getWarningPercent(), 80)))
+                : Math.max(1, Math.min(100, Objects.requireNonNullElse(line.getOlaWarningPercent(), 80)));
         long warningSeconds = Math.max(1L, Math.round(durationSeconds * (warningPercent / 100.0d)));
 
         task.setOlaDurationSeconds(durationSeconds);
         task.setOlaUseWorkingTime(useWorkingTime);
+        task.setOlaWarningPercent(warningPercent);
         task.setOlaDeadline(workingTimeService.addSeconds(safeNow, durationSeconds, useWorkingTime));
         task.setOlaWarningAt(workingTimeService.addSeconds(safeNow, warningSeconds, useWorkingTime));
         task.setOlaStatus(OlaStatus.OK);
         task.setOlaInfo(buildInfo(task, safeNow));
     }
+
 
     @Transactional
     public void createStage(Task task, User actor, String reason) {
@@ -91,8 +105,7 @@ public class OlaService {
             finishPauseAt(task, now);
         }
         closeCurrentStage(task, now);
-        if (task.getOlaDeadline() == null || task.getSupportLine() == null
-                || !Boolean.TRUE.equals(task.getSupportLine().getOlaEnabled())) {
+        if (task.getOlaDeadline() == null || task.getOlaDurationSeconds() == null) {
             task.setOlaStatus(OlaStatus.DISABLED);
         } else {
             task.setOlaStatus(resolveBreached(task, now) ? OlaStatus.BREACHED : OlaStatus.COMPLETED);
@@ -154,9 +167,7 @@ public class OlaService {
         task.setOlaDeadline(workingTimeService.addSeconds(now, remaining, useWorkingTime));
 
         long total = Math.max(1L, Objects.requireNonNullElse(task.getOlaDurationSeconds(), remaining));
-        int warningPercent = task.getSupportLine() == null
-                ? 80
-                : Math.max(1, Math.min(100, Objects.requireNonNullElse(task.getSupportLine().getOlaWarningPercent(), 80)));
+        int warningPercent = Math.max(1, Math.min(100, Objects.requireNonNullElse(task.getOlaWarningPercent(), 80)));
         long remainingAtWarning = Math.round(total * ((100 - warningPercent) / 100.0d));
         long untilWarning = Math.max(0L, remaining - remainingAtWarning);
         task.setOlaWarningAt(workingTimeService.addSeconds(now, untilWarning, useWorkingTime));
@@ -222,8 +233,7 @@ public class OlaService {
     }
 
     public OlaStatus resolveStatus(Task task, ZonedDateTime now) {
-        if (task == null || task.getSupportLine() == null || !Boolean.TRUE.equals(task.getSupportLine().getOlaEnabled())
-                || task.getOlaDeadline() == null) {
+        if (task == null || task.getOlaDeadline() == null || task.getOlaDurationSeconds() == null) {
             return OlaStatus.DISABLED;
         }
         if (task.getOlaPausedAt() != null || task.getOlaStatus() == OlaStatus.PAUSED) {

@@ -35,9 +35,7 @@ public class ClientService {
 	private final TelegramService telegramService;
 	private final UserService userService;
 	private final OrganizationService organizationService;
-	private final EmailService emailService;
 	private final SlaRepository slaRepository;
-	private final WhatsappService whatsappService;
 	private final WebSocketService webSocketService;
 	private final EventPublisher eventPublisher;
 	private final UserRepository userRepository;
@@ -56,23 +54,54 @@ public class ClientService {
 
 	@Transactional(readOnly = true)
 	public List<Client> getClients() {
-		return prepareClientsForList(userService.filterClientsByCurrentUser(clientsRepository.findAll()));
+		boolean hideDeletedLastMessage = userService.isObserver(userService.getCurrentUser());
+		return prepareClientsForList(
+				userService.filterClientsByCurrentUser(clientsRepository.findAll()),
+				hideDeletedLastMessage
+		);
 	}
 
 
 	@Transactional(readOnly = true)
 	public List<Client> getClientsForSystem() {
-		return prepareClientsForList(clientsRepository.findAll());
+		return prepareClientsForList(clientsRepository.findAll(), false);
 	}
 
 
-	private List<Client> prepareClientsForList(List<Client> clients) {
+	@Transactional(readOnly = true)
+	public List<Client> getClientsForUser(User user) {
+		boolean hideDeletedLastMessage = userService.isObserver(user);
+		return prepareClientsForList(
+				userService.filterClientsByUser(clientsRepository.findAll(), user),
+				hideDeletedLastMessage
+		);
+	}
+
+
+	private List<Client> prepareClientsForList(List<Client> clients, boolean hideDeletedLastMessage) {
+		Map<Long, Message> latestVisibleMessages = hideDeletedLastMessage
+				? loadLatestVisibleMessages(clients)
+				: Map.of();
+
 		clients.forEach(client -> {
 			Collection<Message> messages = safeCollection(client.getMessages());
-			client.setLastMessage(messages.stream()
-					.sorted()
-					.reduce((first, second) -> second)
-					.orElse(null));
+			client.setMessagesRevision(buildMessagesRevision(messages));
+
+			Message latestActivityMessage = findLatestMessage(messages, false);
+			client.setLastActivityDate(latestActivityMessage == null ? null : latestActivityMessage.getDate());
+
+			if (hideDeletedLastMessage) {
+				Message latestVisibleMessage = latestVisibleMessages.get(client.getId());
+				// Основной источник — пакетный SQL. Fallback по managed-коллекции нужен для
+				// старых/нестандартных данных: карточка не должна терять предыдущее
+				// неудалённое сообщение только потому, что projection не вернул строку.
+				if (latestVisibleMessage == null) {
+					latestVisibleMessage = findLatestMessage(messages, true);
+				}
+				client.setLastMessage(latestVisibleMessage);
+			} else {
+				client.setLastMessage(latestActivityMessage);
+			}
 			client.setUnreadMessagesCount(messages.stream()
 					.filter(message -> Boolean.FALSE.equals(message.getIsRead()))
 					.filter(message -> Boolean.FALSE.equals(message.getIsSent()))
@@ -103,6 +132,88 @@ public class ClientService {
 			}
 		});
 		return clients;
+	}
+
+
+	private Map<Long, Message> loadLatestVisibleMessages(List<Client> clients) {
+		List<Long> clientIds = clients.stream()
+				.filter(Objects::nonNull)
+				.map(Client::getId)
+				.filter(Objects::nonNull)
+				.toList();
+		if (clientIds.isEmpty()) {
+			return Map.of();
+		}
+
+		List<MessageRepository.LatestVisibleMessageRow> rows =
+				messageRepository.findLatestVisibleMessageIdsByClientIds(clientIds);
+		if (rows.isEmpty()) {
+			return Map.of();
+		}
+
+		Map<Long, Message> messagesById = messageRepository.findAllById(
+				rows.stream()
+						.map(MessageRepository.LatestVisibleMessageRow::getMessageId)
+						.filter(Objects::nonNull)
+						.distinct()
+						.toList()
+		).stream().collect(java.util.stream.Collectors.toMap(Message::getId, message -> message));
+
+		Map<Long, Message> result = new HashMap<>();
+		for (MessageRepository.LatestVisibleMessageRow row : rows) {
+			Message message = messagesById.get(row.getMessageId());
+			if (message != null) {
+				result.put(row.getClientId(), message);
+			}
+		}
+		return result;
+	}
+
+
+	private Message findLatestMessage(Collection<Message> messages, boolean visibleOnly) {
+		return safeCollection(messages).stream()
+				.filter(Objects::nonNull)
+				.filter(message -> !visibleOnly || !Boolean.TRUE.equals(message.getDeleted()))
+				.max(Comparator
+						.comparing(Message::getDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+						.thenComparing(Message::getId, Comparator.nullsFirst(Comparator.naturalOrder())))
+				.orElse(null);
+	}
+
+
+	private String buildMessagesRevision(Collection<Message> messages) {
+		List<Message> orderedMessages = safeCollection(messages).stream()
+				.filter(Objects::nonNull)
+				.sorted(Comparator.comparing(
+						Message::getId,
+						Comparator.nullsFirst(Comparator.naturalOrder())
+				))
+				.toList();
+
+		// FNV-1a 64 bit. Нужна компактная стабильная сигнатура содержимого
+		// истории между последовательными /user/topic/clients/ refresh.
+		long hash = 0xcbf29ce484222325L;
+		for (Message message : orderedMessages) {
+			hash = mixMessagesRevision(hash, message.getId());
+			hash = mixMessagesRevision(hash, message.getDate());
+			hash = mixMessagesRevision(hash, message.getEditedAt());
+			hash = mixMessagesRevision(hash, message.getDeleted());
+			hash = mixMessagesRevision(hash, message.getText());
+			hash = mixMessagesRevision(hash, message.getFileUuid());
+		}
+		return orderedMessages.size() + ":" + Long.toUnsignedString(hash, 16);
+	}
+
+
+	private long mixMessagesRevision(long hash, Object value) {
+		String text = Objects.toString(value, "<null>");
+		for (int index = 0; index < text.length(); index++) {
+			hash ^= text.charAt(index);
+			hash *= 0x100000001b3L;
+		}
+		hash ^= 0xff;
+		hash *= 0x100000001b3L;
+		return hash;
 	}
 
 
@@ -259,6 +370,7 @@ public class ClientService {
 	}
 
 
+	@Transactional
 	public Message sendMessage(Long clientId, Message message) {
 		if (message == null) {
 			throw new IllegalArgumentException("message must not be null");
@@ -267,11 +379,13 @@ public class ClientService {
 	}
 
 
+	@Transactional
 	public Message sendMessageWithUser(Long clientId, @NotNull Message message, User user) {
 		return sendMessageInternal(clientId, message, user, true);
 	}
 
 
+	@Transactional
 	public Message sendMessageForSystem(Long clientId, @NotNull Message message) {
 		return sendMessageInternal(clientId, message, SystemUser.getInstance(), false);
 	}
@@ -293,23 +407,14 @@ public class ClientService {
 		Message savedMessage = messageRepository.saveAndFlush(message);
 		hydrateReplyData(savedMessage, client.getMessages());
 		if (!Boolean.TRUE.equals(message.getIsComment()) && !isDemo) {
-			try {
-				if (client.getMessageFrom() == null) {
-					logger.warn("message external delivery skipped: client messageFrom is null, clientId={}", client.getId());
-				} else {
-					switch (client.getMessageFrom()) {
-						case TELEGRAM -> telegramService.sendMessage(client, savedMessage);
-						case EMAIL -> emailService.sendEmail(savedMessage, client);
-						case WHATSAPP -> whatsappService.sendMessage(savedMessage, client);
-					}
-				}
-			} catch (Exception e) {
-				logger.error(
-						"message external delivery failed, but local message was saved: clientId={}, messageId={}",
-						client.getId(),
-						savedMessage.getId(),
-						e
-				);
+			if (client.getMessageFrom() == null) {
+				logger.warn("message external delivery skipped: client messageFrom is null, clientId={}", client.getId());
+			} else {
+				eventPublisher.publish(TriggerType.COMMUNICATION_SEND_REQUESTED, Map.of(
+						"clientId", client.getId(),
+						"messageId", savedMessage.getId(),
+						"channel", client.getMessageFrom().name()
+				));
 			}
 		} else {
 			// pings
@@ -487,6 +592,7 @@ public class ClientService {
 		}
 
 		Long oldLinkedMessageId = task.getLinkedMessageId();
+		unlinkMessageFromOtherTasks(client, taskId, newLinkedMessageId, newLinkedMessage);
 		if (Objects.equals(oldLinkedMessageId, newLinkedMessageId)) {
 			return messageTask;
 		}
@@ -523,6 +629,11 @@ public class ClientService {
 		}
 		Client client = getClientForCurrentUser(clientId);
 		Message message = messageRepository.findById(messageId).orElseThrow();
+		boolean belongsToClient = safeCollection(client.getMessages()).stream()
+				.anyMatch(m -> Objects.equals(m.getId(), messageId));
+		if (!belongsToClient) {
+			throw new IllegalArgumentException("message does not belong to client");
+		}
 		if (client.getMessageFrom() != null) {
 			switch (client.getMessageFrom()) {
 				case TELEGRAM -> {
@@ -541,6 +652,7 @@ public class ClientService {
 		globalSearchService.deleteDocument("CLIENT_MESSAGE:" + message.getId());
 		globalSearchService.deleteDocument("TASK_MESSAGE:" + message.getId());
 		eventPublisher.publish(TriggerType.MESSAGE_DELETED, eventPayload("client", client, "message", message));
+		webSocketService.deletedMessage(new ClientMessage(client, message));
 		return true;
 	}
 
@@ -656,6 +768,9 @@ public class ClientService {
 		}
 		task.getMessages().add(savedMessage);
 		task.setLastActivity(savedMessage.getDate());
+		if (task.getFirstResponseAt() == null && !Boolean.TRUE.equals(savedMessage.getIsComment())) {
+			task.setFirstResponseAt(savedMessage.getDate());
+		}
 
 		// pings
 		Pattern pattern = Pattern.compile("@\\[(.+?)]");
@@ -741,11 +856,19 @@ public class ClientService {
 		int safePage = Math.max(1, Objects.requireNonNullElse(page, 1));
 		int offset = Math.max(0, PAGE_LIMIT * (safePage - 1));
 		Client client = getClientForCurrentUser(clientId);
-		List<Message> loadedDesc = messageRepository.findClientMessagesPageFromEnd(
-				client.getId(),
-				PAGE_LIMIT + 1,
-				offset
-		);
+		User currentUser = userService.getCurrentUser();
+		boolean hideDeleted = userService.isObserver(currentUser);
+		List<Message> loadedDesc = hideDeleted
+				? messageRepository.findVisibleClientMessagesPageFromEnd(
+						client.getId(),
+						PAGE_LIMIT + 1,
+						offset
+				)
+				: messageRepository.findClientMessagesPageFromEnd(
+						client.getId(),
+						PAGE_LIMIT + 1,
+						offset
+				);
 		boolean hasOlderMessages = loadedDesc.size() > PAGE_LIMIT;
 		List<Message> messages = loadedDesc.stream()
 				.limit(PAGE_LIMIT)
@@ -767,7 +890,10 @@ public class ClientService {
 		}
 		Message message = messageRepository.findById(linkedMessageId).orElseThrow();
 		Client client = getClientForCurrentUser(clientId);
-		long messagesAfter = messageRepository.countClientMessagesAfterMessage(client.getId(), message.getId());
+		User currentUser = userService.getCurrentUser();
+		long messagesAfter = userService.isObserver(currentUser)
+				? messageRepository.countVisibleClientMessagesAfterMessage(client.getId(), message.getId())
+				: messageRepository.countClientMessagesAfterMessage(client.getId(), message.getId());
 		int page = Math.max(1, (int) Math.ceil((messagesAfter + 1.0) / PAGE_LIMIT));
 		PageMessages pageMessages = getPageOfMessages(client.getId(), page);
 		return new LinkedMessagePage(page, pageMessages.getMessages(), pageMessages.getIsEnd());
@@ -809,8 +935,11 @@ public class ClientService {
 			return Collections.emptyList();
 		}
 		Client client = getClientForCurrentUser(clientId);
+		User currentUser = userService.getCurrentUser();
+		boolean hideDeleted = userService.isObserver(currentUser);
 		String query = messageText.getText().toLowerCase(Locale.ROOT);
 		return safeCollection(client.getMessages()).stream()
+				.filter(message -> !hideDeleted || !Boolean.TRUE.equals(message.getDeleted()))
 				.filter(message -> message.getText() != null)
 				.filter(message -> message.getText().toLowerCase(Locale.ROOT).contains(query))
 				.sorted(Comparator.reverseOrder())
@@ -897,6 +1026,41 @@ public class ClientService {
 	}
 
 
+	private void unlinkMessageFromOtherTasks(
+			Client client,
+			Long selectedTaskId,
+			Long linkedMessageId,
+			Message linkedMessage
+	) {
+		if (client == null || client.getId() == null || linkedMessageId == null) {
+			return;
+		}
+
+		for (Task previousTask : taskRepository.findAllByClientIdAndLinkedMessageId(client.getId(), linkedMessageId)) {
+			if (previousTask == null || Objects.equals(previousTask.getId(), selectedTaskId)) {
+				continue;
+			}
+
+			previousTask.setLinkedMessageId(null);
+			Task savedPreviousTask = taskRepository.saveAndFlush(previousTask);
+			eventPublisher.publish(TriggerType.TASK_UPDATED, eventPayload(
+					"task", savedPreviousTask,
+					"client", client,
+					"message", linkedMessage,
+					"oldLinkedMessageId", linkedMessageId,
+					"newLinkedMessageId", null,
+					"changes", List.of(Map.of(
+							"field", "linkedMessageId",
+							"label", "Связанное сообщение",
+							"oldValue", describeLinkedMessage(linkedMessageId, linkedMessage),
+							"newValue", describeLinkedMessage(null, null)
+					))
+			));
+			globalSearchService.indexTask(client, savedPreviousTask);
+		}
+	}
+
+
 	private String describeLinkedMessage(Long messageId, Message message) {
 		if (messageId == null) {
 			return "Не привязано";
@@ -942,6 +1106,26 @@ public class ClientService {
 				request.getAnswerRequired(),
 				AnswerRequired.NOT_SET
 		);
+		return updateAnswerRequired(client, messageId, answerRequired);
+	}
+
+
+	@Transactional
+	public Map<String, Object> answerRequiredForSystem(Long clientId, Long messageId, AnswerRequired answerRequired) {
+		if (clientId == null || messageId == null) {
+			throw new IllegalArgumentException("clientId and messageId must not be null");
+		}
+		Client client = clientsRepository.findById(clientId)
+				.orElseThrow(() -> new NoSuchElementException("Client not found"));
+		return updateAnswerRequired(
+				client,
+				messageId,
+				Objects.requireNonNullElse(answerRequired, AnswerRequired.NOT_SET)
+		);
+	}
+
+
+	private Map<String, Object> updateAnswerRequired(Client client, Long messageId, AnswerRequired answerRequired) {
 		List<Message> conversationMessages = safeCollection(client.getMessages()).stream()
 				.filter(message -> message.getDate() != null)
 				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
@@ -986,12 +1170,25 @@ public class ClientService {
 		}
 		selectedMessage.setAnswerRequired(answerRequired);
 		messageRepository.saveAll(groupMessages);
-		ZonedDateTime firstUnansweredMessageDate = getFirstUnansweredMessageDate(client.getMessages());
+		Message firstUnansweredMessage = getFirstUnansweredMessage(client.getMessages());
+		ZonedDateTime firstUnansweredMessageDate = firstUnansweredMessage == null ? null : firstUnansweredMessage.getDate();
+		Long firstUnansweredMessageId = firstUnansweredMessage == null ? null : firstUnansweredMessage.getId();
+
 		client.setFirstUnansweredMessageDate(firstUnansweredMessageDate);
-		clientsRepository.save(client);
-		globalSearchService.indexClient(client);
+		client.setFirstUnansweredMessageId(firstUnansweredMessageId);
+		Client savedClient = clientsRepository.save(client);
+		globalSearchService.indexClient(savedClient);
+
+		// Ручное изменение и автоматизация используют один и тот же realtime-контракт.
+		// Сбрасываемые сообщения группы тоже отправляем, иначе у других открытых
+		// клиентов останется старый ANSWER_REQUIRED до ручного обновления.
+		groupMessages.forEach(message -> webSocketService.editedMessage(new ClientMessage(savedClient, message)));
+
 		Map<String, Object> response = new HashMap<>();
+		response.put("messageId", selectedMessage.getId());
+		response.put("firstUnansweredMessageId", firstUnansweredMessageId);
 		response.put("firstUnansweredMessageDate", firstUnansweredMessageDate);
+		response.put("answerRequired", selectedMessage.getAnswerRequired());
 		return response;
 	}
 
@@ -1027,6 +1224,11 @@ public class ClientService {
 	}
 
 	private ZonedDateTime getFirstUnansweredMessageDate(Collection<Message> messages) {
+		Message message = getFirstUnansweredMessage(messages);
+		return message == null ? null : message.getDate();
+	}
+
+	private Message getFirstUnansweredMessage(Collection<Message> messages) {
 		List<Message> sortedMessages = safeCollection(messages).stream()
 				.filter(message -> message.getDate() != null)
 				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
@@ -1054,7 +1256,7 @@ public class ClientService {
 		if (lastMarkedMessage == null || lastMarkedMessage.getAnswerRequired() != AnswerRequired.ANSWER_REQUIRED) {
 			return null;
 		}
-		return lastMarkedMessage.getDate();
+		return lastMarkedMessage;
 	}
 
 	private boolean isIncomingMessage(Message message) {

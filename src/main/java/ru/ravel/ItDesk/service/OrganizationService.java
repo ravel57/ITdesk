@@ -26,6 +26,7 @@ public class OrganizationService {
 	private final ClientRepository clientRepository;
 	private final OrganizationSlaRepository organizationSlaRepository;
 	private final OrganizationVisitRepository organizationVisitRepository;
+	private final OrganizationVisitReasonService organizationVisitReasonService;
 
 
 	public List<Organization> getOrganizations() {
@@ -204,9 +205,7 @@ public class OrganizationService {
 		if (visit.getCreatedAt() == null) {
 			visit.setCreatedAt(LocalDateTime.now());
 		}
-		if (visit.getType() == null || visit.getType().isBlank()) {
-			visit.setType("Выезд");
-		}
+		visit.setType(organizationVisitReasonService.resolveReasonName(visit.getType()));
 		visit.setCountedInPackage(countedInPackage);
 		visit.setVisitsUsedAfter(visitsUsedAfter);
 		visit.setMonthlyVisitsLimitSnapshot(monthlyVisitsLimit);

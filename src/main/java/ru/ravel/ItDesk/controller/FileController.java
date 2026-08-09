@@ -13,7 +13,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import ru.ravel.ItDesk.component.SlidingFileCache;
-import ru.ravel.ItDesk.repository.MessageRepository;
 
 import java.io.InputStream;
 import java.net.URLEncoder;
@@ -33,6 +32,9 @@ import ru.ravel.ItDesk.service.UserService;
 @RequiredArgsConstructor
 public class FileController {
 
+	private static final long MAX_MESSAGE_FILE_SIZE_BYTES = 10L * 1024L * 1024L;
+	private static final String MAX_MESSAGE_FILE_SIZE_LABEL = "10 МБ";
+
 	private final MinioClient minioClient;
 	private final ClientRepository clientRepository;
 	private final UserService userService;
@@ -45,7 +47,21 @@ public class FileController {
 
 
 	@PostMapping("/upload")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'CLIENT')")
 	public ResponseEntity<Object> uploadFiles(@RequestParam("files") List<MultipartFile> files) {
+		for (MultipartFile file : files) {
+			if (file != null && file.getSize() > MAX_MESSAGE_FILE_SIZE_BYTES) {
+				String fileName = file.getOriginalFilename();
+				if (fileName == null || fileName.isBlank()) {
+					fileName = "Файл";
+				}
+				return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(Map.of(
+						"message", String.format("Файл «%s» весит больше %s", fileName, MAX_MESSAGE_FILE_SIZE_LABEL),
+						"maxSizeBytes", MAX_MESSAGE_FILE_SIZE_BYTES
+				));
+			}
+		}
+
 		List<String> uuids = new ArrayList<>();
 		try {
 			for (MultipartFile file : files) {
@@ -68,7 +84,7 @@ public class FileController {
 
 
 	@GetMapping(value = "/images/{uuid}", produces = MediaType.IMAGE_JPEG_VALUE)
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> imageFile(@PathVariable String uuid) {
 		resolveFileAccess(uuid);
 		byte[] fileBytes = getCachedFileBytesOrThrow("images", uuid);
@@ -80,7 +96,7 @@ public class FileController {
 
 
 	@GetMapping(value = "/documents/{uuid}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> documentFile(@PathVariable String uuid) {
 		FileAccessContext fileAccess = resolveFileAccess(uuid);
 		String filename = fileAccess.message().getFileName();
@@ -100,7 +116,7 @@ public class FileController {
 
 
 	@GetMapping(value = "/videos/{uuid}", produces = "video/mp4")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> videoFile(@PathVariable String uuid) {
 		resolveFileAccess(uuid);
 		byte[] fileBytes = getCachedFileBytesOrThrow("videos", uuid);
@@ -114,7 +130,7 @@ public class FileController {
 
 
 	@GetMapping(value = "/audios/{uuid}", produces = "video/mp4")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
 	public ResponseEntity<Object> audioFile(@PathVariable String uuid) {
 		resolveFileAccess(uuid);
 		byte[] fileBytes = getCachedFileBytesOrThrow("audios", uuid);

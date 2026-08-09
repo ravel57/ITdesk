@@ -50,6 +50,16 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 	List<Task> findAllActiveWithSla();
 
 
+	@Query("""
+			select t
+			from Task t
+			where coalesce(t.completed, false) = false
+			  and t.firstResponseAt is null
+			  and t.firstResponseDeadline is not null
+			""")
+	List<Task> findAllActiveAwaitingFirstResponse();
+
+
 	boolean existsByTypeId(Long typeId);
 
 
@@ -72,6 +82,19 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			  and coalesce(t.completed, false) = false
 			""")
 	List<Task> findOpenBySupportLineId(@Param("supportLineId") Long supportLineId);
+
+
+	@Query("""
+			select t
+			from Client c
+			join c.tasks t
+			where c.id = :clientId
+			  and t.linkedMessageId = :linkedMessageId
+			""")
+	List<Task> findAllByClientIdAndLinkedMessageId(
+			@Param("clientId") Long clientId,
+			@Param("linkedMessageId") Long linkedMessageId
+	);
 
 
 	@Query("""
@@ -130,6 +153,7 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 				coalesce(t.completed, false) as completed,
 				t.type as type,
 				t.priority as priority,
+				t.service as service,
 				executor as executor,
 				supportLine as supportLine,
 				t.enteredCurrentLineAt as enteredCurrentLineAt,
@@ -165,6 +189,17 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			@Param("hasTagIds") boolean hasTagIds,
 			@Param("tagIds") Set<Long> tagIds
 	);
+
+
+	@Query("""
+			select
+				t.id as taskId,
+				accessUser.id as userId
+			from Task t
+			join t.accessUsers accessUser
+			where t.id in :taskIds
+			""")
+	List<AnalyticsTaskAccessUserRow> findAnalyticsTaskAccessUserRows(@Param("taskIds") Set<Long> taskIds);
 
 
 	@Query("""
@@ -257,6 +292,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 		Object getPriority();
 
+		Object getService();
+
 		User getExecutor();
 
 		SupportLine getSupportLine();
@@ -270,6 +307,13 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 		OlaStatus getOlaStatus();
 
 		Long getLinkedMessageId();
+	}
+
+
+	interface AnalyticsTaskAccessUserRow {
+		Long getTaskId();
+
+		Long getUserId();
 	}
 
 
@@ -293,4 +337,9 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 		SupportLine getSupportLine();
 	}
+
+	boolean existsByServiceId(Long serviceId);
+
+	List<Task> findAllByServiceId(Long serviceId);
+
 }

@@ -1,13 +1,22 @@
 package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.AnswerRequired;
+import ru.ravel.ItDesk.dto.UserNotificationHistoryDto;
+import ru.ravel.ItDesk.dto.UserNotificationHistoryPageDto;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.SlaPauseRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
+import ru.ravel.ItDesk.repository.UserNotificationHistoryRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
 import java.time.Duration;
@@ -27,17 +36,145 @@ public class UserNotificationService {
 	private final WebSocketService webSocketService;
 	private final TaskRepository taskRepository;
 	private final SlaPauseRepository slaPauseRepository;
+	private final UserNotificationHistoryRepository notificationHistoryRepository;
 
 	private final Set<String> sentNotificationKeys = ConcurrentHashMap.newKeySet();
 
 
+	@Transactional
 	public void send(UserNotification notification) {
 		if (notification == null || notification.getUserId() == null || notification.getEvent() == null) {
 			return;
 		}
+
 		userRepository.findById(notification.getUserId())
 				.filter(user -> isNotificationEnabled(user, notification.getEvent()))
-				.ifPresent(user -> webSocketService.userNotification(notification));
+				.ifPresent(user -> {
+					String title = "ULDesk";
+					String body = buildNotificationBody(notification);
+					UserNotificationHistory saved = notificationHistoryRepository.save(
+							UserNotificationHistory.builder()
+									.userId(user.getId())
+									.event(notification.getEvent())
+									.title(title)
+									.body(body)
+									.sourceMessage(notification.getMessage())
+									.createdAt(ZonedDateTime.now())
+									.build()
+					);
+					webSocketService.userNotification(toDto(saved));
+				});
+	}
+
+
+	@Transactional(readOnly = true)
+	public UserNotificationHistoryPageDto getCurrentUserNotifications(int page, int size, boolean unreadOnly) {
+		User user = getAuthenticatedUser();
+		int safePage = Math.max(1, page);
+		int safeSize = Math.min(100, Math.max(1, size));
+		PageRequest pageable = PageRequest.of(
+				safePage - 1,
+				safeSize,
+				Sort.by(Sort.Direction.DESC, "createdAt")
+		);
+		Page<UserNotificationHistory> result = unreadOnly
+				? notificationHistoryRepository.findAllByUserIdAndReadAtIsNullOrderByCreatedAtDesc(user.getId(), pageable)
+				: notificationHistoryRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId(), pageable);
+
+		return UserNotificationHistoryPageDto.builder()
+				.notifications(result.getContent().stream().map(this::toDto).toList())
+				.totalElements(result.getTotalElements())
+				.totalPages(result.getTotalPages())
+				.page(safePage)
+				.size(safeSize)
+				.unreadCount(notificationHistoryRepository.countByUserIdAndReadAtIsNull(user.getId()))
+				.end(result.isLast())
+				.build();
+	}
+
+
+	@Transactional
+	public UserNotificationHistoryDto markCurrentUserNotificationAsRead(Long notificationId) {
+		if (notificationId == null) {
+			throw new IllegalArgumentException("notification id is required");
+		}
+		User user = getAuthenticatedUser();
+		UserNotificationHistory notification = notificationHistoryRepository
+				.findByIdAndUserId(notificationId, user.getId())
+				.orElseThrow(() -> new IllegalArgumentException("Уведомление не найдено"));
+		if (notification.getReadAt() == null) {
+			notification.setReadAt(ZonedDateTime.now());
+			notification = notificationHistoryRepository.save(notification);
+		}
+		return toDto(notification);
+	}
+
+
+	@Transactional
+	public long markAllCurrentUserNotificationsAsRead() {
+		User user = getAuthenticatedUser();
+		notificationHistoryRepository.markAllAsRead(user.getId(), ZonedDateTime.now());
+		return notificationHistoryRepository.countByUserIdAndReadAtIsNull(user.getId());
+	}
+
+
+	private User getAuthenticatedUser() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null) {
+			throw new AccessDeniedException("Пользователь не авторизован");
+		}
+		return userRepository.findByUsername(authentication.getName())
+				.orElseThrow(() -> new AccessDeniedException("Пользователь не найден"));
+	}
+
+
+	private UserNotificationHistoryDto toDto(UserNotificationHistory notification) {
+		return UserNotificationHistoryDto.builder()
+				.id(notification.getId())
+				.event(notification.getEvent())
+				.title(notification.getTitle())
+				.body(notification.getBody())
+				.message(notification.getSourceMessage())
+				.userId(notification.getUserId())
+				.createdAt(notification.getCreatedAt())
+				.readAt(notification.getReadAt())
+				.read(notification.getReadAt() != null)
+				.build();
+	}
+
+
+	private String buildNotificationBody(UserNotification notification) {
+		String message = Objects.toString(notification.getMessage(), "").trim();
+		return switch (notification.getEvent()) {
+			case MENTIONED_USER -> appendDetails("Вас упомянули в чате", message);
+			case MENTIONED_USER_IN_TASK_CHAT -> appendDetails("Вас упомянули в заявке", message);
+			case NEW_TASK -> message.startsWith("Новая заявка")
+					? message
+					: appendDetails("Новая заявка назначена на Вас", message);
+			case NEW_CHAT_MESSAGE -> appendDetails(
+					"Новое сообщение в заявке, где Вы назначены исполнителем",
+					message
+			);
+			case SLA_HALF_TIME_PASSED -> fallback(message, "SLA прошел больше чем на 50%");
+			case SLA_OVERDUE -> fallback(message, "SLA нарушен");
+			case CHAT_UNANSWERED_TOO_LONG -> fallback(message, "Есть чат без ответа");
+			case DEADLINE_SOON -> fallback(message, "Скоро дедлайн по заявке");
+			case DEADLINE_OVERDUE -> fallback(message, "Дедлайн нарушен");
+			case INCIDENT_UPDATE_OVERDUE -> fallback(
+					message,
+					"Просрочено обязательное обновление по инциденту"
+			);
+		};
+	}
+
+
+	private String appendDetails(String prefix, String details) {
+		return details == null || details.isBlank() ? prefix : prefix + ": " + details;
+	}
+
+
+	private String fallback(String value, String fallback) {
+		return value == null || value.isBlank() ? fallback : value;
 	}
 
 
@@ -63,11 +200,13 @@ public class UserNotificationService {
 			case DEADLINE_SOON -> Boolean.TRUE.equals(user.getNotifyDeadlineOverdueBeforeMinutesEnabled());
 
 			case DEADLINE_OVERDUE -> Boolean.TRUE.equals(user.getNotifyDeadlineOverdue());
+
+			case INCIDENT_UPDATE_OVERDUE -> true;
 		};
 	}
 
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public void checkSlaNotifications() {
 		ZonedDateTime now = ZonedDateTime.now();
 
@@ -84,7 +223,7 @@ public class UserNotificationService {
 	}
 
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public void checkUnansweredChatNotifications() {
 		ZonedDateTime now = ZonedDateTime.now();
 		List<User> notificationUsers = userRepository.findAll().stream()
@@ -282,8 +421,10 @@ public class UserNotificationService {
 				.map(Object::toString)
 				.anyMatch(authority ->
 						authority.equals("ADMIN") ||
+								authority.equals("MANAGER") ||
 								authority.equals("OPERATOR") ||
 								authority.equals("ROLE_ADMIN") ||
+								authority.equals("ROLE_MANAGER") ||
 								authority.equals("ROLE_OPERATOR")
 				);
 	}

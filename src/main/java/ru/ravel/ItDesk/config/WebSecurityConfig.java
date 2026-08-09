@@ -97,10 +97,14 @@ class WebSecurityConfig {
 								"/api/v1/support/reset-password",
 								"/actuator/**"
 						).permitAll()
-						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
-						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "OPERATOR", "OBSERVER")
+						.requestMatchers("/portal", "/portal/**", "/api/v1/portal/**").hasRole("CLIENT")
+						.requestMatchers("/client-portal-ws/**").hasRole("CLIENT")
+						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+						.requestMatchers("/incidents/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+						.requestMatchers("/analytics/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 						.requestMatchers("/settings", "/settings/profile").authenticated()
-						.requestMatchers("/settings/**").hasRole("ADMIN")
+						.requestMatchers("/settings/**").hasAnyRole("ADMIN", "MANAGER")
 						.requestMatchers("/ws/**").authenticated()
 						.anyRequest().authenticated())
 				.sessionManagement(sessionManagement -> sessionManagement
@@ -122,7 +126,9 @@ class WebSecurityConfig {
 									authentication.getName(),
 									request.getSession()
 							);
-							response.sendRedirect("/chats");
+							boolean clientPortalUser = authentication.getAuthorities().stream()
+									.anyMatch(authority -> "ROLE_CLIENT".equals(authority.getAuthority()));
+							response.sendRedirect(clientPortalUser ? "/portal" : "/chats");
 						})
 						.failureUrl("/login-error")
 						.permitAll())

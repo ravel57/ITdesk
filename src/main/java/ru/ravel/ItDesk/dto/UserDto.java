@@ -21,4 +21,10 @@ public class UserDto {
 	private List<String> availableOrganizations;
 
 	private List<Long> availableOrganizationIds;
+
+	private Long clientId;
+
+	private Boolean createNewClientCard;
+
+	private Long clientOrganizationId;
 }

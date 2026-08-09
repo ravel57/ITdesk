@@ -14,6 +14,7 @@ import ru.ravel.ItDesk.dto.TaskUpdatedDto;
 
 import java.time.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -42,6 +43,8 @@ public class TaskService {
 	private final SupportLineRepository supportLineRepository;
 	private final TaskRoutingService taskRoutingService;
 	private final OlaService olaService;
+	private final OlaWorkingTimeService olaWorkingTimeService;
+	private final ServiceCatalogService serviceCatalogService;
 
 
 	@Transactional(readOnly = true)
@@ -275,6 +278,7 @@ public class TaskService {
 				left join t.type taskType
 				left join t.executor executor
 				left join t.supportLine supportLine
+				left join t.service taskService
 				left join t.sla sla
 				left join c.organization organization
 				where 1 = 1
@@ -308,6 +312,8 @@ public class TaskService {
 					    or lower(coalesce(taskStatus.name, '')) like :taskPageSearch
 					    or lower(coalesce(taskType.type, '')) like :taskPageSearch
 					    or lower(coalesce(supportLine.name, '')) like :taskPageSearch
+					    or lower(coalesce(taskService.name, '')) like :taskPageSearch
+					    or lower(coalesce(taskService.code, '')) like :taskPageSearch
 					    or lower(coalesce(organization.name, '')) like :taskPageSearch
 					    or lower(concat(concat(coalesce(c.lastname, ''), ' '), coalesce(c.firstname, ''))) like :taskPageSearch
 					  )
@@ -332,7 +338,7 @@ public class TaskService {
 
 	private void addCurrentUserAccessCondition(StringBuilder fromWhere, Map<String, Object> params) {
 		User currentUser = userService.getCurrentUser();
-		if (hasTaskPageRole(currentUser, "ADMIN")) {
+		if (hasTaskPageRole(currentUser, "ADMIN") || hasTaskPageRole(currentUser, "MANAGER")) {
 			return;
 		}
 		List<Long> availableOrganizationIds = getCurrentUserAvailableOrganizationIdsForTaskPage();
@@ -346,6 +352,13 @@ public class TaskService {
 			fromWhere.append(" and organization.id in :availableOrganizationIds ");
 		}
 
+
+		// Менеджер организации видит все заявки своих организаций независимо от
+		// внутренней схемы видимости линий поддержки. Изменение заявок для этой
+		// роли по-прежнему закрыто на controller-уровне.
+		if (hasTaskPageRole(currentUser, "OBSERVER")) {
+			return;
+		}
 		SupportLineAccessMode globalMode = appSettingsRepository.findAll().stream()
 				.findFirst()
 				.map(AppSettings::getSupportLineAccessMode)
@@ -377,7 +390,7 @@ public class TaskService {
 
 	private void addMySupportLinesScopeCondition(StringBuilder fromWhere, Map<String, Object> params) {
 		User currentUser = userService.getCurrentUser();
-		if (hasTaskPageRole(currentUser, "ADMIN")) {
+		if (hasTaskPageRole(currentUser, "ADMIN") || hasTaskPageRole(currentUser, "MANAGER")) {
 			return;
 		}
 		params.putIfAbsent("taskPageCurrentUser", currentUser);
@@ -406,7 +419,7 @@ public class TaskService {
 					.toList();
 		}
 
-		if (hasTaskPageRole(currentUser, "ADMIN") || hasTaskPageRole(currentUser, "OPERATOR")) {
+		if (hasTaskPageRole(currentUser, "ADMIN") || hasTaskPageRole(currentUser, "MANAGER") || hasTaskPageRole(currentUser, "OPERATOR")) {
 			return null;
 		}
 
@@ -507,6 +520,7 @@ public class TaskService {
 					selectedOptions,
 					params
 			);
+			case "service" -> buildServiceTaskPageFilterCondition(selectedOptions, params, index);
 			case "supportLineLevel" -> buildSupportLineLevelFilterCondition(selectedOptions, params, index);
 			case "createdAt" -> buildDateRangeTaskPageFilterCondition(
 					"t.createdAt",
@@ -544,6 +558,40 @@ public class TaskService {
 		String paramName = "taskPageSupportLineLevels" + index;
 		params.put(paramName, levels);
 		return "supportLine.level in :" + paramName;
+	}
+
+
+
+	private String buildServiceTaskPageFilterCondition(
+			List<String> selectedOptions,
+			Map<String, Object> params,
+			int index
+	) {
+		if (selectedOptions == null || selectedOptions.isEmpty()) return null;
+		List<String> conditions = new ArrayList<>();
+		List<String> serviceNames = new ArrayList<>();
+		for (String option : selectedOptions) {
+			String value = Objects.toString(option, "").trim();
+			if (value.isBlank()) continue;
+			if ("Без сервиса".equalsIgnoreCase(value)) {
+				conditions.add("taskService is null");
+			} else {
+				serviceNames.add(value.toLowerCase(Locale.ROOT));
+			}
+		}
+		if (!serviceNames.isEmpty()) {
+			String paramName = "taskPageServiceNames" + index;
+			params.put(paramName, serviceNames);
+			conditions.add("""
+					(
+					     lower(coalesce(taskService.name, '')) in :%s
+					  or lower(coalesce(taskService.code, '')) in :%s
+					  or lower(concat(concat(coalesce(taskService.code, ''), ' · '), coalesce(taskService.name, ''))) in :%s
+					  or lower(concat(concat(coalesce(taskService.code, ''), ' — '), coalesce(taskService.name, ''))) in :%s
+					)
+					""".formatted(paramName, paramName, paramName, paramName));
+		}
+		return conditions.isEmpty() ? null : String.join(" or ", conditions);
 	}
 
 
@@ -1008,12 +1056,29 @@ public class TaskService {
 			case "client" -> selectedOptions.contains(getClientFullName(client));
 			case "type" -> selectedOptions.contains(getTaskTypeName(task.getType()));
 			case "supportLine" -> task.getSupportLine() != null && selectedOptions.contains(task.getSupportLine().getName());
+			case "service" -> matchesServiceFilter(task.getService(), selectedOptions);
 			case "supportLineLevel" -> task.getSupportLine() != null && selectedOptions.stream().anyMatch(value -> ("L" + task.getSupportLine().getLevel()).equalsIgnoreCase(value) || Objects.toString(task.getSupportLine().getLevel()).equals(value));
 			case "createdAt" -> isTaskDateMatchesRangeFilter(task.getCreatedAt(), filter);
 			case "lastActivity" -> isTaskDateMatchesRangeFilter(task.getLastActivity(), filter);
 			case "deadline" -> isDeadlineMatchesTaskPageFilter(task, filter);
 			default -> true;
 		};
+	}
+
+
+
+	private boolean matchesServiceFilter(ru.ravel.ItDesk.model.Service service, List<String> selectedOptions) {
+		if (selectedOptions == null || selectedOptions.isEmpty()) return true;
+		if (service == null) return selectedOptions.stream().anyMatch(value -> "Без сервиса".equalsIgnoreCase(Objects.toString(value, "").trim()));
+		String code = Objects.toString(service.getCode(), "").trim();
+		String name = Objects.toString(service.getName(), "").trim();
+		Set<String> values = java.util.stream.Stream.of(code, name, code + " · " + name, code + " — " + name)
+				.filter(value -> !value.isBlank())
+				.map(value -> value.toLowerCase(Locale.ROOT))
+				.collect(Collectors.toSet());
+		return selectedOptions.stream()
+				.map(value -> Objects.toString(value, "").trim().toLowerCase(Locale.ROOT))
+				.anyMatch(values::contains);
 	}
 
 
@@ -1032,6 +1097,7 @@ public class TaskService {
 			case "Клиент" -> "client";
 			case "Тип заявки" -> "type";
 			case "Линия поддержки" -> "supportLine";
+			case "Сервис" -> "service";
 			case "Уровень линии" -> "supportLineLevel";
 			case "Дата создания" -> "createdAt";
 			case "Дата последней активности" -> "lastActivity";
@@ -1193,6 +1259,8 @@ public class TaskService {
 		putZonedDateTime(taskDto, "olaDeadline", task.getOlaDeadline());
 		putZonedDateTime(taskDto, "olaWarningAt", task.getOlaWarningAt());
 		putZonedDateTime(taskDto, "olaPausedAt", task.getOlaPausedAt());
+		putZonedDateTime(taskDto, "firstResponseDeadline", task.getFirstResponseDeadline());
+		putZonedDateTime(taskDto, "firstResponseAt", task.getFirstResponseAt());
 		if (taskDto.get("olaInfo") instanceof Map<?, ?> rawOlaMap && task.getOlaInfo() != null) {
 			@SuppressWarnings("unchecked")
 			Map<String, Object> olaMap = (Map<String, Object>) rawOlaMap;
@@ -1349,10 +1417,15 @@ public class TaskService {
 		if (!Objects.equals(client.getId(), clientId)) {
 			throw new IllegalArgumentException("Заявка не принадлежит указанному клиенту");
 		}
+		if (task.getService() == null) {
+			task.setService(olderTask.getService());
+		}
+		prepareTaskBeforeSave(task, client);
 		TaskRoutingService.RoutingResult routingResult = taskRoutingService.normalizeUpdateRequest(olderTask, task);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
 		CompletedStatus completedStatus = CompletedStatus.getInstance();
 		Priority oldPriority = olderTask.getPriority();
+		ru.ravel.ItDesk.model.Service oldService = olderTask.getService();
 		TaskType oldType = olderTask.getType();
 		Status oldStatus = olderTask.getStatus();
 		Status statusBeforeUpdate = olderTask.getStatus();
@@ -1368,12 +1441,14 @@ public class TaskService {
 		SupportLine oldSupportLine = olderTask.getSupportLine();
 		ZonedDateTime oldDeadline = olderTask.getDeadline();
 		ZonedDateTime oldFrozenUntil = olderTask.getFrozenUntil();
+		ZonedDateTime oldFrozenFrom = olderTask.getFrozenFrom();
 		Set<Tag> oldTags = new HashSet<>(Objects.requireNonNullElse(olderTask.getTags(), Collections.emptyList()));
 		List<Map<String, Object>> changes = new ArrayList<>();
 		String statusChangeReason = normalizeStatusChangeReason(task.getStatusChangeReason());
 		addChange(changes, "name", "Название", olderTask.getName(), task.getName());
 		addChange(changes, "description", "Описание", olderTask.getDescription(), task.getDescription());
 		addChange(changes, "type", "Тип", getTaskTypeName(olderTask.getType()), getTaskTypeName(task.getType()));
+		addChange(changes, "service", "Сервис", getServiceName(olderTask.getService()), getServiceName(task.getService()));
 		addChange(changes, "checklist", "Чек-лист", checklistToHistoryValue(olderTask.getChecklist()), checklistToHistoryValue(task.getChecklist()));
 		addChange(changes, "deadline", "Дедлайн", olderTask.getDeadline(), task.getDeadline());
 		addChange(changes, "executor", "Исполнитель", getUserDisplayName(olderTask.getExecutor()), getUserDisplayName(task.getExecutor()));
@@ -1385,9 +1460,12 @@ public class TaskService {
 		olderTask.setName(task.getName());
 		olderTask.setDescription(task.getDescription());
 		olderTask.setType(task.getType());
+		olderTask.setService(task.getService());
 		olderTask.setChecklist(task.getChecklist());
 		olderTask.setPriority(task.getPriority());
-		if (olderTask.getSla() == null || !Objects.equals(oldPriority, task.getPriority())) {
+		if (olderTask.getSla() == null
+				|| !Objects.equals(oldPriority, task.getPriority())
+				|| !Objects.equals(oldService, task.getService())) {
 			setSla(client, olderTask);
 		}
 		boolean reopening = Boolean.TRUE.equals(olderTask.getCompleted()) && Boolean.FALSE.equals(task.getCompleted());
@@ -1500,6 +1578,31 @@ public class TaskService {
 			olderTask.setStatus(olderTask.getPreviousStatus());
 		}
 		boolean newFrozen = Boolean.TRUE.equals(olderTask.getFrozen());
+		if (oldFrozen && !newFrozen
+				&& oldFrozenFrom != null
+				&& olderTask.getFirstResponseAt() == null
+				&& olderTask.getFirstResponseDeadline() != null) {
+			ServiceCatalogService.SlaPolicy firstResponsePolicy = serviceCatalogService.resolveSlaPolicy(
+					client == null ? null : client.getOrganization(),
+					olderTask.getService()
+			);
+			boolean useWorkingTime = "GENERAL_SETTINGS".equalsIgnoreCase(Objects.toString(
+					firstResponsePolicy.supportCalendar(),
+					"GENERAL_SETTINGS"
+			));
+			long pausedSeconds = Math.max(0L, olaWorkingTimeService.secondsBetween(
+					oldFrozenFrom,
+					ZonedDateTime.now(),
+					useWorkingTime
+			));
+			if (pausedSeconds > 0) {
+				olderTask.setFirstResponseDeadline(olaWorkingTimeService.addSeconds(
+						olderTask.getFirstResponseDeadline(),
+						pausedSeconds,
+						useWorkingTime
+				));
+			}
+		}
 		if (oldFrozen != newFrozen) {
 			addChange(
 					changes,
@@ -1541,6 +1644,10 @@ public class TaskService {
 			olaService.complete(olderTask);
 		} else if (Boolean.TRUE.equals(oldCompleted) && !Boolean.TRUE.equals(olderTask.getCompleted())) {
 			olaService.restart(olderTask, currentUserOrNull(), statusChangeReason);
+		} else if (!Objects.equals(oldService, olderTask.getService())) {
+			// OLA duration can be service-specific even when the support line did
+			// not change, so start a fresh stage using the new service policy.
+			olaService.restart(olderTask, currentUserOrNull(), "Изменён сервис заявки");
 		} else if (!oldFrozen && newFrozen) {
 			olaService.pause(olderTask);
 		} else if (oldFrozen && !newFrozen) {
@@ -1581,6 +1688,14 @@ public class TaskService {
 					"client", client,
 					"oldType", oldType,
 					"newType", savedTask.getType()
+			));
+		}
+		if (!Objects.equals(oldService, savedTask.getService())) {
+			eventPublisher.publish(TriggerType.TASK_SERVICE_CHANGED, eventPayload(
+					"task", savedTask,
+					"client", client,
+					"oldService", oldService,
+					"newService", savedTask.getService()
 			));
 		}
 		if (!Objects.equals(oldExecutor, savedTask.getExecutor())) {
@@ -1653,21 +1768,42 @@ public class TaskService {
 
 
 	private void setSla(Client client, Task task) {
-		if (task == null || task.getPriority() == null) {
+		if (task == null) {
 			return;
 		}
-		Map<Organization, Map<Priority, SlaValue>> slaByPriority = organizationService.getSlaByPriority();
-		SlaValue slaValue = findSlaValue(
-				slaByPriority,
-				client == null ? null : client.getOrganization(),
-				task.getPriority()
-		);
-		if (slaValue == null) {
-			slaValue = findDefaultSlaValue(slaByPriority, task.getPriority());
+
+		Organization organization = client == null ? null : client.getOrganization();
+		ServiceCatalogService.SlaPolicy servicePolicy = serviceCatalogService.resolveSlaPolicy(organization, task.getService());
+		Integer firstResponseMinutes = servicePolicy.firstResponseMinutes();
+		Integer resolutionMinutes = servicePolicy.resolutionMinutes();
+
+		task.setFirstResponseSlaMinutes(firstResponseMinutes);
+		if (firstResponseMinutes != null && firstResponseMinutes > 0) {
+			ZonedDateTime startedAt = Objects.requireNonNullElse(task.getCreatedAt(), ZonedDateTime.now());
+			boolean useWorkingTime = "GENERAL_SETTINGS".equalsIgnoreCase(Objects.toString(servicePolicy.supportCalendar(), "GENERAL_SETTINGS"));
+			task.setFirstResponseDeadline(olaWorkingTimeService.addSeconds(
+					startedAt,
+					Math.multiplyExact(firstResponseMinutes.longValue(), 60L),
+					useWorkingTime
+			));
+		} else {
+			task.setFirstResponseDeadline(null);
 		}
-		Duration slaDuration = slaValue == null
-				? Duration.ZERO
-				: slaValue.toDuration(getWorkdayDuration());
+
+		Duration slaDuration = resolutionMinutes != null && resolutionMinutes > 0
+				? Duration.ofMinutes(resolutionMinutes)
+				: Duration.ZERO;
+
+		if ((slaDuration.isZero() || slaDuration.isNegative()) && task.getPriority() != null) {
+			Map<Organization, Map<Priority, SlaValue>> slaByPriority = organizationService.getSlaByPriority();
+			SlaValue slaValue = findSlaValue(slaByPriority, organization, task.getPriority());
+			if (slaValue == null) {
+				slaValue = findDefaultSlaValue(slaByPriority, task.getPriority());
+			}
+			slaDuration = slaValue == null
+					? Duration.ZERO
+					: slaValue.toDuration(getWorkdayDuration());
+		}
 
 		if (slaDuration.isZero() || slaDuration.isNegative()) {
 			task.setSla(null);
@@ -1818,6 +1954,7 @@ public class TaskService {
 		addCreatedField(changes, "name", "Название", task.getName());
 		addCreatedField(changes, "description", "Описание", task.getDescription());
 		addCreatedField(changes, "type", "Тип", getTaskTypeName(task.getType()));
+		addCreatedField(changes, "service", "Сервис", getServiceName(task.getService()));
 		addCreatedField(changes, "checklist", "Чек-лист", checklistToHistoryValue(task.getChecklist()));
 		addCreatedField(changes, "deadline", "Дедлайн", task.getDeadline());
 		addCreatedField(changes, "executor", "Исполнитель", getUserDisplayName(task.getExecutor()));
@@ -1867,6 +2004,14 @@ public class TaskService {
 
 	private static String getSupportLineName(SupportLine supportLine) {
 		return supportLine == null || supportLine.getName() == null ? "" : supportLine.getName();
+	}
+
+
+	private static String getServiceName(ru.ravel.ItDesk.model.Service service) {
+		if (service == null) return "";
+		String code = Objects.toString(service.getCode(), "").trim();
+		String name = Objects.toString(service.getName(), "").trim();
+		return code.isBlank() ? name : code + " — " + name;
 	}
 
 
@@ -2062,11 +2207,31 @@ public class TaskService {
 
 
 	public void prepareTaskBeforeSave(Task task) {
+		prepareTaskBeforeSave(task, null);
+	}
+
+
+	public void prepareTaskBeforeSave(Task task, Client client) {
 		if (task == null) {
 			return;
 		}
-		task.setType(resolveTaskType(task.getType()));
+		Organization organization = client == null ? null : client.getOrganization();
+		task.setService(serviceCatalogService.resolveService(task.getService(), organization));
+		if (task.getType() == null
+				&& task.getService() != null
+				&& task.getService().getAllowedTaskTypes() != null
+				&& !task.getService().getAllowedTaskTypes().isEmpty()) {
+			TaskType serviceDefaultType = task.getService().getAllowedTaskTypes().stream()
+					.filter(Objects::nonNull)
+					.sorted()
+					.findFirst()
+					.orElse(null);
+			task.setType(serviceDefaultType == null ? resolveTaskType(null) : serviceDefaultType);
+		} else {
+			task.setType(resolveTaskType(task.getType()));
+		}
 		task.setChecklist(normalizeChecklist(task.getChecklist()));
+		serviceCatalogService.applyTaskDefaults(task, organization);
 	}
 
 
@@ -2585,7 +2750,7 @@ public class TaskService {
 
 
 	private Task createTaskForClient(Client client, Task task) {
-		prepareTaskBeforeSave(task);
+		prepareTaskBeforeSave(task, client);
 		taskRoutingService.prepareNewTask(task);
 		validateExecutorIsPresentWhenClosing(task, task.getStatus(), CompletedStatus.getInstance());
 		setSla(client, task);

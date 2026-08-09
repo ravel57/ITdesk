@@ -9,11 +9,9 @@ import ru.ravel.ItDesk.dto.ClientUser;
 import ru.ravel.ItDesk.dto.ClientUserText;
 import ru.ravel.ItDesk.dto.UserOnlineDto;
 import ru.ravel.ItDesk.model.Client;
-import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.service.ClientService;
 import ru.ravel.ItDesk.service.UserService;
 
-import java.util.List;
 
 @Controller
 @RequiredArgsConstructor
@@ -41,16 +39,5 @@ public class WebSocketController {
 		clientService.typing(clientUserText);
 	}
 
-
-	// FIXME TODO
-	@MessageMapping("/observer")
-	@SendTo("/topic/clients-for-observer/")
-	public List<Client> getClientsForObserver(String username) {
-		User user = userService.getUsers().stream()
-				.filter(it -> it.getUsername().equals(username))
-				.findFirst()
-				.orElseThrow();
-		return clientService.getClientsForObserver(user);
-	}
 
 }

@@ -2,6 +2,7 @@ package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +10,8 @@ import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.model.Event;
 import ru.ravel.ItDesk.model.automatosation.AutomationRuleStatus;
 import ru.ravel.ItDesk.model.automatosation.EventStatus;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.service.CommunicationDeliveryService;
 import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
 import ru.ravel.ItDesk.repository.AutomationTriggerRepository;
 
@@ -27,6 +30,10 @@ public class AutomationItemProcessor {
 	private final AutomationWorkflowEngine workflowEngine;
 	private final AutomationPayloadService payloadService;
 	private final AutomationWorkflowWaitService workflowWaitService;
+	private final CommunicationDeliveryService communicationDeliveryService;
+
+	@Value("${communication.delivery.max-retries:8}")
+	private int communicationMaxRetries;
 
 
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -39,16 +46,21 @@ public class AutomationItemProcessor {
 			outboxRepository.save(event);
 		} catch (Exception ex) {
 			int retries = event.getRetries();
+			int nextRetry = retries + 1;
+			boolean communicationEvent = event.getTriggerType() == TriggerType.COMMUNICATION_SEND_REQUESTED;
+			boolean exhausted = communicationEvent && nextRetry >= Math.max(1, communicationMaxRetries);
 			long backoffSec = Math.min(60, 1L << Math.min(retries, 10));
-			event.setRetries(retries + 1);
-			event.setStatus(EventStatus.NEW);
-			event.setAvailableAt(Instant.now().plusSeconds(backoffSec));
+			event.setRetries(nextRetry);
+			event.setStatus(exhausted ? EventStatus.DEAD_LETTER : EventStatus.NEW);
+			event.setAvailableAt(exhausted ? Instant.now() : Instant.now().plusSeconds(backoffSec));
 			event.setLastError(trimError(ex));
 			outboxRepository.save(event);
 			log.warn(
-					"Automation event processing failed, eventId={}, retry={}, error={}",
+					"Event processing failed, eventId={}, triggerType={}, retry={}, status={}, error={}",
 					event.getId(),
+					event.getTriggerType(),
 					event.getRetries(),
+					event.getStatus(),
 					event.getLastError()
 			);
 		}
@@ -58,6 +70,14 @@ public class AutomationItemProcessor {
 	public void handleEvent(Event event) {
 		if (event == null || event.getPayload() == null) {
 			return;
+		}
+		if (event.getTriggerType() == TriggerType.COMMUNICATION_SEND_REQUESTED) {
+			try {
+				communicationDeliveryService.deliver(event);
+				return;
+			} catch (Exception ex) {
+				throw new IllegalStateException("Communication delivery failed", ex);
+			}
 		}
 		Event executionEvent = Event.builder()
 				.id(event.getId())

@@ -40,6 +40,10 @@ public class Task {
 	@JoinColumn(name = "type_id")
 	private TaskType type;
 
+	@ManyToOne(fetch = FetchType.EAGER)
+	@JoinColumn(name = "service_id")
+	private Service service;
+
 	@JdbcTypeCode(SqlTypes.JSON)
 	@Builder.Default
 	private List<ChecklistItem> checklist = new ArrayList<>();
@@ -124,7 +128,15 @@ public class Task {
 	@OneToOne(fetch = FetchType.EAGER)
 	private Sla sla;
 
-	@OneToMany(fetch = FetchType.EAGER/*, orphanRemoval = true*/)
+	private Integer firstResponseSlaMinutes;
+
+	private ZonedDateTime firstResponseDeadline;
+
+	private ZonedDateTime firstResponseAt;
+
+	private Integer olaWarningPercent;
+
+	@OneToMany(fetch = FetchType.LAZY/*, orphanRemoval = true*/)
 	@JoinColumn(name = "task_id")
 	@Builder.Default
 	private List<Message> messages = new ArrayList<>();

@@ -82,6 +82,16 @@ public class Client {
 	@Transient
 	private Message lastMessage;
 
+	// Дата последней активности в переписке. Используется только для сортировки
+	// карточек, если у OBSERVER больше нет видимых (неудалённых) сообщений.
+	@Transient
+	private ZonedDateTime lastActivityDate;
+
+	// Версия содержимого истории сообщений клиента. Поле не хранится в БД и
+	// используется только для socket-синхронизации read-only OBSERVER.
+	@Transient
+	private String messagesRevision;
+
 	@Transient
 	private Long unreadMessagesCount;
 
@@ -104,6 +114,9 @@ public class Client {
 
 	@Transient
 	private ZonedDateTime firstUnansweredMessageDate;
+
+	@Transient
+	private Long firstUnansweredMessageId;
 
 	@Transient
 	private Long openTasksCount = 0L;

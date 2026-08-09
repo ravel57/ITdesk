@@ -38,6 +38,7 @@ public class AutomationWorkflowNodeService {
 	private final StatusRepository statusRepository;
 	private final TaskTypeRepository taskTypeRepository;
 	private final SupportLineRepository supportLineRepository;
+	private final ServiceRepository serviceRepository;
 
 	private final HttpClient httpClient = HttpClient.newBuilder()
 			.followRedirects(HttpClient.Redirect.NORMAL)
@@ -155,6 +156,8 @@ public class AutomationWorkflowNodeService {
 				.priority(resolvePriority(node));
 		Long typeId = configNullableLong(node, "typeId");
 		if (typeId != null) builder.type(taskTypeRepository.findById(typeId).orElseThrow());
+		Long serviceId = configNullableLong(node, "serviceId");
+		if (serviceId != null) builder.service(serviceRepository.findById(serviceId).orElseThrow());
 		Long lineId = configNullableLong(node, "supportLineId");
 		if (lineId != null) builder.supportLine(supportLineRepository.findById(lineId).orElseThrow());
 		Task task = taskService.newTaskForSystem(clientId, builder.build());

@@ -1,6 +1,7 @@
 package ru.ravel.ItDesk.service;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.AnswerRequired;
@@ -13,9 +14,15 @@ import ru.ravel.ItDesk.model.TaskSupportLineStage;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
+import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
+import ru.ravel.ItDesk.repository.PriorityRepository;
+import ru.ravel.ItDesk.repository.ServiceRepository;
+import ru.ravel.ItDesk.repository.SupportLineRepository;
+import ru.ravel.ItDesk.repository.TagRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.repository.TaskSupportLineStageRepository;
+import ru.ravel.ItDesk.repository.TaskTypeRepository;
 
 import java.lang.reflect.Method;
 import java.time.*;
@@ -35,12 +42,19 @@ public class AnalyticsService {
 	private static final Long EMPTY_GROUP_ID = -1L;
 
 	private final TaskRepository taskRepository;
+	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
+	private final TaskTypeRepository taskTypeRepository;
+	private final PriorityRepository priorityRepository;
+	private final ServiceRepository serviceRepository;
+	private final TagRepository tagRepository;
+	private final SupportLineRepository supportLineRepository;
 	private final AutomationOutboxRepository automationOutboxRepository;
 	private final SlaService slaService;
 	private final AppSettingsService appSettingsService;
 	private final TaskSupportLineStageRepository taskSupportLineStageRepository;
 	private final OlaWorkingTimeService olaWorkingTimeService;
+	private final UserService userService;
 	private final ConcurrentMap<String, AnalyticsCancellationToken> activeAnalyticsRequests = new ConcurrentHashMap<>();
 
 
@@ -59,6 +73,75 @@ public class AnalyticsService {
 
 
 	@Transactional(readOnly = true)
+	public Map<String, Object> getDictionaries() {
+		AnalyticsAccessScope accessScope = buildAnalyticsAccessScope(userService.getCurrentUser());
+		if (!accessScope.restricted()) {
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("access", buildAccessMetadata(accessScope));
+			result.put("taskTypes", toDictionaryItems(taskTypeRepository.findAll(), "Без типа"));
+			result.put("priorities", toDictionaryItems(priorityRepository.findAll(), "Без приоритета"));
+			result.put("services", toDictionaryItems(serviceRepository.findAll(), "Без сервиса"));
+			result.put("users", toDictionaryUsers(userService.getUsers()));
+			result.put("supportLines", toDictionaryItems(supportLineRepository.findAll(), "Без линии"));
+			result.put("tags", toDictionaryItems(tagRepository.findAll(), "Без тега"));
+			return result;
+		}
+
+		AnalyticsFilters filters = new AnalyticsFilters(Set.of(), Set.of(), Set.of(), Set.of(), Set.of());
+		List<TaskRepository.AnalyticsTaskRow> taskRows = taskRepository.findAnalyticsTaskRows(
+				false,
+				idsOrDummy(Set.of()),
+				false,
+				idsOrDummy(Set.of()),
+				false,
+				idsOrDummy(Set.of()),
+				false,
+				idsOrDummy(Set.of()),
+				false,
+				idsOrDummy(Set.of())
+		);
+		taskRows = filterTaskRowsByAccess(taskRows, accessScope, null);
+		Set<Long> taskIds = taskRows.stream()
+				.map(TaskRepository.AnalyticsTaskRow::getId)
+				.filter(Objects::nonNull)
+				.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+
+		Map<Long, Map<String, Object>> types = new LinkedHashMap<>();
+		Map<Long, Map<String, Object>> priorities = new LinkedHashMap<>();
+		Map<Long, Map<String, Object>> services = new LinkedHashMap<>();
+		Map<Long, Map<String, Object>> executors = new LinkedHashMap<>();
+		Map<Long, Map<String, Object>> supportLines = new LinkedHashMap<>();
+		Map<Long, Map<String, Object>> tags = new LinkedHashMap<>();
+
+		for (TaskRepository.AnalyticsTaskRow row : taskRows) {
+			addDictionaryEntity(types, row.getType(), "Без типа");
+			addDictionaryEntity(priorities, row.getPriority(), "Без приоритета");
+			addDictionaryEntity(services, row.getService(), "Без сервиса");
+			if (accessScope.canViewInternalData()) {
+				addDictionaryUser(executors, row.getExecutor());
+				addDictionaryEntity(supportLines, row.getSupportLine(), "Без линии");
+			}
+		}
+
+		Map<Long, List<Object>> tagsByTaskId = getTagsByTaskId(filters, null);
+		tagsByTaskId.entrySet().stream()
+				.filter(entry -> taskIds.contains(entry.getKey()))
+				.flatMap(entry -> entry.getValue().stream())
+				.forEach(tag -> addDictionaryEntity(tags, tag, "Без тега"));
+
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put("access", buildAccessMetadata(accessScope));
+		result.put("taskTypes", new ArrayList<>(types.values()));
+		result.put("priorities", new ArrayList<>(priorities.values()));
+		result.put("services", new ArrayList<>(services.values()));
+		result.put("users", accessScope.canViewInternalData() ? new ArrayList<>(executors.values()) : List.of());
+		result.put("supportLines", accessScope.canViewInternalData() ? new ArrayList<>(supportLines.values()) : List.of());
+		result.put("tags", new ArrayList<>(tags.values()));
+		return result;
+	}
+
+
+	@Transactional(readOnly = true)
 	public Map<String, Object> getSummary(
 			String requestKey,
 			String from,
@@ -73,6 +156,7 @@ public class AnalyticsService {
 		AnalyticsCancellationToken cancellationToken = registerAnalyticsRequest(requestKey);
 		try {
 			checkAnalyticsCancelled(cancellationToken);
+			AnalyticsAccessScope accessScope = buildAnalyticsAccessScope(userService.getCurrentUser());
 			AnalyticsWorkingTime workingTime = getAnalyticsWorkingTime();
 			ZoneId analyticsZone = workingTime.zone();
 			ZonedDateTime now = ZonedDateTime.now(analyticsZone);
@@ -86,6 +170,9 @@ public class AnalyticsService {
 					parseIds(tagIds),
 					parseIds(supportLineIds)
 			);
+			if (!accessScope.canViewInternalData()) {
+				filters = filters.withoutInternalFilters();
+			}
 
 			Set<Long> repositoryExecutorIds = filters.repositoryExecutorIds();
 			List<TaskRepository.AnalyticsTaskRow> taskRows = taskRepository.findAnalyticsTaskRows(
@@ -101,13 +188,20 @@ public class AnalyticsService {
 					idsOrDummy(filters.tagIds())
 			);
 			if (filters.executorFilterNeedsInMemory()) {
+				AnalyticsFilters finalFilters = filters;
 				taskRows = taskRows.stream()
-						.filter(row -> filters.matchesExecutor(row.getExecutor()))
+						.filter(row -> finalFilters.matchesExecutor(row.getExecutor()))
 						.toList();
 			}
+			taskRows = filterTaskRowsByAccess(taskRows, accessScope, cancellationToken);
+			Set<Long> accessibleTaskIds = taskRows.stream()
+					.map(TaskRepository.AnalyticsTaskRow::getId)
+					.filter(Objects::nonNull)
+					.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
 			checkAnalyticsCancelled(cancellationToken);
 
 			Map<Long, List<Object>> tagsByTaskId = getTagsByTaskId(filters, cancellationToken);
+			tagsByTaskId.keySet().retainAll(accessibleTaskIds);
 			Map<Long, TaskRepository.AnalyticsTaskRow> taskRowsById = new LinkedHashMap<>();
 			Set<Long> filteredLinkedMessageIds = new HashSet<>();
 
@@ -284,6 +378,7 @@ public class AnalyticsService {
 			long overdueSla = countOverdueSla(
 					now,
 					filters,
+					accessibleTaskIds,
 					breakdownTaskIds,
 					tagsByTaskId,
 					operatorLoadMap,
@@ -293,7 +388,7 @@ public class AnalyticsService {
 					tagBreakdownMap,
 					cancellationToken
 			);
-			List<AnalyticsMessageRow> clientMessages = getClientMessageRows(safeFrom, safeTo, cancellationToken);
+			List<AnalyticsMessageRow> clientMessages = getClientMessageRows(safeFrom, safeTo, accessScope, cancellationToken);
 			long newAppeals = 0L;
 			for (AnalyticsMessageRow message : clientMessages) {
 				checkAnalyticsCancelled(cancellationToken);
@@ -307,7 +402,7 @@ public class AnalyticsService {
 			long unansweredMessages = countUnansweredMessages(clientMessages, cancellationToken);
 			// Для первого ответа нужен контекст до начала выбранного периода:
 			// клиент мог написать раньше, а оператор ответить уже внутри периода.
-			List<AnalyticsMessageRow> firstResponseMessages = getClientMessageRowsUntil(safeTo, cancellationToken);
+			List<AnalyticsMessageRow> firstResponseMessages = getClientMessageRowsUntil(safeTo, accessScope, cancellationToken);
 			List<Long> firstResponseSeconds = getFirstResponseSeconds(
 					firstResponseMessages,
 					safeFrom,
@@ -319,23 +414,24 @@ public class AnalyticsService {
 			);
 			long avgFirstResponseSeconds = averageSeconds(firstResponseSeconds);
 
-			Set<Long> closedTaskIdsFromEvents = new HashSet<>();
+			// Every TASK_CLOSED transition is a separate analytics event.
+			// Keep task ids only to prevent the closedAt fallback from counting
+			// the latest close a second time when an event is already available.
+			Set<Long> taskIdsWithCloseEvents = new HashSet<>();
 			for (AnalyticsEvent closedEvent : closedEvents) {
 				checkAnalyticsCancelled(cancellationToken);
 				if (closedEvent.taskId() == null) {
 					continue;
 				}
 				TaskRepository.AnalyticsTaskRow taskRow = taskRowsById.get(closedEvent.taskId());
-				if (filters.hasAny() && taskRow == null) {
+				if ((filters.hasAny() || accessScope.restricted()) && taskRow == null) {
 					continue;
 				}
 				ZonedDateTime eventDate = closedEvent.date();
 				if (!isBetween(eventDate, safeFrom, safeTo)) {
 					continue;
 				}
-				if (!closedTaskIdsFromEvents.add(closedEvent.taskId())) {
-					continue;
-				}
+				taskIdsWithCloseEvents.add(closedEvent.taskId());
 				closedTasks++;
 				closedByPeriodMap.merge(getPeriodLabel(eventDate, safeGroupBy, analyticsZone), 1L, Long::sum);
 				incrementHourlyLoad(hourlyLoadMap, eventDate, analyticsZone, "closedTasks");
@@ -364,7 +460,7 @@ public class AnalyticsService {
 				if (!Boolean.TRUE.equals(row.getCompleted())) {
 					continue;
 				}
-				if (row.getId() != null && closedTaskIdsFromEvents.contains(row.getId())) {
+				if (row.getId() != null && taskIdsWithCloseEvents.contains(row.getId())) {
 					continue;
 				}
 				if (!isBetween(row.getClosedAt(), safeFrom, safeTo)) {
@@ -394,7 +490,7 @@ public class AnalyticsService {
 			for (AnalyticsEvent reopenedEvent : reopenedEvents) {
 				checkAnalyticsCancelled(cancellationToken);
 				TaskRepository.AnalyticsTaskRow taskRow = reopenedEvent.taskId() == null ? null : taskRowsById.get(reopenedEvent.taskId());
-				if (filters.hasAny() && taskRow == null) {
+				if ((filters.hasAny() || accessScope.restricted()) && taskRow == null) {
 					continue;
 				}
 				reopenedTasks++;
@@ -429,6 +525,21 @@ public class AnalyticsService {
 					cancellationToken
 			);
 
+			Map<String, Map<String, Object>> serviceBreakdownMap = new LinkedHashMap<>();
+			for (TaskRepository.AnalyticsTaskRow row : taskRows) {
+				if (row.getId() == null || !breakdownTaskIds.contains(row.getId())) continue;
+				Object service = row.getService();
+				incrementBreakdown(serviceBreakdownMap, getEntityId(service), getEntityName(service, "Без сервиса"), "totalTasks");
+				if (Boolean.TRUE.equals(row.getCompleted())) {
+					incrementBreakdown(serviceBreakdownMap, getEntityId(service), getEntityName(service, "Без сервиса"), "closedTasks");
+				} else {
+					incrementBreakdown(serviceBreakdownMap, getEntityId(service), getEntityName(service, "Без сервиса"), "openTasks");
+				}
+				if (isBetween(row.getCreatedAt(), safeFrom, safeTo)) {
+					incrementBreakdown(serviceBreakdownMap, getEntityId(service), getEntityName(service, "Без сервиса"), "createdTasks");
+				}
+			}
+
 			Map<String, Object> result = new LinkedHashMap<>();
 			result.put("from", safeFrom);
 			result.put("to", safeTo);
@@ -439,37 +550,223 @@ public class AnalyticsService {
 			result.put("workdayEnd", workingTime.workdayEnd().toString());
 			result.put("workingDays", workingTime.workingDays().stream().map(DayOfWeek::name).toList());
 			result.put("filters", filters.toMap());
+			result.put("access", buildAccessMetadata(accessScope));
 			result.put("newAppeals", newAppeals);
 			result.put("openTasks", openTasks);
 			result.put("overdueSla", overdueSla);
 			result.put("overdueDeadlines", overdueDeadlines);
 			result.put("deadlineWarnings", deadlineWarnings);
-			result.put("overdueOla", overdueOla);
-			result.put("olaWarnings", olaWarnings);
-			result.put("avgLineTimeSeconds", supportLineAnalytics.avgLineTimeSeconds());
+			result.put("overdueOla", accessScope.canViewInternalData() ? overdueOla : 0L);
+			result.put("olaWarnings", accessScope.canViewInternalData() ? olaWarnings : 0L);
+			result.put("avgLineTimeSeconds", accessScope.canViewInternalData() ? supportLineAnalytics.avgLineTimeSeconds() : 0L);
 			result.put("deadlineWarningMinutes", DEFAULT_DEADLINE_WARNING_MINUTES);
 			result.put("unansweredMessages", unansweredMessages);
 			result.put("avgFirstResponseSeconds", avgFirstResponseSeconds);
 			result.put("firstResponseCount", firstResponseSeconds.size());
 			result.put("avgCloseTimeSeconds", averageSeconds(closeTimeSeconds));
-			result.put("unassignedTasks", unassignedTasks);
+			result.put("unassignedTasks", accessScope.canViewInternalData() ? unassignedTasks : 0L);
 			result.put("closedTasks", closedTasks);
 			result.put("reopenedTasks", reopenedTasks);
 			result.put("closedByPeriod", toPeriodRows(closedByPeriodMap));
 			result.put("reopenedByPeriod", toPeriodRows(reopenedByPeriodMap));
 			result.put("hourlyLoad", toHourlyRows(hourlyLoadMap));
-			result.put("operatorLoad", toOperatorRows(operatorLoadMap));
-			result.put("taskTypeBreakdown", toBreakdownRows(taskTypeBreakdownMap));
-			result.put("priorityBreakdown", toBreakdownRows(priorityBreakdownMap));
-			result.put("executorBreakdown", toBreakdownRows(executorBreakdownMap));
-			result.put("tagBreakdown", toBreakdownRows(tagBreakdownMap));
-			result.put("supportLineBreakdown", supportLineAnalytics.rows());
-			result.put("lineLoad", supportLineAnalytics.rows());
-			result.put("lineTransitions", supportLineAnalytics.transitions());
+			result.put("operatorLoad", accessScope.canViewInternalData() ? toOperatorRows(operatorLoadMap) : List.of());
+			result.put("taskTypeBreakdown", sanitizeBreakdownRows(toBreakdownRows(taskTypeBreakdownMap), accessScope.canViewInternalData()));
+			result.put("priorityBreakdown", sanitizeBreakdownRows(toBreakdownRows(priorityBreakdownMap), accessScope.canViewInternalData()));
+			result.put("executorBreakdown", accessScope.canViewInternalData() ? toBreakdownRows(executorBreakdownMap) : List.of());
+			result.put("tagBreakdown", sanitizeBreakdownRows(toBreakdownRows(tagBreakdownMap), accessScope.canViewInternalData()));
+			result.put("serviceBreakdown", sanitizeBreakdownRows(toBreakdownRows(serviceBreakdownMap), accessScope.canViewInternalData()));
+			result.put("supportLineBreakdown", accessScope.canViewInternalData() ? supportLineAnalytics.rows() : List.of());
+			result.put("lineLoad", accessScope.canViewInternalData() ? supportLineAnalytics.rows() : List.of());
+			result.put("lineTransitions", accessScope.canViewInternalData() ? supportLineAnalytics.transitions() : List.of());
 			return result;
 		} finally {
 			completeAnalyticsRequest(cancellationToken);
 		}
+	}
+
+
+	private List<Map<String, Object>> toDictionaryItems(Collection<?> entities, String fallbackName) {
+		Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
+		for (Object entity : entities == null ? List.of() : entities) {
+			addDictionaryEntity(result, entity, fallbackName);
+		}
+		return new ArrayList<>(result.values());
+	}
+
+
+	private List<Map<String, Object>> toDictionaryUsers(Collection<User> users) {
+		Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
+		for (User user : users == null ? List.<User>of() : users) {
+			addDictionaryUser(result, user);
+		}
+		return new ArrayList<>(result.values());
+	}
+
+
+	private void addDictionaryEntity(
+			Map<Long, Map<String, Object>> target,
+			Object entity,
+			String fallbackName
+	) {
+		Long id = getEntityId(entity);
+		if (id == null || target.containsKey(id)) {
+			return;
+		}
+		Map<String, Object> item = new LinkedHashMap<>();
+		item.put("id", id);
+		item.put("name", getEntityName(entity, fallbackName));
+		target.put(id, item);
+	}
+
+
+	private void addDictionaryUser(Map<Long, Map<String, Object>> target, User user) {
+		if (user == null || user.getId() == null || target.containsKey(user.getId())) {
+			return;
+		}
+		Map<String, Object> item = new LinkedHashMap<>();
+		item.put("id", user.getId());
+		item.put("firstname", user.getFirstname());
+		item.put("lastname", user.getLastname());
+		item.put("username", user.getUsername());
+		item.put("name", getUserDisplayName(user));
+		target.put(user.getId(), item);
+	}
+
+
+	private AnalyticsAccessScope buildAnalyticsAccessScope(User user) {
+		if (user == null) {
+			throw new AccessDeniedException("Пользователь не авторизован");
+		}
+		if (userService.isAdmin(user)) {
+			return AnalyticsAccessScope.full(user, "ADMIN");
+		}
+		if (userService.isManager(user)) {
+			return AnalyticsAccessScope.full(user, "MANAGER");
+		}
+
+		Set<Long> organizationIds = userService.getAnalyticsOrganizationIds(user);
+		if (userService.isObserver(user)) {
+			Set<Long> clientIds = organizationIds.isEmpty()
+					? Set.of()
+					: clientRepository.findClientIdsByOrganizationIds(organizationIds);
+			return new AnalyticsAccessScope(
+					user,
+					"OBSERVER",
+					true,
+					false,
+					true,
+					organizationIds,
+					clientIds
+			);
+		}
+		if (userService.isOperator(user)) {
+			boolean allOrganizations = userService.hasAnalyticsAccessToAllOrganizations(user);
+			Set<Long> clientIds = allOrganizations || organizationIds.isEmpty()
+					? Set.of()
+					: clientRepository.findClientIdsByOrganizationIds(organizationIds);
+			return new AnalyticsAccessScope(
+					user,
+					"OPERATOR",
+					true,
+					true,
+					!allOrganizations,
+					organizationIds,
+					clientIds
+			);
+		}
+		throw new AccessDeniedException("Роль пользователя не имеет доступа к аналитике");
+	}
+
+
+	private List<TaskRepository.AnalyticsTaskRow> filterTaskRowsByAccess(
+			List<TaskRepository.AnalyticsTaskRow> rows,
+			AnalyticsAccessScope accessScope,
+			AnalyticsCancellationToken cancellationToken
+	) {
+		List<TaskRepository.AnalyticsTaskRow> safeRows = rows == null ? List.of() : rows;
+		if (!accessScope.restricted() || safeRows.isEmpty()) {
+			return safeRows;
+		}
+
+		Set<Long> taskIds = safeRows.stream()
+				.map(TaskRepository.AnalyticsTaskRow::getId)
+				.filter(Objects::nonNull)
+				.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+		if (taskIds.isEmpty()) {
+			return List.of();
+		}
+
+		Map<Long, Long> organizationIdsByTaskId = new HashMap<>();
+		for (ClientRepository.TaskAnalyticsAccessRow row : clientRepository.findTaskAnalyticsAccessRows(taskIds)) {
+			checkAnalyticsCancelled(cancellationToken);
+			if (row != null && row.getTaskId() != null) {
+				organizationIdsByTaskId.put(row.getTaskId(), row.getOrganizationId());
+			}
+		}
+
+		Map<Long, Set<Long>> accessUserIdsByTaskId = new HashMap<>();
+		for (TaskRepository.AnalyticsTaskAccessUserRow row : taskRepository.findAnalyticsTaskAccessUserRows(taskIds)) {
+			checkAnalyticsCancelled(cancellationToken);
+			if (row == null || row.getTaskId() == null || row.getUserId() == null) {
+				continue;
+			}
+			accessUserIdsByTaskId
+					.computeIfAbsent(row.getTaskId(), ignored -> new LinkedHashSet<>())
+					.add(row.getUserId());
+		}
+
+		List<TaskRepository.AnalyticsTaskRow> result = new ArrayList<>();
+		for (TaskRepository.AnalyticsTaskRow row : safeRows) {
+			checkAnalyticsCancelled(cancellationToken);
+			if (row == null || row.getId() == null) {
+				continue;
+			}
+			Long executorId = row.getExecutor() == null ? null : row.getExecutor().getId();
+			if (userService.canUserAccessAnalyticsTask(
+					accessScope.user(),
+					organizationIdsByTaskId.get(row.getId()),
+					row.getSupportLine(),
+					executorId,
+					accessUserIdsByTaskId.getOrDefault(row.getId(), Set.of())
+			)) {
+				result.add(row);
+			}
+		}
+		return result;
+	}
+
+
+	private Map<String, Object> buildAccessMetadata(AnalyticsAccessScope accessScope) {
+		Map<String, Object> access = new LinkedHashMap<>();
+		access.put("role", accessScope.role());
+		access.put("scope", accessScope.restricted() ? "RESTRICTED" : "ALL");
+		access.put("organizationIds", accessScope.organizationIds());
+		access.put("canViewInternalData", accessScope.canViewInternalData());
+		access.put("canViewOperators", accessScope.canViewInternalData());
+		access.put("canViewSupportLines", accessScope.canViewInternalData());
+		access.put("canFilterExecutors", accessScope.canViewInternalData());
+		access.put("canFilterSupportLines", accessScope.canViewInternalData());
+		return access;
+	}
+
+
+	private List<Map<String, Object>> sanitizeBreakdownRows(
+			List<Map<String, Object>> rows,
+			boolean canViewInternalData
+	) {
+		if (canViewInternalData) {
+			return rows;
+		}
+		return (rows == null ? List.<Map<String, Object>>of() : rows).stream()
+				.map(row -> {
+					Map<String, Object> sanitized = new LinkedHashMap<>(row);
+					sanitized.remove("overdueOla");
+					sanitized.remove("olaWarnings");
+					sanitized.remove("unassignedTasks");
+					return sanitized;
+				})
+				.toList();
 	}
 
 
@@ -538,6 +835,7 @@ public class AnalyticsService {
 	private long countOverdueSla(
 			ZonedDateTime now,
 			AnalyticsFilters filters,
+			Set<Long> accessibleTaskIds,
 			Set<Long> breakdownTaskIds,
 			Map<Long, List<Object>> tagsByTaskId,
 			Map<Long, Map<String, Object>> operatorLoadMap,
@@ -565,6 +863,9 @@ public class AnalyticsService {
 
 		for (TaskRepository.SlaAnalyticsRow row : slaRows) {
 			checkAnalyticsCancelled(cancellationToken);
+			if (row.getId() == null || !accessibleTaskIds.contains(row.getId())) {
+				continue;
+			}
 			if (!filters.matchesExecutor(row.getExecutor())) {
 				continue;
 			}
@@ -632,10 +933,12 @@ public class AnalyticsService {
 	private List<AnalyticsMessageRow> getClientMessageRows(
 			ZonedDateTime from,
 			ZonedDateTime to,
+			AnalyticsAccessScope accessScope,
 			AnalyticsCancellationToken cancellationToken
 	) {
 		return mapClientMessageRows(
 				messageRepository.findClientMessageAnalyticsRowsBetween(from, to),
+				accessScope,
 				cancellationToken
 		);
 	}
@@ -643,10 +946,12 @@ public class AnalyticsService {
 
 	private List<AnalyticsMessageRow> getClientMessageRowsUntil(
 			ZonedDateTime to,
+			AnalyticsAccessScope accessScope,
 			AnalyticsCancellationToken cancellationToken
 	) {
 		return mapClientMessageRows(
 				messageRepository.findClientMessageAnalyticsRowsUntil(to),
+				accessScope,
 				cancellationToken
 		);
 	}
@@ -654,6 +959,7 @@ public class AnalyticsService {
 
 	private List<AnalyticsMessageRow> mapClientMessageRows(
 			List<MessageRepository.MessageAnalyticsRow> rows,
+			AnalyticsAccessScope accessScope,
 			AnalyticsCancellationToken cancellationToken
 	) {
 		List<MessageRepository.MessageAnalyticsRow> safeRows = rows == null ? List.of() : rows;
@@ -662,6 +968,10 @@ public class AnalyticsService {
 		for (MessageRepository.MessageAnalyticsRow row : safeRows) {
 			checkAnalyticsCancelled(cancellationToken);
 			if (row == null) {
+				continue;
+			}
+			if (accessScope.restrictClients()
+					&& (row.getClientId() == null || !accessScope.allowedClientIds().contains(row.getClientId()))) {
 				continue;
 			}
 
@@ -1633,6 +1943,26 @@ public class AnalyticsService {
 	}
 
 
+	private record AnalyticsAccessScope(
+			User user,
+			String role,
+			boolean restricted,
+			boolean canViewInternalData,
+			boolean restrictClients,
+			Set<Long> organizationIds,
+			Set<Long> allowedClientIds
+	) {
+		private AnalyticsAccessScope {
+			organizationIds = organizationIds == null ? Set.of() : Set.copyOf(organizationIds);
+			allowedClientIds = allowedClientIds == null ? Set.of() : Set.copyOf(allowedClientIds);
+		}
+
+		private static AnalyticsAccessScope full(User user, String role) {
+			return new AnalyticsAccessScope(user, role, false, true, false, Set.of(), Set.of());
+		}
+	}
+
+
 	private record AnalyticsMessageRow(
 			Long id,
 			Long clientId,
@@ -1681,6 +2011,10 @@ public class AnalyticsService {
 				return executorIds.contains(EMPTY_GROUP_ID);
 			}
 			return executorIds.contains(executor.getId());
+		}
+
+		private AnalyticsFilters withoutInternalFilters() {
+			return new AnalyticsFilters(typeIds, priorityIds, Set.of(), tagIds, Set.of());
 		}
 
 		private Map<String, Object> toMap() {

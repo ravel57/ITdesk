@@ -9,6 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.Password;
 import ru.ravel.ItDesk.dto.UserDto;
@@ -21,6 +22,7 @@ import ru.ravel.ItDesk.repository.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -50,6 +52,15 @@ public class UserService {
 		return userRepository.findAll().stream()
 				.filter(user -> !Objects.equals(user, SystemUser.getInstance()))
 				.filter(User::isEnabled)
+				.filter(user -> !isClient(user))
+				.toList();
+	}
+
+
+	public List<User> getManageableUsers() {
+		return userRepository.findAll().stream()
+				.filter(user -> !Objects.equals(user, SystemUser.getInstance()))
+				.filter(User::isEnabled)
 				.toList();
 	}
 
@@ -66,63 +77,83 @@ public class UserService {
 	}
 
 
+	@Transactional
 	public User newUser(@NotNull UserDto userDto) {
-		if (getUsers().size() < LicenseStarter.maxUsers) {
-			Pattern pattern = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
-			if (pattern.matcher(userDto.getUsername()).matches()) {
-				User existingUser = userRepository.findByUsername(userDto.getUsername()).orElse(null);
-				if (existingUser != null) {
-					existingUser.setIsEnabled(true);
-					existingUser.setIsAccountNonLocked(true);
-
-					User saved = userRepository.save(existingUser);
-					globalSearchService.indexUser(saved);
-
-					return saved;
-				} else {
-					try {
-						User user = User.builder()
-								.username(userDto.getUsername())
-								.firstname(userDto.getFirstname())
-								.lastname(userDto.getLastname())
-								.authorities(List.of(Role.getByName(userDto.getAuthorities())))
-								.password(passwordEncoder.encode(userDto.getPassword()))
-								.availableOrganizations(resolveAvailableOrganizations(userDto))
-								.isEnabled(true)
-								.isAccountNonLocked(true)
-								.isAccountNonExpired(true)
-								.isCredentialsNonExpired(true)
-								.build();
-						User saved = userRepository.save(user);
-						globalSearchService.indexUser(saved);
-						eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
-						return saved;
-
-					} catch (Exception e) {
-						logger.error(e.getMessage(), e);
-						throw new RuntimeException(e);
-					}
-				}
-			} else {
-				throw new RuntimeException("not email");
-			}
-		} else {
-			logger.info("max users is {}", LicenseStarter.maxUsers);
+		Role requestedRole = Role.getByName(userDto.getAuthorities());
+		long licensedStaffUsers = getUsers().size();
+		if (requestedRole != Role.CLIENT && licensedStaffUsers >= LicenseStarter.maxUsers) {
+			logger.info("max staff users is {}", LicenseStarter.maxUsers);
 			throw new RuntimeException("max users is " + LicenseStarter.maxUsers);
+		}
+
+		Pattern pattern = Pattern.compile("^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+		String username = Objects.toString(userDto.getUsername(), "").trim();
+		if (!pattern.matcher(username).matches()) {
+			throw new RuntimeException("not email");
+		}
+
+		User existingUser = userRepository.findByUsername(username).orElse(null);
+		Long clientId = resolveClientIdForNewUser(userDto, requestedRole, existingUser);
+		syncClientOrganization(clientId, requestedRole, userDto);
+		if (existingUser != null) {
+			existingUser.setFirstname(userDto.getFirstname());
+			existingUser.setLastname(userDto.getLastname());
+			existingUser.setAuthorities(List.of(requestedRole));
+			existingUser.setAvailableOrganizations(resolveAvailableOrganizations(userDto));
+			existingUser.setClientId(clientId);
+			existingUser.setIsEnabled(true);
+			existingUser.setIsAccountNonLocked(true);
+			if (userDto.getPassword() != null && !userDto.getPassword().isBlank()) {
+				existingUser.setPassword(passwordEncoder.encode(userDto.getPassword()));
+			}
+//			User saved = userRepository.save(existingUser);
+			globalSearchService.indexUser(existingUser);
+			return existingUser;
+		}
+
+		try {
+			String rawPassword = Objects.toString(userDto.getPassword(), "");
+			if (rawPassword.isBlank()) {
+				throw new IllegalArgumentException("password must not be blank");
+			}
+			User user = User.builder()
+					.username(username)
+					.firstname(userDto.getFirstname())
+					.lastname(userDto.getLastname())
+					.authorities(List.of(requestedRole))
+					.password(passwordEncoder.encode(rawPassword))
+					.availableOrganizations(resolveAvailableOrganizations(userDto))
+					.clientId(clientId)
+					.isEnabled(true)
+					.isAccountNonLocked(true)
+					.isAccountNonExpired(true)
+					.isCredentialsNonExpired(true)
+					.build();
+			User saved = userRepository.save(user);
+			globalSearchService.indexUser(saved);
+			eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
+			return saved;
+		} catch (Exception e) {
+			logger.error(e.getMessage(), e);
+			throw new RuntimeException(e);
 		}
 	}
 
 
 	public User updateUser(@NotNull UserDto userDto) {
 		User savedUser = userRepository.findById(userDto.getId()).orElseThrow();
+		Role requestedRole = Role.getByName(userDto.getAuthorities());
+		Long clientId = resolveClientIdForUpdate(savedUser, userDto, requestedRole);
+		syncClientOrganization(clientId, requestedRole, userDto);
 		User user = User.builder()
 				.id(userDto.getId())
 				.firstname(userDto.getFirstname())
 				.lastname(userDto.getLastname())
-				.authorities(List.of(Role.getByName(userDto.getAuthorities())))
+				.authorities(List.of(requestedRole))
 				.username(savedUser.getUsername())
 				.password(savedUser.getPassword())
 				.availableOrganizations(resolveAvailableOrganizations(userDto))
+				.clientId(clientId)
 				.notifyChatPing(savedUser.getNotifyChatPing())
 				.notifyTaskChatPing(savedUser.getNotifyTaskChatPing())
 				.notifyNewAssignedTask(savedUser.getNotifyNewAssignedTask())
@@ -152,11 +183,9 @@ public class UserService {
 			throw new AccessDeniedException("Пользователь не авторизован");
 		}
 		String username = authentication.getName();
-		return getAllUsersIncludingDisabled().stream()
+		return userRepository.findByUsername(username)
 				.filter(User::isEnabled)
-				.filter(it -> it.getUsername().equals(username))
-				.findFirst()
-				.orElseThrow();
+				.orElseThrow(() -> new AccessDeniedException("Пользователь не найден или отключён"));
 	}
 
 
@@ -221,10 +250,11 @@ public class UserService {
 			userOffline(userId);
 			return;
 		}
-		long enabledUsersCount = getUsers().stream()
+		long enabledStaffUsersCount = getUsers().stream()
 				.filter(User::isEnabled)
+				.filter(item -> !isClient(item))
 				.count();
-		if (enabledUsersCount <= 1) {
+		if (!isClient(user) && enabledStaffUsersCount <= 1) {
 			throw new RuntimeException("users will be empty");
 		}
 		userOffline(userId);
@@ -316,6 +346,25 @@ public class UserService {
 
 
 	public UserNotificationSettingsDto updateCurrentUserNotificationSettings(UserNotificationSettingsDto dto) {
+		User user = getUser(dto);
+		User saved = userRepository.save(user);
+		return UserNotificationSettingsDto.builder()
+				.notifyChatPing(Boolean.TRUE.equals(saved.getNotifyChatPing()))
+				.notifyTaskChatPing(Boolean.TRUE.equals(saved.getNotifyTaskChatPing()))
+				.notifyNewAssignedTask(Boolean.TRUE.equals(saved.getNotifyNewAssignedTask()))
+				.notifyTaskNewMessageAssigned(Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned()))
+				.notifySlaHalfTimePassed(Boolean.TRUE.equals(saved.getNotifySlaHalfTimePassed()))
+				.notifySlaOverdue(Boolean.TRUE.equals(saved.getNotifySlaOverdue()))
+				.notifyDeadlineOverdue(Boolean.TRUE.equals(saved.getNotifyDeadlineOverdue()))
+				.notifyChatUnansweredTooLong(Boolean.TRUE.equals(saved.getNotifyChatUnansweredTooLong()))
+				.notifyChatUnansweredTooLongMinutes(normalizePositiveMinutes(saved.getNotifyChatUnansweredTooLongMinutes(), 30))
+				.notifyDeadlineOverdueBeforeMinutesEnabled(Boolean.TRUE.equals(saved.getNotifyDeadlineOverdueBeforeMinutesEnabled()))
+				.notifyDeadlineOverdueBeforeMinutes(normalizePositiveMinutes(saved.getNotifyDeadlineOverdueBeforeMinutes(), 30))
+				.build();
+	}
+
+	@NotNull
+	private User getUser(UserNotificationSettingsDto dto) {
 		User user = getCurrentUser();
 		Integer slaOverdueBeforeMinutes = normalizePositiveMinutes(
 				dto.getNotifyDeadlineOverdueBeforeMinutes(),
@@ -336,25 +385,15 @@ public class UserService {
 		user.setNotifyChatUnansweredTooLong(Boolean.TRUE.equals(dto.getNotifyChatUnansweredTooLong()));
 		user.setNotifyChatUnansweredTooLongMinutes(chatUnansweredTooLongMinutes);
 		user.setNotifyDeadlineOverdue(Boolean.TRUE.equals(dto.getNotifyDeadlineOverdue()));
-		User saved = userRepository.save(user);
-		return UserNotificationSettingsDto.builder()
-				.notifyChatPing(Boolean.TRUE.equals(saved.getNotifyChatPing()))
-				.notifyTaskChatPing(Boolean.TRUE.equals(saved.getNotifyTaskChatPing()))
-				.notifyNewAssignedTask(Boolean.TRUE.equals(saved.getNotifyNewAssignedTask()))
-				.notifyTaskNewMessageAssigned(Boolean.TRUE.equals(saved.getNotifyTaskNewMessageAssigned()))
-				.notifySlaHalfTimePassed(Boolean.TRUE.equals(saved.getNotifySlaHalfTimePassed()))
-				.notifySlaOverdue(Boolean.TRUE.equals(saved.getNotifySlaOverdue()))
-				.notifyDeadlineOverdue(Boolean.TRUE.equals(saved.getNotifyDeadlineOverdue()))
-				.notifyChatUnansweredTooLong(Boolean.TRUE.equals(saved.getNotifyChatUnansweredTooLong()))
-				.notifyChatUnansweredTooLongMinutes(normalizePositiveMinutes(saved.getNotifyChatUnansweredTooLongMinutes(), 30))
-				.notifyDeadlineOverdueBeforeMinutesEnabled(Boolean.TRUE.equals(saved.getNotifyDeadlineOverdueBeforeMinutesEnabled()))
-				.notifyDeadlineOverdueBeforeMinutes(normalizePositiveMinutes(saved.getNotifyDeadlineOverdueBeforeMinutes(), 30))
-				.build();
+		return user;
 	}
 
 
 	public Set<User> getUsersOnline() {
-		return new LinkedHashSet<>(userRepository.findAllById(usersOnlineIds));
+		List<User> users = userRepository.findAllById(usersOnlineIds);
+		return new LinkedHashSet<>(users).stream()
+				.filter(user -> !user.getAuthorities().contains(Role.CLIENT))
+				.collect(Collectors.toSet());
 	}
 
 
@@ -363,8 +402,23 @@ public class UserService {
 	}
 
 
+	public boolean isManager(User user) {
+		return hasRole(user, Role.MANAGER);
+	}
+
+
 	public boolean isOperator(User user) {
-		return hasRole(user, Role.OPERATOR);
+		return hasRole(user, Role.OPERATOR) || isManager(user);
+	}
+
+
+	public boolean isObserver(User user) {
+		return hasRole(user, Role.OBSERVER);
+	}
+
+
+	public boolean isClient(User user) {
+		return hasRole(user, Role.CLIENT);
 	}
 
 
@@ -373,14 +427,91 @@ public class UserService {
 	}
 
 
+	public Set<Long> getAnalyticsOrganizationIds(User user) {
+		return getAvailableOrganizationIds(user);
+	}
+
+
+	public boolean hasAnalyticsAccessToAllOrganizations(User user) {
+		return isAdmin(user) || isManager(user) || (isOperator(user) && hasAccessToAllOrganizations(user));
+	}
+
+
+	public boolean canUserAccessAnalyticsTask(
+			User user,
+			Long organizationId,
+			SupportLine line,
+			Long executorId,
+			Collection<Long> accessUserIds
+	) {
+		if (user == null) {
+			return false;
+		}
+		if (isAdmin(user) || isManager(user)) {
+			return true;
+		}
+
+		Set<Long> organizationIds = getAvailableOrganizationIds(user);
+		if (isObserver(user)) {
+			return organizationId != null && organizationIds.contains(organizationId);
+		}
+		if (!isOperator(user)) {
+			return false;
+		}
+		if (!hasAccessToAllOrganizations(user)
+				&& (organizationId == null || !organizationIds.contains(organizationId))) {
+			return false;
+		}
+
+		SupportLineVisibilityMode lineMode = line == null
+				? SupportLineVisibilityMode.INHERIT
+				: Objects.requireNonNullElse(line.getVisibilityMode(), SupportLineVisibilityMode.INHERIT);
+		if (lineMode == SupportLineVisibilityMode.ALL_OPERATORS) {
+			return true;
+		}
+
+		boolean member = isSupportLineMember(line, user);
+		boolean observer = isSupportLineObserver(line, user);
+		if (lineMode == SupportLineVisibilityMode.LINE_MEMBERS) {
+			return member;
+		}
+		if (lineMode == SupportLineVisibilityMode.LINE_MEMBERS_AND_OBSERVERS) {
+			return member || observer;
+		}
+
+		SupportLineAccessMode globalMode = appSettingsService.getGeneralSettings().getSupportLineAccessMode();
+		globalMode = Objects.requireNonNullElse(globalMode, SupportLineAccessMode.HYBRID);
+		if (globalMode == SupportLineAccessMode.ALL_OPERATORS) {
+			return true;
+		}
+		if (globalMode == SupportLineAccessMode.LINE_MEMBERS) {
+			return member;
+		}
+
+		boolean executor = executorId != null && Objects.equals(executorId, user.getId());
+		boolean mentioned = accessUserIds != null && accessUserIds.stream()
+				.filter(Objects::nonNull)
+				.anyMatch(id -> Objects.equals(id, user.getId()));
+		return member || observer || executor || mentioned;
+	}
+
+
 	public List<Organization> filterOrganizationsByCurrentUser(Collection<Organization> organizations) {
 		if (organizations == null) {
 			return List.of();
 		}
 		User currentUser = getCurrentUser();
-		if (isAdmin(currentUser)) {
+		if (isAdmin(currentUser) || isManager(currentUser)) {
 			return organizations.stream()
 					.filter(Objects::nonNull)
+					.toList();
+		}
+		if (isObserver(currentUser)) {
+			Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
+			return organizations.stream()
+					.filter(Objects::nonNull)
+					.filter(organization -> organization.getId() != null)
+					.filter(organization -> allowedOrganizationIds.contains(organization.getId()))
 					.toList();
 		}
 		if (!isOperator(currentUser)) {
@@ -444,8 +575,11 @@ public class UserService {
 		if (user == null || task == null) {
 			return false;
 		}
-		if (isAdmin(user)) {
+		if (isAdmin(user) || isManager(user)) {
 			return true;
+		}
+		if (isObserver(user)) {
+			return canUserAccessClient(user, client);
 		}
 		if (!isOperator(user) || !canUserAccessClient(user, client)) {
 			return false;
@@ -520,8 +654,15 @@ public class UserService {
 		if (client == null || user == null) {
 			return false;
 		}
-		if (isAdmin(user)) {
+		if (isAdmin(user) || isManager(user)) {
 			return true;
+		}
+		if (isClient(user)) {
+			return user.getClientId() != null && Objects.equals(user.getClientId(), client.getId());
+		}
+		if (isObserver(user)) {
+			Long organizationId = client.getOrganization() == null ? null : client.getOrganization().getId();
+			return organizationId != null && getAvailableOrganizationIds(user).contains(organizationId);
 		}
 		if (!isOperator(user)) {
 			return false;
@@ -540,8 +681,21 @@ public class UserService {
 		if (user == null || organizationId == null) {
 			return false;
 		}
-		if (isAdmin(user)) {
+		if (isAdmin(user) || isManager(user)) {
 			return true;
+		}
+		if (isObserver(user)) {
+			return getAvailableOrganizationIds(user).contains(organizationId);
+		}
+		if (isClient(user)) {
+			if (user.getClientId() == null) {
+				return false;
+			}
+			return clientRepository.findById(user.getClientId())
+					.map(Client::getOrganization)
+					.map(Organization::getId)
+					.filter(id -> Objects.equals(id, organizationId))
+					.isPresent();
 		}
 		if (!isOperator(user)) {
 			return false;
@@ -566,6 +720,9 @@ public class UserService {
 
 
 	private boolean hasAccessToAllOrganizations(User user) {
+		if (isAdmin(user) || isManager(user)) {
+			return true;
+		}
 		if (!isOperator(user)) {
 			return false;
 		}
@@ -580,6 +737,110 @@ public class UserService {
 		return user.getAuthorities().stream()
 				.filter(Objects::nonNull)
 				.anyMatch(authority -> Objects.equals(authority.getAuthority(), role.getAuthority()));
+	}
+
+
+	private Long resolveClientIdForNewUser(UserDto userDto, Role role, User existingUser) {
+		if (role != Role.CLIENT) {
+			return null;
+		}
+		resolveRequiredClientOrganization(userDto);
+		if (existingUser != null && isClient(existingUser) && existingUser.getClientId() != null) {
+			if (userDto.getClientId() != null && !Objects.equals(existingUser.getClientId(), userDto.getClientId())) {
+				throw new IllegalArgumentException("Карточку клиента нельзя изменить");
+			}
+			return existingUser.getClientId();
+		}
+		if (Boolean.TRUE.equals(userDto.getCreateNewClientCard())) {
+			return createClientCardForPortalUser(userDto).getId();
+		}
+		return resolveExistingClientId(userDto, role);
+	}
+
+
+	private Long resolveClientIdForUpdate(User savedUser, UserDto userDto, Role role) {
+		if (role != Role.CLIENT) {
+			return null;
+		}
+		resolveRequiredClientOrganization(userDto);
+		if (savedUser != null && isClient(savedUser)) {
+			Long savedClientId = savedUser.getClientId();
+			if (savedClientId == null) {
+				throw new IllegalStateException("У клиентской учётной записи не указана карточка клиента");
+			}
+			if (userDto.getClientId() != null && !Objects.equals(savedClientId, userDto.getClientId())) {
+				throw new IllegalArgumentException("Карточку клиента нельзя изменить");
+			}
+			return savedClientId;
+		}
+		return resolveExistingClientId(userDto, role);
+	}
+
+
+	private Long resolveExistingClientId(UserDto userDto, Role role) {
+		if (role != Role.CLIENT) {
+			return null;
+		}
+		resolveRequiredClientOrganization(userDto);
+		if (userDto == null || userDto.getClientId() == null) {
+			throw new IllegalArgumentException("Для роли «Клиент» выберите карточку клиента или включите создание новой");
+		}
+		return clientRepository.findById(userDto.getClientId())
+				.map(Client::getId)
+				.orElseThrow(() -> new IllegalArgumentException("Клиент не найден: " + userDto.getClientId()));
+	}
+
+
+	private Client createClientCardForPortalUser(UserDto userDto) {
+		if (userDto == null) {
+			throw new IllegalArgumentException("Данные пользователя не заданы");
+		}
+		Client client = Client.builder()
+				.firstname(normalizeNullable(userDto.getFirstname()))
+				.lastname(normalizeNullable(userDto.getLastname()))
+				.email(normalizeNullable(userDto.getUsername()))
+				.organization(resolveRequiredClientOrganization(userDto))
+				.build();
+		Client savedClient = clientRepository.saveAndFlush(client);
+		globalSearchService.indexClient(savedClient);
+		eventPublisher.publish(TriggerType.CLIENT_CREATED, Map.of("client", savedClient));
+		return savedClient;
+	}
+
+
+	private void syncClientOrganization(Long clientId, Role role, UserDto userDto) {
+		if (role != Role.CLIENT || clientId == null) {
+			return;
+		}
+		Organization organization = resolveRequiredClientOrganization(userDto);
+		Client client = clientRepository.findById(clientId)
+				.orElseThrow(() -> new IllegalArgumentException("Клиент не найден: " + clientId));
+		Long currentOrganizationId = client.getOrganization() == null ? null : client.getOrganization().getId();
+		if (Objects.equals(currentOrganizationId, organization.getId())) {
+			return;
+		}
+		client.setOrganization(organization);
+		Client savedClient = clientRepository.saveAndFlush(client);
+		globalSearchService.indexClient(savedClient);
+	}
+
+
+	private Organization resolveRequiredClientOrganization(UserDto userDto) {
+		if (userDto == null || userDto.getClientOrganizationId() == null) {
+			throw new IllegalArgumentException("Для клиента необходимо выбрать организацию");
+		}
+		Long organizationId = userDto.getClientOrganizationId();
+		return organizationService.getOrganizations().stream()
+				.filter(Objects::nonNull)
+				.filter(organization -> Objects.equals(organization.getId(), organizationId))
+				.findFirst()
+				.orElseThrow(() -> new IllegalArgumentException("Организация не найдена: " + organizationId));
+	}
+
+
+	private String normalizeNullable(String value) {
+		String normalized = Objects.toString(value, "").trim();
+		return normalized.isBlank() ? null : normalized;
 	}
 
 
@@ -636,6 +897,21 @@ public class UserService {
 					.filter(Objects::nonNull)
 					.toList();
 		}
+		if (isClient(user)) {
+			return clients.stream()
+					.filter(Objects::nonNull)
+					.filter(client -> Objects.equals(client.getId(), user.getClientId()))
+					.toList();
+		}
+		if (isObserver(user)) {
+			Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(user);
+			return clients.stream()
+					.filter(Objects::nonNull)
+					.filter(client -> client.getOrganization() != null)
+					.filter(client -> client.getOrganization().getId() != null)
+					.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
+					.toList();
+		}
 		if (!isOperator(user)) {
 			return List.of();
 		}
@@ -652,5 +928,6 @@ public class UserService {
 				.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
 				.toList();
 	}
+
 
 }

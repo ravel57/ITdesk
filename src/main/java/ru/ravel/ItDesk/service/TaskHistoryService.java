@@ -86,6 +86,7 @@ public class TaskHistoryService {
 			case TASK_STATUS_CHANGED -> "Изменен статус";
 			case TASK_PRIORITY_CHANGED -> "Изменен приоритет";
 			case TASK_TYPE_CHANGED -> "Изменен тип заявки";
+			case TASK_SERVICE_CHANGED -> "Изменен сервис";
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> "Изменен исполнитель";
 			case TASK_GROUP_CHANGED -> "Изменена линия поддержки";
 			case TASK_DUE_DATE_CHANGED -> "Изменен дедлайн";
@@ -95,6 +96,8 @@ public class TaskHistoryService {
 			case TASK_TAG_REMOVED -> "Удален тег";
 			case TASK_COMMENT_ADDED -> "Добавлен комментарий";
 			case TASK_COMMENT_DELETED -> "Удален комментарий";
+			case FIRST_RESPONSE_SLA_WARNING -> "Истекает срок первого ответа";
+			case FIRST_RESPONSE_SLA_BREACHED -> "Нарушен срок первого ответа";
 			default -> "Изменение заявки";
 		};
 	}
@@ -136,6 +139,11 @@ public class TaskHistoryService {
 					getTaskTypeName(payload.path("newType"))
 			);
 
+			case TASK_SERVICE_CHANGED -> "Сервис: %s → %s".formatted(
+					getName(payload.path("oldService")),
+					getName(payload.path("newService"))
+			);
+
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> "Исполнитель: %s → %s".formatted(
 					getUserName(payload.path("oldExecutor")),
 					getUserName(payload.path("newExecutor"))
@@ -174,6 +182,12 @@ public class TaskHistoryService {
 			}
 
 			case TASK_UPDATED -> "Обновлены данные заявки";
+
+			case FIRST_RESPONSE_SLA_WARNING -> "До первого ответа осталось %s сек.".formatted(
+					payload.path("remainingSeconds").asText("0")
+			);
+
+			case FIRST_RESPONSE_SLA_BREACHED -> "Срок первого ответа нарушен";
 
 			default -> "";
 		};
@@ -296,6 +310,13 @@ public class TaskHistoryService {
 					"Тип заявки",
 					getTaskTypeName(payload.path("oldType")),
 					getTaskTypeName(payload.path("newType"))
+			));
+
+			case TASK_SERVICE_CHANGED -> List.of(change(
+					"service",
+					"Сервис",
+					getName(payload.path("oldService")),
+					getName(payload.path("newService"))
 			));
 
 			case TASK_ASSIGNEE_CHANGED, TASK_EXECUTOR_CHANGED -> List.of(change(

@@ -13,8 +13,10 @@ public enum TriggerType {
 	ATTACHMENT_ADDED,
 
 	// ---- SLA / таймеры ----
-	SLA_WARNING,                     // скоро нарушится
-	SLA_BREACHED,                    // нарушен
+	SLA_WARNING,                     // скоро нарушится срок решения
+	SLA_BREACHED,                    // нарушен срок решения
+	FIRST_RESPONSE_SLA_WARNING,      // скоро нарушится срок первого ответа
+	FIRST_RESPONSE_SLA_BREACHED,     // нарушен срок первого ответа
 	SLA_STARTED,
 	SLA_PAUSED,
 	SLA_RESUMED,
@@ -29,6 +31,7 @@ public enum TriggerType {
 	TASK_STATUS_CHANGED,
 	TASK_PRIORITY_CHANGED,
 	TASK_TYPE_CHANGED,                // изменён тип заявки
+	TASK_SERVICE_CHANGED,             // изменён обслуживаемый сервис
 	TASK_ASSIGNEE_CHANGED,
 	TASK_GROUP_CHANGED,
 	TASK_TAG_ADDED,
@@ -62,6 +65,7 @@ public enum TriggerType {
 	// ---- интеграции ----
 	WEBHOOK_RECEIVED,                // входящий вебхук
 	INTEGRATION_EVENT_RECEIVED,      // event bus / сторонние события
+	COMMUNICATION_SEND_REQUESTED,   // internal outbox command for external channel delivery
 
 	// ---- расписание ----
 	WORKING_HOURS_STARTED,

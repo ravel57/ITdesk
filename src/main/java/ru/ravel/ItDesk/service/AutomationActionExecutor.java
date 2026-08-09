@@ -6,6 +6,7 @@ import jakarta.annotation.Nullable;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.AnswerRequired;
 import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
@@ -135,6 +136,17 @@ public class AutomationActionExecutor {
 
 		public Long id() {
 			return resolveClientId(ctx);
+		}
+
+		public void setAnswerRequired() {
+			Long clientId = resolveClientId(ctx);
+			Long messageId = resolveMessageId(ctx);
+			if (clientId == null || messageId == null) {
+				log.warn("client.setAnswerRequired skipped: clientId/messageId is null, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			clientService.answerRequiredForSystem(clientId, messageId, AnswerRequired.ANSWER_REQUIRED);
+			log.info("AUTO client.setAnswerRequired(clientId={}, messageId={})", clientId, messageId);
 		}
 
 		public void sendMessage(String text) {
@@ -836,6 +848,14 @@ public class AutomationActionExecutor {
 			return null;
 		}
 		return readLong(e.getPayload(), "client.id");
+	}
+
+	private Long resolveMessageId(AutomationExecutionContext ctx) {
+		Event e = ctx.getEvent();
+		if (e == null) {
+			return null;
+		}
+		return readLong(e.getPayload(), "message.id");
 	}
 
 	private Long resolveTaskId(AutomationExecutionContext ctx) {

@@ -82,6 +82,7 @@ public class ExportService {
 					"Статус",
 					"Приоритет",
 					"Тип",
+					"Сервис",
 					"Закрыта",
 					"Дедлайн",
 					"SLA старт",
@@ -118,6 +119,7 @@ public class ExportService {
 				writeCell(row, col++, getStatusName(task.getStatus()), styles.cellStyle());
 				writeCell(row, col++, getPriorityName(task.getPriority()), styles.cellStyle());
 				writeCell(row, col++, getTaskTypeName(task.getType()), styles.cellStyle());
+				writeCell(row, col++, getServiceName(task.getService()), styles.cellStyle());
 				writeCell(row, col++, Boolean.TRUE.equals(task.getCompleted()) ? "Да" : "Нет", styles.cellStyle());
 				writeCell(row, col++, formatDate(task.getDeadline(), formatter), styles.cellStyle());
 				writeCell(row, col++, task.getSla() == null ? "" : formatDate(task.getSla().getStartDate(), formatter), styles.cellStyle());
@@ -195,6 +197,9 @@ public class ExportService {
 		if (!filters.typeIds().isEmpty() && (task.getType() == null || !filters.typeIds().contains(task.getType().getId()))) {
 			return false;
 		}
+		if (!filters.serviceIds().isEmpty() && (task.getService() == null || !filters.serviceIds().contains(task.getService().getId()))) {
+			return false;
+		}
 		if (!filters.tagIds().isEmpty() && !hasAnyTag(task, filters.tagIds())) {
 			return false;
 		}
@@ -226,7 +231,7 @@ public class ExportService {
 		Cell titleCell = titleRow.createCell(0);
 		titleCell.setCellValue("Отчет по заявкам");
 		titleCell.setCellStyle(styles.titleStyle());
-		sheet.addMergedRegion(new CellRangeAddress(titleRow.getRowNum(), titleRow.getRowNum(), 0, 16));
+		sheet.addMergedRegion(new CellRangeAddress(titleRow.getRowNum(), titleRow.getRowNum(), 0, lastColumn));
 		Row generatedRow = sheet.createRow(rowNum++);
 		writeKeyValue(generatedRow, "Сформировано", ZonedDateTime.now(filters.zoneId()).format(DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm")), styles);
 
@@ -366,6 +371,14 @@ public class ExportService {
 	}
 
 
+	private String getServiceName(ru.ravel.ItDesk.model.Service service) {
+		if (service == null) return "";
+		String code = Objects.toString(service.getCode(), "").trim();
+		String name = Objects.toString(service.getName(), "").trim();
+		return code.isBlank() ? name : name.isBlank() ? code : code + " · " + name;
+	}
+
+
 	private String getTags(Task task) {
 		return Objects.requireNonNullElse(task.getTags(), List.<Tag>of()).stream()
 				.filter(Objects::nonNull)
@@ -410,6 +423,7 @@ public class ExportService {
 			Set<Long> executorIds,
 			Set<Long> organizationIds,
 			Set<Long> typeIds,
+			Set<Long> serviceIds,
 			Set<Long> tagIds,
 			Boolean completed,
 			ZoneId zoneId
@@ -429,6 +443,7 @@ public class ExportService {
 					parseIds(safe.get("executorIds")),
 					parseIds(safe.get("organizationIds")),
 					parseIds(safe.get("typeIds")),
+					parseIds(safe.get("serviceIds")),
 					parseIds(safe.get("tagIds")),
 					parseBooleanFilter(safe.get("completed")),
 					zoneId
@@ -450,6 +465,7 @@ public class ExportService {
 			result.put("Исполнители ID", joinIds(executorIds));
 			result.put("Организации ID", joinIds(organizationIds));
 			result.put("Типы заявок ID", joinIds(typeIds));
+			result.put("Сервисы ID", joinIds(serviceIds));
 			result.put("Теги ID", joinIds(tagIds));
 			result.put("Закрыта", completed == null ? "Все" : completed ? "Да" : "Нет");
 			return result;

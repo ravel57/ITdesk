@@ -32,6 +32,7 @@ public class SchedulerService {
 	private final GlobalSearchService globalSearchService;
 	private final TaskService taskService;
 	private final UserNotificationService userNotificationService;
+	private final IncidentService incidentService;
 
 
 	@Scheduled(fixedRate = 500, timeUnit = TimeUnit.MILLISECONDS)
@@ -72,7 +73,9 @@ public class SchedulerService {
 		List<Task> overdueTasks = taskRepository.findOverdueNotCompleted(ZonedDateTime.now());
 		for (Task task : overdueTasks) {
 			if (!automationOutboxRepository.existsByTriggerTypeAndTaskId(TriggerType.TASK_OVERDUE.name(), task.getId())) {
-				eventPublisher.publish(TriggerType.TASK_OVERDUE, Map.of("task", task));
+				eventPublisher.publish(TriggerType.TASK_OVERDUE, Map.of(
+						"task", Map.of("id", task.getId())
+				));
 			}
 		}
 	}
@@ -94,4 +97,11 @@ public class SchedulerService {
 	void checkUnansweredChatNotifications() {
 		userNotificationService.checkUnansweredChatNotifications();
 	}
+
+
+	@Scheduled(fixedDelay = 1, timeUnit = TimeUnit.MINUTES)
+	void checkIncidentCommunicationDeadlines() {
+		incidentService.checkCommunicationDeadlines();
+	}
+
 }

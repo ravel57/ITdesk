@@ -48,13 +48,28 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 	) {
 		messages
 				.nullDestMatcher().permitAll()
+				// OBSERVER is read-only and must not acknowledge support messages.
+				// Keep this matcher before the generic /app/** rule.
+				.simpDestMatchers("/app/mark-read").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
 				.simpDestMatchers("/app/**").authenticated()
-				.simpSubscribeDestMatchers("/topic/authenticated-users/**").hasAnyRole("ADMIN", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients/**").hasAnyRole("ADMIN", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/clients-for-observer/**").hasRole("OBSERVER")
+				.simpSubscribeDestMatchers("/topic/authenticated-users/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/clients/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpSubscribeDestMatchers(
+						"/topic/client-messages/**",
+						"/topic/client-message-edited/**",
+						"/topic/client-message-deleted/**"
+				).hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/clients-for-observer/**").denyAll()
+				.simpSubscribeDestMatchers(
+						"/user/topic/observer-client-messages/**",
+						"/user/topic/observer-client-message-edited/**",
+						"/user/topic/observer-client-message-deleted/**"
+				).hasRole("OBSERVER")
+				.simpSubscribeDestMatchers("/user/queue/client-portal-messages").hasRole("CLIENT")
 				.simpSubscribeDestMatchers("/user/**").authenticated()
 				.simpSubscribeDestMatchers("/queue/**").authenticated()
-				.simpSubscribeDestMatchers("/topic/**").authenticated()
+				// Клиентский портал не должен иметь доступ к общим операторским топикам.
+				.simpSubscribeDestMatchers("/topic/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
 				.anyMessage().denyAll();
 		return messages.build();
 	}
@@ -84,6 +99,9 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 	@Override
 	public void registerStompEndpoints(@NotNull StompEndpointRegistry registry) {
 		registry.addEndpoint("/ws")
+				.setAllowedOriginPatterns("*")
+				.withSockJS();
+		registry.addEndpoint("/client-portal-ws")
 				.setAllowedOriginPatterns("*")
 				.withSockJS();
 	}

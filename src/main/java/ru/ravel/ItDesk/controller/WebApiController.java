@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import ru.ravel.ItDesk.component.LicenseStarter;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.CancellationException;
+import java.util.function.Supplier;
 
 
 @RestController
@@ -31,6 +33,7 @@ public class WebApiController {
 	private final TaskFilterService taskFilterService;
 	private final TagService tagService;
 	private final OrganizationService organizationService;
+	private final OrganizationVisitReasonService organizationVisitReasonService;
 	private final UserService userService;
 	private final TelegramService telegramService;
 	private final StatusService statusService;
@@ -56,20 +59,26 @@ public class WebApiController {
 	private final AppSettingsRepository appSettingsRepository;
 	private final SupportLineService supportLineService;
 	private final ClientRepository clientRepository;
+	private final IncidentService incidentService;
+	private final ServiceCatalogService serviceCatalogService;
+	private final ZabbixMonitoringService zabbixMonitoringService;
+	private final UserNotificationService userNotificationService;
 
 
 	@GetMapping("/clients")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getClients() {
 		return ResponseEntity.ok().body(clientService.getClients());
 	}
 
 
 	@PostMapping("/client/{clientId}/task")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> newTask(@PathVariable Long clientId, @RequestBody Task task) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(taskService.newTask(clientId, task));
+			Task savedTask = taskService.newTask(clientId, task);
+			webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(clientId, savedTask.getId()));
+			return ResponseEntity.ok().body(savedTask);
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -77,7 +86,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/client/{clientId}/task")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> updateTask(@PathVariable Long clientId, @RequestBody Task task) {
 		if (LicenseStarter.isLicenseActive) {
 			Task savedTask = taskService.updateTask(clientId, task);
@@ -90,28 +99,28 @@ public class WebApiController {
 
 
 	@PostMapping("/tasks-page")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getTasksPage(@RequestBody Map<String, Object> request) {
 		return ResponseEntity.ok().body(taskService.getTasksPage(request));
 	}
 
 
 	@GetMapping("/client/{clientId}/task-pings")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getTaskPings(@PathVariable Long clientId) {
 		return ResponseEntity.ok().body(taskService.getTaskPingsForCurrentUser(clientId));
 	}
 
 
 	@GetMapping("/client-files/{clientId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getClientFiles(@PathVariable Long clientId) {
 		return ResponseEntity.ok().body(clientService.getClientFiles(clientId));
 	}
 
 
 	@GetMapping("/client/{clientId}/task/{taskId}/files")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getTaskFiles(
 			@PathVariable Long clientId,
 			@PathVariable Long taskId
@@ -121,7 +130,7 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/task/{taskId}/message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> addTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody Message message) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -138,7 +147,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/client/{clientId}/task/{taskId}/message/{messageId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> editTaskMessage(
 			@PathVariable Long clientId,
 			@PathVariable Long taskId,
@@ -162,7 +171,7 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/task/{taskId}/mark-message-read")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> markMessageRead(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody UserId userId) {
 		if (LicenseStarter.isLicenseActive) {
 			clientService.markMessageRead(taskId, userId);
@@ -174,14 +183,14 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/task/{taskId}/search-messages")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> searchTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody MessageText messageText) {
 		return ResponseEntity.ok().body(clientService.searchTaskMessage(taskId, messageText));
 	}
 
 
 	@PostMapping("/client/{clientId}/message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -195,7 +204,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/client/{clientId}/message/{messageId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> editMessage(
 			@PathVariable Long clientId,
 			@PathVariable Long messageId,
@@ -215,7 +224,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/client/{clientId}/message/{messageId}/answer-required")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> answerRequired(
 			@PathVariable Long clientId,
 			@PathVariable Long messageId,
@@ -229,7 +238,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/client/{clientId}/client")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(clientService.updateClient(clientId, client));
@@ -240,10 +249,17 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/link-message-to-task")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> linkMessageToTask(@PathVariable Long clientId, @RequestBody MessageTask messageTask) {
 		if (LicenseStarter.isLicenseActive) {
-			return ResponseEntity.ok().body(clientService.linkToTask(messageTask));
+			MessageTask linkedMessageTask = clientService.linkToTask(messageTask);
+			Long taskId = messageTask != null && messageTask.getTask() != null
+					? messageTask.getTask().getId()
+					: null;
+			if (taskId != null) {
+				webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(clientId, taskId));
+			}
+			return ResponseEntity.ok().body(linkedMessageTask);
 		} else {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
 		}
@@ -251,14 +267,14 @@ public class WebApiController {
 
 
 	@GetMapping("/client/{clientId}/linked-message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getLinkedMessage(@PathVariable Long clientId, @RequestParam Long linkedMessageId) {
 		return ResponseEntity.ok().body(clientService.getMessagesUntilLinkedMessage(clientId, linkedMessageId));
 	}
 
 
 	@DeleteMapping("/client/{clientId}/delete-message/{messageId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteMessage(@PathVariable Long clientId, @PathVariable Long messageId) {
 		if (LicenseStarter.isLicenseActive) {
 			boolean isDeleted = clientService.deleteMessage(clientId, messageId);
@@ -290,26 +306,28 @@ public class WebApiController {
 
 
 	@GetMapping("/client/{clientId}/messages-page")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getPageOfMessages(@PathVariable Long clientId, @RequestParam Integer page) {
 		return ResponseEntity.ok().body(clientService.getPageOfMessages(clientId, page));
 	}
 
 
 	@PostMapping("/client/{clientId}/search-messages")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> searchMessages(@PathVariable Long clientId, @RequestBody MessageText messageText) {
 		return ResponseEntity.ok().body(clientService.searchMessages(clientId, messageText));
 	}
 
 
 	@GetMapping("/filters")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getFilters() {
-		return ResponseEntity.ok().body(taskFilterService.getAll());
+		return ResponseEntity.ok().body(taskFilterService.getVisibleFilters());
 	}
 
 
 	@PostMapping("/filter")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> saveTaskFilter(@RequestBody TaskFilter taskFilter) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(taskFilterService.saveTaskFilter(taskFilter));
@@ -320,7 +338,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/filter/{filterId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> deleteTaskFilter(@PathVariable Long filterId) {
 		if (LicenseStarter.isLicenseActive) {
 			taskFilterService.deleteTaskFilter(filterId);
@@ -332,9 +350,16 @@ public class WebApiController {
 
 
 	@GetMapping("/users")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getUsers() {
 		return ResponseEntity.ok().body(userService.getUsers());
+	}
+
+
+	@GetMapping("/users/manage")
+	@PreAuthorize("hasRole('ADMIN')")
+	public ResponseEntity<Object> getManageableUsers() {
+		return ResponseEntity.ok().body(userService.getManageableUsers());
 	}
 
 
@@ -403,14 +428,14 @@ public class WebApiController {
 
 
 	@GetMapping("/tags")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getTags() {
 		return ResponseEntity.ok().body(tagService.getTags());
 	}
 
 
 	@PostMapping("/tag")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newTag(@RequestBody Tag tag) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(tagService.newTag(tag));
@@ -421,7 +446,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/tag")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateTag(@RequestBody Tag tag) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(tagService.updateTag(tag));
@@ -432,7 +457,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/tag/{tagId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteTag(@PathVariable Long tagId) {
 		if (LicenseStarter.isLicenseActive) {
 			tagService.deleteTag(tagId);
@@ -444,7 +469,7 @@ public class WebApiController {
 
 
 	@GetMapping("/organizations")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getOrganizations() {
 		return ResponseEntity.ok().body(
 				userService.filterOrganizationsByCurrentUser(organizationService.getOrganizations())
@@ -453,14 +478,14 @@ public class WebApiController {
 
 
 	@GetMapping("/organizations/task-stats")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getOrganizationTaskStats() {
 		return ResponseEntity.ok().body(taskService.getOrganizationTaskStats());
 	}
 
 
 	@PostMapping("/organization")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(organizationService.newOrganization(organization));
@@ -471,7 +496,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/organization")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateOrganization(@RequestBody Organization organization) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(organizationService.updateOrganization(organization));
@@ -482,7 +507,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/organization/{organizationId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteOrganization(@PathVariable Long organizationId) {
 		if (LicenseStarter.isLicenseActive) {
 			organizationService.deleteOrganization(organizationId);
@@ -494,7 +519,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/organizations/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortOrganizations(@RequestBody List<Organization> organizations) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(organizationService.resortOrganizations(organizations));
@@ -504,8 +529,56 @@ public class WebApiController {
 	}
 
 
+	@GetMapping("/visit-reasons")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> getOrganizationVisitReasons() {
+		return ResponseEntity.ok().body(organizationVisitReasonService.getReasons());
+	}
+
+
+	@PostMapping("/visit-reason")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> newOrganizationVisitReason(@RequestBody OrganizationVisitReason reason) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		return ResponseEntity.ok().body(organizationVisitReasonService.newReason(reason));
+	}
+
+
+	@PatchMapping("/visit-reason")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> updateOrganizationVisitReason(@RequestBody OrganizationVisitReason reason) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		return ResponseEntity.ok().body(organizationVisitReasonService.updateReason(reason));
+	}
+
+
+	@DeleteMapping("/visit-reason/{reasonId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> deleteOrganizationVisitReason(@PathVariable Long reasonId) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		organizationVisitReasonService.deleteReason(reasonId);
+		return ResponseEntity.noContent().build();
+	}
+
+
+	@PatchMapping("/visit-reasons/resort")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> resortOrganizationVisitReasons(@RequestBody List<OrganizationVisitReason> reasons) {
+		if (!LicenseStarter.isLicenseActive) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
+		return ResponseEntity.ok().body(organizationVisitReasonService.resortReasons(reasons));
+	}
+
+
 	@GetMapping("/organization/{organizationId}/visits")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getOrganizationVisits(@PathVariable Long organizationId) {
 		userService.assertCurrentUserCanAccessOrganizationId(organizationId);
 		return ResponseEntity.ok().body(organizationService.getVisitHistory(organizationId));
@@ -513,7 +586,7 @@ public class WebApiController {
 
 
 	@PostMapping("/organization/{organizationId}/visits")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> addOrganizationVisit(@PathVariable Long organizationId, @RequestBody OrganizationVisit visit) {
 		if (LicenseStarter.isLicenseActive) {
 			userService.assertCurrentUserCanAccessOrganizationId(organizationId);
@@ -525,7 +598,7 @@ public class WebApiController {
 
 
 	@GetMapping("/telegram-bots")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getTelegramBots() {
 		return ResponseEntity.ok().body(telegramService.getTelegramBots());
 	}
@@ -566,7 +639,7 @@ public class WebApiController {
 
 
 	@GetMapping("/emails")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getEmailAccounts() {
 		return ResponseEntity.ok().body(emailService.getEmailsAccounts());
 	}
@@ -607,7 +680,7 @@ public class WebApiController {
 
 
 	@GetMapping("/whatsapp")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getWhatsappAccounts() {
 		return ResponseEntity.ok().body(whatsappService.getWhatsappAccounts());
 	}
@@ -648,7 +721,7 @@ public class WebApiController {
 
 
 	@PostMapping("/status")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(statusService.newStatus(status));
@@ -659,7 +732,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/status")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateStatus(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -674,7 +747,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/status/{statusId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteStatus(@PathVariable Long statusId) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -696,7 +769,7 @@ public class WebApiController {
 
 
 	@PostMapping("/priority")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.newPriority(priority));
@@ -707,7 +780,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/priority")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updatePriority(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.updatePriority(priority));
@@ -718,7 +791,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/priority/{priorityId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {
 		if (LicenseStarter.isLicenseActive) {
 			priorityService.deletePriority(priorityId);
@@ -730,7 +803,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/priority/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> prioritySetDefaultSelection(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.prioritySetDefaultSelection(priority));
@@ -741,7 +814,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/priority/set-high-priority")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> prioritySetCritical(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.prioritySetCritical(priority));
@@ -752,7 +825,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/priorities/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
@@ -763,14 +836,14 @@ public class WebApiController {
 
 
 	@GetMapping("/templates")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getTemplates() {
 		return ResponseEntity.ok().body(templateService.getTemplates());
 	}
 
 
 	@PostMapping("/template")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newTemplate(@RequestBody Template template) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(templateService.newTemplate(template));
@@ -781,7 +854,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/template")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateTemplate(@RequestBody Template template) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(templateService.updateTemplate(template));
@@ -792,7 +865,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/template/{templateId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteTemplate(@PathVariable Long templateId) {
 		if (LicenseStarter.isLicenseActive) {
 			templateService.deleteTemplate(templateId);
@@ -804,7 +877,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/status/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> statusSetDefaultSelection(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(statusService.statusSetDefaultSelection(status));
@@ -815,7 +888,7 @@ public class WebApiController {
 
 
 	@PostMapping("/get-authenticated-users")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getAllAuthenticatedUsers() {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(userService.getUsersOnline());
@@ -832,7 +905,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/status/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortStatuses(@RequestBody List<Status> statuses) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
@@ -843,7 +916,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/templates/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortTemplates(@RequestBody List<Template> templates) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(templateService.resortTemplates(templates));
@@ -854,7 +927,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/tags/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortTags(@RequestBody List<Tag> tags) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(tagService.resortTags(tags));
@@ -889,7 +962,7 @@ public class WebApiController {
 
 
 	@PostMapping("/task/{taskId}/sla/pause")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> pauseTaskSla(
 			@PathVariable Long taskId,
 			@RequestParam(required = false) String reason
@@ -912,7 +985,7 @@ public class WebApiController {
 
 
 	@PostMapping("/task/{taskId}/sla/resume")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> resumeTaskSla(@PathVariable Long taskId) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -932,7 +1005,7 @@ public class WebApiController {
 
 
 	@GetMapping("/task/{taskId}/sla/info")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<SlaInfoDto> getTaskSlaInfo(@PathVariable Long taskId) {
 		Task task;
 		try {
@@ -986,7 +1059,7 @@ public class WebApiController {
 
 
 	@PostMapping("/sla")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> postSla(@RequestBody OrganizationPriorityDuration sla) {
 		if (LicenseStarter.isLicenseActive) {
 			organizationService.setSla(sla);
@@ -998,14 +1071,14 @@ public class WebApiController {
 
 
 	@GetMapping("knowledge-base")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getKnowledgeBase() {
 		return ResponseEntity.ok().body(knowledgeService.getKnowledgeBase());
 	}
 
 
 	@PostMapping("knowledge-base")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newKnowledge(@RequestBody Knowledge knowledge) {
 		if (LicenseStarter.isLicenseActive) {
 			Knowledge savedKnowledge = knowledgeService.newKnowledge(knowledge);
@@ -1018,7 +1091,7 @@ public class WebApiController {
 
 
 	@PatchMapping("knowledge-base")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateKnowledge(@RequestBody Knowledge knowledge) {
 		if (LicenseStarter.isLicenseActive) {
 			Knowledge savedKnowledge = knowledgeService.updateKnowledge(knowledge);
@@ -1031,7 +1104,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("knowledge-base/{knowledgeId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteKnowledge(@PathVariable Long knowledgeId) {
 		if (LicenseStarter.isLicenseActive) {
 			knowledgeService.deleteKnowledge(knowledgeId);
@@ -1044,7 +1117,7 @@ public class WebApiController {
 
 
 	@PostMapping("knowledge-base/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortKnowledgeBase(@RequestBody List<Knowledge> knowledge) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(knowledgeService.resortKnowledge(knowledge));
@@ -1055,28 +1128,35 @@ public class WebApiController {
 
 
 	@GetMapping("/support-lines")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getSupportLines() {
 		return ResponseEntity.ok(supportLineService.getSupportLines());
 	}
 
 
+	@GetMapping("/support-lines/{supportLineId}/assignable-users")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getSupportLineAssignableUsers(@PathVariable Long supportLineId) {
+		return ResponseEntity.ok(supportLineService.getAssignableUsers(supportLineId));
+	}
+
+
 	@PostMapping("/support-line")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> createSupportLine(@RequestBody SupportLine supportLine) {
 		return ResponseEntity.ok(supportLineService.create(supportLine));
 	}
 
 
 	@PatchMapping("/support-line")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateSupportLine(@RequestBody SupportLine supportLine) {
 		return ResponseEntity.ok(supportLineService.update(supportLine));
 	}
 
 
 	@DeleteMapping("/support-line/{supportLineId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteSupportLine(@PathVariable Long supportLineId) {
 		supportLineService.delete(supportLineId);
 		return ResponseEntity.noContent().build();
@@ -1084,21 +1164,21 @@ public class WebApiController {
 
 
 	@PatchMapping("/support-line/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> setDefaultSupportLine(@RequestBody SupportLine supportLine) {
 		return ResponseEntity.ok(supportLineService.setDefault(supportLine));
 	}
 
 
 	@PatchMapping("/support-lines/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortSupportLines(@RequestBody List<SupportLine> supportLines) {
 		return ResponseEntity.ok(supportLineService.resort(supportLines));
 	}
 
 
 	@GetMapping("/triggers")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> getAllTriggers() {
 		return ResponseEntity.ok().body(automationTriggerService.list());
 
@@ -1106,7 +1186,7 @@ public class WebApiController {
 
 
 	@PostMapping("/trigger")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> newTrigger(@RequestBody AutomationTriggerDto dto) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(automationTriggerService.create(dto));
@@ -1117,7 +1197,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/trigger")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateTrigger(@RequestBody AutomationTriggerDto dto) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -1132,7 +1212,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/trigger/{triggerId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteTrigger(@PathVariable Long triggerId) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -1148,7 +1228,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/triggers/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortTriggers(@RequestBody List<AutomationTriggerDto> triggers) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(automationTriggerService.resort(triggers));
@@ -1160,28 +1240,28 @@ public class WebApiController {
 
 
 	@PostMapping("/automation/test")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> testAutomationRouting(@RequestBody AutomationRoutingTestRequest request) {
 		return ResponseEntity.ok(automationRoutingTestService.test(request));
 	}
 
 
 	@PostMapping("/automation/validate")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> validateAutomationWorkflow(@RequestBody AutomationWorkflowValidationRequest request) {
 		return ResponseEntity.ok(automationWorkflowEngine.validateAsMap(request.getWorkflowDefinition()));
 	}
 
 
 	@GetMapping("/automation/expression/roots")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> getAutomationExpressionRoots() {
 		return ResponseEntity.ok(automationExpressionMetadataService.roots());
 	}
 
 
 	@PostMapping("/automation/expression/suggestions")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> getAutomationExpressionSuggestions(
 			@RequestBody AutomationExpressionSuggestionRequest request
 	) {
@@ -1190,21 +1270,21 @@ public class WebApiController {
 
 
 	@GetMapping("/automation/runs")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> getAutomationRuns(@RequestParam Long triggerId) {
 		return ResponseEntity.ok(automationWorkflowRunService.recent(triggerId));
 	}
 
 
 	@PostMapping("/automation/runs/{runId}/retry")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> retryAutomationRun(@PathVariable Long runId) {
 		return ResponseEntity.ok(automationWorkflowRunService.retry(runId));
 	}
 
 
 	@PostMapping("/automation/runs/{runId}/approve")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> approveAutomationRun(
 			@PathVariable Long runId,
 			@RequestBody(required = false) AutomationApprovalDecisionRequest request
@@ -1214,7 +1294,7 @@ public class WebApiController {
 
 
 	@PostMapping("/automation/runs/{runId}/reject")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> rejectAutomationRun(
 			@PathVariable Long runId,
 			@RequestBody(required = false) AutomationApprovalDecisionRequest request
@@ -1224,14 +1304,14 @@ public class WebApiController {
 
 
 	@DeleteMapping("/automation/runs/{runId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> cancelAutomationRun(@PathVariable Long runId) {
 		return ResponseEntity.ok(automationWorkflowRunService.cancel(runId));
 	}
 
 
 	@GetMapping("/trigger-types")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> getTriggerTypes() {
 		return ResponseEntity.ok(
 				Arrays.stream(TriggerType.values()).map(Enum::name).toList()
@@ -1240,7 +1320,7 @@ public class WebApiController {
 
 
 	@PostMapping("/support/send-message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> sendSupportMessage(@RequestBody Message message) {
 		return ResponseEntity.ok(userService.sendSupportMessage(message));
 	}
@@ -1261,7 +1341,7 @@ public class WebApiController {
 
 
 	@GetMapping("/export/to-excel")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<byte[]> exportToExcel(@RequestParam Map<String, String> params) {
 		return exportService.exportToExcel(params);
 	}
@@ -1276,13 +1356,21 @@ public class WebApiController {
 				.filter(this::isEnabledLicenseUser)
 				.filter(user -> hasUserAuthority(user, "ADMIN"))
 				.count();
+		long managersCount = users.stream()
+				.filter(this::isEnabledLicenseUser)
+				.filter(user -> hasUserAuthority(user, "MANAGER"))
+				.count();
 		long operatorsCount = users.stream()
 				.filter(this::isEnabledLicenseUser)
 				.filter(user -> hasUserAuthority(user, "OPERATOR"))
 				.count();
+		long observersCount = users.stream()
+				.filter(this::isEnabledLicenseUser)
+				.filter(user -> hasUserAuthority(user, "OBSERVER"))
+				.count();
 		long usedUsersCount = users.stream()
 				.filter(this::isEnabledLicenseUser)
-				.filter(user -> hasUserAuthority(user, "ADMIN") || hasUserAuthority(user, "OPERATOR"))
+				.filter(user -> !hasUserAuthority(user, "CLIENT"))
 				.count();
 		long availableUsersCount = Math.max(0L, maxUsers - usedUsersCount);
 		Map<String, Object> result = new LinkedHashMap<>();
@@ -1292,7 +1380,9 @@ public class WebApiController {
 		result.put("usedUsersCount", usedUsersCount);
 		result.put("availableUsersCount", availableUsersCount);
 		result.put("adminsCount", adminsCount);
+		result.put("managersCount", managersCount);
 		result.put("operatorsCount", operatorsCount);
+		result.put("observersCount", observersCount);
 		return ResponseEntity.ok().body(result);
 	}
 
@@ -1314,13 +1404,21 @@ public class WebApiController {
 
 
 	@GetMapping("/llm-query")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> getLlmQuery(@RequestParam String query) {
 		return ResponseEntity.ok().body(llmService.askLlm(query));
 	}
 
 
+	@GetMapping("/analytics/dictionaries")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getAnalyticsDictionaries() {
+		return ResponseEntity.ok(analyticsService.getDictionaries());
+	}
+
+
 	@GetMapping("/analytics/summary")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getAnalyticsSummary(
 			@RequestParam(required = false) String from,
 			@RequestParam(required = false) String to,
@@ -1353,7 +1451,7 @@ public class WebApiController {
 
 
 	@PostMapping("/analytics/summary/cancel")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> cancelAnalyticsSummary(HttpSession session) {
 		analyticsService.cancelSummary(getAnalyticsRequestKey(session));
 		return ResponseEntity.noContent().build();
@@ -1369,7 +1467,7 @@ public class WebApiController {
 
 
 	@GetMapping("/global-search")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> globalSearch(
 			@RequestParam String query,
 			@RequestParam(required = false) String types
@@ -1401,14 +1499,14 @@ public class WebApiController {
 
 
 	@GetMapping("/global-search/count")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> countGlobalSearchDocuments() {
 		return ResponseEntity.ok().body(globalSearchService.countDocuments());
 	}
 
 
 	@GetMapping("/task/{taskId}/history")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getTaskHistory(@PathVariable Long taskId) {
 		taskService.getTaskForCurrentUser(taskId);
 		return ResponseEntity.ok(taskHistoryService.getTaskHistory(taskId));
@@ -1416,14 +1514,14 @@ public class WebApiController {
 
 
 	@GetMapping("/task-types")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getTaskTypes() {
 		return ResponseEntity.ok(taskService.getTaskTypes());
 	}
 
 
 	@GetMapping("/task-types/{id}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getTaskType(@PathVariable Long id) {
 		try {
 			return ResponseEntity.ok(taskService.getTaskType(id));
@@ -1434,7 +1532,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/task-types/resort")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> resortTaskTypes(@RequestBody List<TaskType> taskTypes) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1444,7 +1542,7 @@ public class WebApiController {
 
 
 	@PostMapping("/task-types")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> createTaskType(@RequestBody TaskType taskType) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1459,7 +1557,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/task-types/{id}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> updateTaskType(
 			@PathVariable Long id,
 			@RequestBody TaskType taskType
@@ -1477,7 +1575,7 @@ public class WebApiController {
 
 
 	@PatchMapping("/task-types/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> taskTypeSetDefaultSelection(@RequestBody TaskType taskType) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1491,7 +1589,7 @@ public class WebApiController {
 
 
 	@DeleteMapping("/task-types/{id}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> deleteTaskType(@PathVariable Long id) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1506,21 +1604,55 @@ public class WebApiController {
 
 
 	@GetMapping("/user/notification-settings")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getCurrentUserNotificationSettings() {
 		return ResponseEntity.ok().body(userService.getCurrentUserNotificationSettings());
 	}
 
 
 	@PatchMapping("/user/notification-settings")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> updateCurrentUserNotificationSettings(@RequestBody UserNotificationSettingsDto dto) {
 		return ResponseEntity.ok().body(userService.updateCurrentUserNotificationSettings(dto));
 	}
 
 
+	@GetMapping("/user/notifications")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getCurrentUserNotifications(
+			@RequestParam(defaultValue = "1") int page,
+			@RequestParam(defaultValue = "20") int size,
+			@RequestParam(defaultValue = "false") boolean unreadOnly
+	) {
+		return ResponseEntity.ok(
+				userNotificationService.getCurrentUserNotifications(page, size, unreadOnly)
+		);
+	}
+
+
+	@PatchMapping("/user/notifications/{notificationId}/read")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> markCurrentUserNotificationAsRead(@PathVariable Long notificationId) {
+		try {
+			return ResponseEntity.ok(
+					userNotificationService.markCurrentUserNotificationAsRead(notificationId)
+			);
+		} catch (IllegalArgumentException exception) {
+			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(exception.getMessage());
+		}
+	}
+
+
+	@PatchMapping("/user/notifications/read-all")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> markAllCurrentUserNotificationsAsRead() {
+		long unreadCount = userNotificationService.markAllCurrentUserNotificationsAsRead();
+		return ResponseEntity.ok(Map.of("unreadCount", unreadCount));
+	}
+
+
 	@PostMapping("/client/{clientId}/task/{taskId}/sla/pause")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> pauseClientTaskSla(@PathVariable Long clientId, @PathVariable Long taskId, @RequestParam(required = false) String reason) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1540,7 +1672,7 @@ public class WebApiController {
 
 
 	@PostMapping("/client/{clientId}/task/{taskId}/sla/resume")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
 	public ResponseEntity<Object> resumeClientTaskSla(@PathVariable Long clientId, @PathVariable Long taskId) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -1560,7 +1692,7 @@ public class WebApiController {
 
 
 	@GetMapping("/client/{clientId}/task/{taskId}/sla/info")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public ResponseEntity<Object> getClientTaskSlaInfo(@PathVariable Long clientId, @PathVariable Long taskId) {
 		Task task;
 		try {
@@ -1580,7 +1712,7 @@ public class WebApiController {
 
 
 	@GetMapping("/session/current")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<Object> getCurrentSession(HttpSession session) {
 		return ResponseEntity.ok(Map.of(
 				"sessionId", session.getId()
@@ -1589,17 +1721,18 @@ public class WebApiController {
 
 
 	@GetMapping("/user/current")
-	@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<Object> getCurrentUser() {
 		return ResponseEntity.ok(userService.getCurrentUser());
 	}
 
 
 	@GetMapping("/settings/general")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
 	public ResponseEntity<Object> getGeneralSettings() {
 		return ResponseEntity.ok(appSettingsService.getGeneralSettings());
 	}
+
 
 	@PatchMapping("/settings/general")
 	@PreAuthorize("hasAnyRole('ADMIN')")
@@ -1611,6 +1744,341 @@ public class WebApiController {
 			return ResponseEntity.ok(appSettingsService.updateGeneralSettings(settings));
 		} catch (IllegalArgumentException e) {
 			return ResponseEntity.badRequest().body(e.getMessage());
+		}
+	}
+
+
+	@PostMapping("/incidents-page")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getIncidentsPage(@RequestBody(required = false) IncidentPageRequest request) {
+		return incidentResponse(() -> incidentService.getPage(request));
+	}
+
+
+	@GetMapping("/incident-update-templates")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> getIncidentUpdateTemplates() {
+		return incidentResponse(incidentService::getUpdateTemplates);
+	}
+
+
+	@GetMapping("/client/incidents/active")
+	@PreAuthorize("hasRole('CLIENT')")
+	public ResponseEntity<Object> getClientActiveIncidents() {
+		return incidentResponse(incidentService::getPortalActiveIncidents);
+	}
+
+
+	@PatchMapping("/client/incident/{incidentId}/recovery-confirmation")
+	@PreAuthorize("hasRole('CLIENT')")
+	public ResponseEntity<Object> confirmClientIncidentRecovery(
+			@PathVariable Long incidentId,
+			@RequestBody IncidentRecoveryConfirmationRequest request
+	) {
+		return incidentResponse(() -> incidentService.confirmPortalRecovery(incidentId, request));
+	}
+
+
+	@GetMapping("/task/{taskId}/incident")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getIncidentByTask(@PathVariable Long taskId) {
+		return incidentResponse(() -> incidentService.getIncidentByTask(taskId));
+	}
+
+
+	@GetMapping("/incident/{incidentId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getIncident(@PathVariable Long incidentId) {
+		return incidentResponse(() -> incidentService.getIncident(incidentId));
+	}
+
+
+	@PostMapping("/incident")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> createIncident(@RequestBody IncidentSaveRequest request) {
+		return incidentResponse(() -> incidentService.createIncident(request));
+	}
+
+
+	@PostMapping("/incident/from-tasks")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> createIncidentFromTasks(@RequestBody IncidentSaveRequest request) {
+		return incidentResponse(() -> incidentService.createFromTasks(request));
+	}
+
+
+	@PatchMapping("/incident/{incidentId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> updateIncident(
+			@PathVariable Long incidentId,
+			@RequestBody IncidentSaveRequest request
+	) {
+		return incidentResponse(() -> incidentService.updateIncident(incidentId, request));
+	}
+
+
+	@PostMapping("/incident/{incidentId}/timeline")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> addIncidentTimelineEntry(
+			@PathVariable Long incidentId,
+			@RequestBody IncidentTimelineRequest request
+	) {
+		return incidentResponse(() -> incidentService.addTimelineEntry(incidentId, request));
+	}
+
+
+	@PostMapping("/incident/{incidentId}/tasks")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> linkIncidentTasks(
+			@PathVariable Long incidentId,
+			@RequestBody IncidentTaskIdsRequest request
+	) {
+		return incidentResponse(() -> incidentService.linkTasks(incidentId, request));
+	}
+
+
+	@DeleteMapping("/incident/{incidentId}/task/{taskId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> unlinkIncidentTask(
+			@PathVariable Long incidentId,
+			@PathVariable Long taskId
+	) {
+		return incidentResponse(() -> incidentService.unlinkTask(incidentId, taskId));
+	}
+
+
+	@PatchMapping("/incident/{incidentId}/task/{taskId}/recovery-confirmation")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> setIncidentTaskRecoveryConfirmation(
+			@PathVariable Long incidentId,
+			@PathVariable Long taskId,
+			@RequestBody IncidentRecoveryConfirmationRequest request
+	) {
+		return incidentResponse(() -> incidentService.setRecoveryConfirmation(incidentId, taskId, request));
+	}
+
+
+	@PostMapping("/incident/{incidentId}/tasks/bulk")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> runIncidentBulkTaskOperation(
+			@PathVariable Long incidentId,
+			@RequestBody IncidentBulkTaskRequest request
+	) {
+		return incidentResponse(() -> incidentService.bulkTaskOperation(incidentId, request));
+	}
+
+
+	@GetMapping("/incident/{incidentId}/suggestions")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> getIncidentSuggestions(@PathVariable Long incidentId) {
+		return incidentResponse(() -> incidentService.getSuggestions(incidentId));
+	}
+
+
+
+	@GetMapping("/services")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getServices(@RequestParam(defaultValue = "false") boolean includeInactive) {
+		return catalogResponse(() -> serviceCatalogService.getServices(includeInactive));
+	}
+
+
+	@GetMapping("/services/{serviceId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getService(@PathVariable Long serviceId) {
+		return catalogResponse(() -> serviceCatalogService.getService(serviceId));
+	}
+
+
+	@GetMapping("/organization/{organizationId}/services")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
+	public ResponseEntity<Object> getOrganizationServices(@PathVariable Long organizationId) {
+		userService.assertCurrentUserCanAccessOrganizationId(organizationId);
+		return catalogResponse(() -> serviceCatalogService.getAvailableServices(organizationId));
+	}
+
+
+	@PostMapping("/service")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> createService(@RequestBody ServiceSaveRequest request) {
+		return catalogResponse(() -> serviceCatalogService.create(request));
+	}
+
+
+	@PatchMapping("/service/{serviceId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> updateService(@PathVariable Long serviceId, @RequestBody ServiceSaveRequest request) {
+		return catalogResponse(() -> serviceCatalogService.update(serviceId, request));
+	}
+
+
+	@DeleteMapping("/service/{serviceId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> deleteService(@PathVariable Long serviceId) {
+		return catalogResponse(() -> {
+			serviceCatalogService.delete(serviceId);
+			return Map.of("success", true);
+		});
+	}
+
+
+	@PatchMapping("/services/resort")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> resortServices(@RequestBody List<Long> orderedIds) {
+		return catalogResponse(() -> serviceCatalogService.resort(orderedIds));
+	}
+
+
+	@GetMapping("/service-criticalities")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getServiceCriticalities() {
+		return catalogResponse(serviceCatalogService::getCriticalities);
+	}
+
+
+	@PostMapping("/service-criticality")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> createServiceCriticality(@RequestBody ServiceCriticality criticality) {
+		criticality.setId(null);
+		return catalogResponse(() -> serviceCatalogService.saveCriticality(criticality));
+	}
+
+
+	@PatchMapping("/service-criticality")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> updateServiceCriticality(@RequestBody ServiceCriticality criticality) {
+		return catalogResponse(() -> serviceCatalogService.saveCriticality(criticality));
+	}
+
+
+	@DeleteMapping("/service-criticality/{criticalityId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> deleteServiceCriticality(@PathVariable Long criticalityId) {
+		return catalogResponse(() -> {
+			serviceCatalogService.deleteCriticality(criticalityId);
+			return Map.of("success", true);
+		});
+	}
+
+
+	@GetMapping("/organization-service-assignments")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> getOrganizationServiceAssignments(
+			@RequestParam(required = false) Long organizationId,
+			@RequestParam(required = false) Long serviceId
+	) {
+		return catalogResponse(() -> serviceCatalogService.getAssignments(organizationId, serviceId));
+	}
+
+
+	@PostMapping("/organization-service-assignment")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> createOrganizationServiceAssignment(@RequestBody OrganizationServiceAssignmentRequest request) {
+		return catalogResponse(() -> serviceCatalogService.createAssignment(request));
+	}
+
+
+	@PatchMapping("/organization-service-assignment/{assignmentId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> updateOrganizationServiceAssignment(
+			@PathVariable Long assignmentId,
+			@RequestBody OrganizationServiceAssignmentRequest request
+	) {
+		return catalogResponse(() -> serviceCatalogService.updateAssignment(assignmentId, request));
+	}
+
+
+	@DeleteMapping("/organization-service-assignment/{assignmentId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> deleteOrganizationServiceAssignment(@PathVariable Long assignmentId) {
+		return catalogResponse(() -> {
+			serviceCatalogService.deleteAssignment(assignmentId);
+			return Map.of("success", true);
+		});
+	}
+
+
+	@GetMapping("/zabbix-integrations")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> getZabbixIntegrations() {
+		return catalogResponse(zabbixMonitoringService::getIntegrations);
+	}
+
+
+	@PostMapping("/zabbix-integration")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> createZabbixIntegration(@RequestBody ZabbixIntegrationRequest request) {
+		return catalogResponse(() -> zabbixMonitoringService.createIntegration(request));
+	}
+
+
+	@PatchMapping("/zabbix-integration/{integrationId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> updateZabbixIntegration(
+			@PathVariable Long integrationId,
+			@RequestBody ZabbixIntegrationRequest request
+	) {
+		return catalogResponse(() -> zabbixMonitoringService.updateIntegration(integrationId, request));
+	}
+
+
+	@DeleteMapping("/zabbix-integration/{integrationId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> deleteZabbixIntegration(@PathVariable Long integrationId) {
+		return catalogResponse(() -> {
+			zabbixMonitoringService.deleteIntegration(integrationId);
+			return Map.of("success", true);
+		});
+	}
+
+
+	@PostMapping("/zabbix-integration/{integrationId}/test")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	public ResponseEntity<Object> testZabbixIntegration(@PathVariable Long integrationId) {
+		return catalogResponse(() -> zabbixMonitoringService.testIntegration(integrationId));
+	}
+
+
+	@PostMapping("/service/{serviceId}/monitoring/check")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	public ResponseEntity<Object> checkServiceMonitoring(@PathVariable Long serviceId) {
+		return catalogResponse(() -> zabbixMonitoringService.checkService(serviceId));
+	}
+
+
+	@GetMapping("/services/monitoring/summary")
+	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	public ResponseEntity<Object> getServiceMonitoringSummary() {
+		return catalogResponse(zabbixMonitoringService::getMonitoringSummary);
+	}
+
+
+	private ResponseEntity<Object> catalogResponse(Supplier<Object> operation) {
+		try {
+			return ResponseEntity.ok(operation.get());
+		} catch (AccessDeniedException exception) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", Objects.toString(exception.getMessage(), "Нет доступа")));
+		} catch (IllegalArgumentException | IllegalStateException exception) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", Objects.toString(exception.getMessage(), "Операция не выполнена")));
+		}
+	}
+
+
+	private ResponseEntity<Object> incidentResponse(Supplier<Object> operation) {
+		try {
+			return ResponseEntity.ok(operation.get());
+		} catch (AccessDeniedException exception) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+					"message",
+					exception.getMessage() == null ? "Нет доступа к инциденту" : exception.getMessage()
+			));
+		} catch (IllegalArgumentException | IllegalStateException exception) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+					"message",
+					exception.getMessage() == null
+							? "Операция с инцидентом не выполнена"
+							: exception.getMessage()
+			));
 		}
 	}
 

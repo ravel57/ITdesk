@@ -48,6 +48,8 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@ManyToMany(fetch = FetchType.EAGER)
 	protected List<Organization> availableOrganizations;
 
+	protected Long clientId;
+
 	@Builder.Default
 	@JsonIgnore
 	protected Boolean isAccountNonExpired = true;

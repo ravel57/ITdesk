@@ -10,6 +10,7 @@ import ru.ravel.ItDesk.model.Task;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import ru.ravel.ItDesk.model.Message;
 
 
@@ -38,6 +39,27 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
 
 	Optional<Client> findFirstByEmail(String email);
+
+
+	@Query("""
+			select
+				t.id as taskId,
+				c.id as clientId,
+				organization.id as organizationId
+			from Client c
+			join c.tasks t
+			left join c.organization organization
+			where t.id in :taskIds
+			""")
+	List<TaskAnalyticsAccessRow> findTaskAnalyticsAccessRows(@Param("taskIds") Set<Long> taskIds);
+
+
+	@Query("""
+			select c.id
+			from Client c
+			where c.organization.id in :organizationIds
+			""")
+	Set<Long> findClientIdsByOrganizationIds(@Param("organizationIds") Set<Long> organizationIds);
 
 
 	@Query("""
@@ -160,6 +182,15 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 		order by m.date desc, m.id desc
 		""")
 	List<FileAccessRow> findTaskMessageFileAccessRowsByFileUuid(@Param("fileUuid") String fileUuid);
+
+
+	interface TaskAnalyticsAccessRow {
+		Long getTaskId();
+
+		Long getClientId();
+
+		Long getOrganizationId();
+	}
 
 
 	interface FileAccessRow {

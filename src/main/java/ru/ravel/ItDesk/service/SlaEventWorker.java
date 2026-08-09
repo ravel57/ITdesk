@@ -10,8 +10,11 @@ import ru.ravel.ItDesk.repository.AutomationOutboxRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 
 import java.time.Duration;
+import java.time.ZonedDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 
 @Service
@@ -51,6 +54,28 @@ public class SlaEventWorker {
 				publishOnce(task, sla, TriggerType.SLA_WARNING, remaining);
 			}
 		}
+		checkFirstResponseSla();
+	}
+
+	private void checkFirstResponseSla() {
+		// The deadline is already calculated by the selected service calendar.
+		// Do not globally suppress checks outside the common work schedule: a
+		// service may use a 24/7 policy.
+		for (Task task : taskRepository.findAllActiveAwaitingFirstResponse()) {
+			if (task == null || Boolean.TRUE.equals(task.getFrozen()) || task.getFirstResponseDeadline() == null) {
+				continue;
+			}
+			Duration remaining = Duration.between(ZonedDateTime.now(), task.getFirstResponseDeadline());
+			long totalSeconds = Math.max(1L, Math.multiplyExact(
+					Objects.requireNonNullElse(task.getFirstResponseSlaMinutes(), 1).longValue(),
+					60L
+			));
+			if (remaining.isNegative() || remaining.isZero()) {
+				publishFirstResponseOnce(task, TriggerType.FIRST_RESPONSE_SLA_BREACHED, remaining);
+			} else if (remaining.compareTo(Duration.ofSeconds(Math.max(1L, totalSeconds / 2L))) <= 0) {
+				publishFirstResponseOnce(task, TriggerType.FIRST_RESPONSE_SLA_WARNING, remaining);
+			}
+		}
 	}
 
 	private void publishOnce(Task task, Sla sla, TriggerType triggerType, Duration remaining) {
@@ -64,9 +89,34 @@ public class SlaEventWorker {
 		}
 
 		eventPublisher.publish(triggerType, Map.of(
-				"task", task,
-				"sla", sla,
+				"task", taskRef(task),
+				"sla", slaSnapshot(sla),
 				"remainingSeconds", remaining.getSeconds()
 		));
+	}
+
+	private void publishFirstResponseOnce(Task task, TriggerType triggerType, Duration remaining) {
+		if (outboxRepository.existsByTriggerTypeAndTaskId(triggerType.name(), task.getId())) {
+			return;
+		}
+		eventPublisher.publish(triggerType, Map.of(
+				"task", taskRef(task),
+				"firstResponseDeadline", task.getFirstResponseDeadline(),
+				"remainingSeconds", remaining.getSeconds()
+		));
+	}
+
+
+	private Map<String, Object> taskRef(Task task) {
+		return Map.of("id", task.getId());
+	}
+
+
+	private Map<String, Object> slaSnapshot(Sla sla) {
+		Map<String, Object> snapshot = new LinkedHashMap<>();
+		snapshot.put("id", sla.getId());
+		snapshot.put("startDate", sla.getStartDate());
+		snapshot.put("duration", sla.getDuration());
+		return snapshot;
 	}
 }

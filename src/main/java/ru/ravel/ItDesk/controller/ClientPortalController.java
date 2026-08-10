@@ -17,6 +17,7 @@ import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.ClientPortalMessageRequest;
 import ru.ravel.ItDesk.service.ClientPortalService;
 
+
 @RestController
 @RequestMapping("/api/v1/portal")
 @RequiredArgsConstructor

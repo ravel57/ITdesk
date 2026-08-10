@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpSession;
@@ -28,6 +29,7 @@ import java.util.function.Supplier;
 @RequestMapping("/api/v1")
 @CrossOrigin
 @RequiredArgsConstructor
+@Hidden
 @Tag(name = "Настройки", description = "Общие настройки приложения.")
 public class SettingsController {
 

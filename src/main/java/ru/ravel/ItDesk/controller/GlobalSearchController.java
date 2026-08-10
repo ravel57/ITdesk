@@ -1,33 +1,24 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import ru.ravel.ItDesk.component.LicenseStarter;
-import ru.ravel.ItDesk.dto.*;
-import ru.ravel.ItDesk.model.*;
-import ru.ravel.ItDesk.model.automatosation.TriggerType;
-import ru.ravel.ItDesk.repository.AppSettingsRepository;
-import ru.ravel.ItDesk.repository.ClientRepository;
-import ru.ravel.ItDesk.service.*;
+import ru.ravel.ItDesk.service.GlobalSearchAccessService;
+import ru.ravel.ItDesk.service.GlobalSearchService;
 
-import java.math.BigDecimal;
-import java.time.Duration;
-import java.time.ZonedDateTime;
-import java.util.*;
-import java.util.concurrent.CancellationException;
-import java.util.function.Supplier;
+import java.util.HashSet;
+import java.util.Set;
+
 
 @RestController
 @RequestMapping("/api/v1")
 @CrossOrigin
 @RequiredArgsConstructor
+@Hidden
 @Tag(name = "Глобальный поиск", description = "Поиск по индексируемым сущностям и обслуживание поискового индекса.")
 public class GlobalSearchController {
 

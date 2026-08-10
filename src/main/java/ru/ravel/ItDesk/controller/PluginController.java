@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
@@ -17,8 +18,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+
 @RestController
 @RequestMapping("/api/v1/plugins")
+@Hidden
 @Tag(name = "Плагины", description = "Установка, включение, отключение и выполнение native hooks плагинов.")
 public class PluginController {
 
@@ -175,7 +178,7 @@ public class PluginController {
 	}
 
 
-	@Operation(summary = "Получить frontend-схему плагинов", description = "Возвращает зарегистрированные frontend extensions установленных плагинов.")
+	@Operation(hidden = true, summary = "Получить frontend-схему плагинов", description = "Возвращает зарегистрированные frontend extensions установленных плагинов.")
 	@GetMapping("/frontend-schema")
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public Map<String, Object> getFrontendSchema() {
@@ -183,7 +186,7 @@ public class PluginController {
 	}
 
 
-	@Operation(summary = "Выполнить native hook", description = "Выполняет зарегистрированный native hook плагинов в сформированном контексте выполнения.")
+	@Operation(hidden = true, summary = "Выполнить native hook", description = "Выполняет зарегистрированный native hook плагинов в сформированном контексте выполнения.")
 	@PostMapping("/native-hook/execute")
 	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
 	public Map<String, Object> executeNativeHook(@RequestBody NativeHookExecuteRequest request) {

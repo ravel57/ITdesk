@@ -149,10 +149,11 @@ springdoc:
   paths-to-match: /api/**
   show-actuator: false
   swagger-ui:
+    try-it-out-enabled: false
+    supported-submit-methods: []
     path: /swagger-ui.html
     csrf:
       enabled: true
-    try-it-out-enabled: true
     operations-sorter: method
     tags-sorter: alpha
     persist-authorization: false

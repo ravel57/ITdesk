@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +28,7 @@ import java.util.Map;
 @RequestMapping("/api/v1/jwt")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
+@Hidden
 @Tag(name = "JWT", description = "Выпуск, аудит и отзыв JWT для доступа к API. Управление доступно только администраторам из веб-сессии.")
 public class JwtController {
 

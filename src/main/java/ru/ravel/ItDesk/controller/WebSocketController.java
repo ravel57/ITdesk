@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -18,6 +19,7 @@ import java.security.Principal;
 
 @Controller
 @RequiredArgsConstructor
+@Hidden
 public class WebSocketController {
 
 	private final ClientService clientService;

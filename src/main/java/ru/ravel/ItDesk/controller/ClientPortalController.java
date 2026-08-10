@@ -1,5 +1,6 @@
 package ru.ravel.ItDesk.controller;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import ru.ravel.ItDesk.service.ClientPortalService;
 @RequestMapping("/api/v1/portal")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('CLIENT')")
+@Hidden
 @Tag(name = "Клиентский портал", description = "Профиль клиента и обмен сообщениями через клиентский портал.")
 public class ClientPortalController {
 

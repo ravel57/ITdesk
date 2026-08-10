@@ -131,7 +131,7 @@ class WebSecurityConfig {
 								"/swagger-ui/**",
 								"/v3/api-docs",
 								"/v3/api-docs/**"
-						).hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+						).hasAnyRole("ADMIN")
 						.requestMatchers(
 								"/",
 								"/index.html",

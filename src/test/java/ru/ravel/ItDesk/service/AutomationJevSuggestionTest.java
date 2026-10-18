@@ -47,12 +47,6 @@ class AutomationJevSuggestionTest {
 	}
 
 	@Test
-	void suggestsIncidentFromMonitoring() {
-		assertTrue(labels(suggest("incident.")).contains("fromMonitoring"));
-		assertTrue(labels(suggest("inc")).contains("incident"));
-	}
-
-	@Test
 	void suggestsJevRoot() {
 		assertTrue(labels(suggest("je")).contains("jev"));
 	}

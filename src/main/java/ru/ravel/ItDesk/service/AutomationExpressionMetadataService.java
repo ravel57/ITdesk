@@ -109,6 +109,7 @@ public class AutomationExpressionMetadataService {
 		register(actionDefinitions, "task", "Действия с заявкой", typeFactory.constructType(AutomationActionExecutor.TaskApi.class));
 		register(actionDefinitions, "notify", "Уведомления", typeFactory.constructType(AutomationActionExecutor.NotifyApi.class));
 		register(actionDefinitions, "webhook", "Внешние вызовы", typeFactory.constructType(AutomationActionExecutor.WebhookApi.class));
+		register(actionDefinitions, "jev", "Решения Jev (ИИ)", typeFactory.constructType(AutomationActionExecutor.JevApi.class));
 		register(actionDefinitions, "incident", "Инциденты", typeFactory.constructType(AutomationActionExecutor.IncidentApi.class));
 		this.actionRoots = Collections.unmodifiableMap(actionDefinitions);
 	}

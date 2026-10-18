@@ -22,6 +22,10 @@
     </appender>
     <logger name="org.springframework" level="INFO"/>
     <logger name="SECURITY_AUDIT" level="INFO"/>
+    <!--<logger name="ru.ravel.ItDesk" level="INFO"/>-->
+    <!--<logger name="ru.ravel.ItDesk" level="WARN"/>-->
+    <!-- Решения Jev: запросы, ответы, применённые изменения. DEBUG добавляет сырые ответы API -->
+    <logger name="JEV" level="${JEV_LOG_LEVEL:-INFO}"/>
     <logger name="ru.ravel.ItDesk" level="INFO"/>
     <!-- Шумные классы: при недоступном Zabbix опрос раз в минуту пишет стек по каждому сервису, статус и так виден в интерфейсе -->
     <logger name="ru.ravel.ItDesk.service.ZabbixMonitoringService" level="ERROR"/>

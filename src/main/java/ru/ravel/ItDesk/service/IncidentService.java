@@ -458,6 +458,15 @@ public class IncidentService {
 
 
 	/**
+	 * Создаёт инцидент в статусе DRAFT от имени системы и привязывает свободные заявки.
+	 */
+	@Transactional
+	public SupportIncident createDraftForSystem(SystemIncidentDraft draft) {
+		return createDraftForSystem(draft, "детектор Jev");
+	}
+
+
+	/**
 	 * То же с указанием источника для таймлайна, например «мониторинг Zabbix».
 	 */
 	@Transactional
@@ -694,6 +703,7 @@ public class IncidentService {
 		publishIncidentChanged(incident.getId());
 		return toDetailDto(incident);
 	}
+
 
 
 	private void applyRequest(SupportIncident incident, IncidentSaveRequest request) {
@@ -1323,6 +1333,11 @@ public class IncidentService {
 		if (line == null) return null;
 		return Map.of("id", line.getId(), "name", Objects.toString(line.getName(), ""), "level", Objects.requireNonNullElse(line.getLevel(), 0));
 	}
+
+	private Map<String, Object> template(String key, String title, String text) {
+		return Map.of("key", key, "title", title, "text", text);
+	}
+
 
 	private long secondsBetween(ZonedDateTime start, ZonedDateTime end) {
 		if (start == null || end == null || end.isBefore(start)) return 0;

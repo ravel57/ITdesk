@@ -349,4 +349,35 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
 	List<Task> findAllByServiceId(Long serviceId);
 
+
+	/** Заявка, в которую входит сообщение (message.task_id). */
+	@Query("select t from Task t join t.messages m where m.id = :messageId")
+	List<Task> findAllByMessageId(@Param("messageId") Long messageId);
+
+
+	/** Открытые заявки клиента, созданные не раньше указанного момента, новые первыми. */
+	@Query("""
+			select t
+			from Client c
+			join c.tasks t
+			where c.id = :clientId
+			  and t.completed = false
+			  and t.createdAt >= :since
+			order by t.createdAt desc
+			""")
+	List<Task> findOpenByClientIdCreatedSince(
+			@Param("clientId") Long clientId,
+			@Param("since") ZonedDateTime since
+	);
+
+
+	/** Открытые заявки всех клиентов, созданные не раньше указанного момента, новые первыми. */
+	@Query("""
+			select t
+			from Task t
+			where coalesce(t.completed, false) = false
+			  and t.createdAt >= :since
+			order by t.createdAt desc
+			""")
+	List<Task> findOpenCreatedSince(@Param("since") ZonedDateTime since, Pageable pageable);
 }

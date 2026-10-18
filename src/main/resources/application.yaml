@@ -5,8 +5,6 @@ server:
       timeout: 120m
       cookie:
         http-only: true
-        # Secure-cookie браузер принимает только по HTTPS или на localhost. Для проверки по http с IP в локальной сети:
-        # SESSION_COOKIE_SECURE=false (в рабочем окружении не выключать)
         secure: ${SESSION_COOKIE_SECURE:true}
         same-site: lax
         max-age: -1
@@ -101,6 +99,13 @@ app:
   demo:
     allow-destructive-reset: ${ALLOW_DESTRUCTIVE_DEMO_RESET:false}
   llm-url: ${LLM_URL:}
+  jev:
+    enabled: ${JEV_ENABLED:false}
+    url: ${JEV_URL:https://api.typesafe.ai/v1/systemone}
+    api-key: ${JEV_API_KEY:}
+    model: ${JEV_MODEL:jev-latest}
+    connect-timeout-ms: ${JEV_CONNECT_TIMEOUT_MS:3000}
+    request-timeout-ms: ${JEV_REQUEST_TIMEOUT_MS:10000}
   automation:
     worker-delay-ms: 200
     http:

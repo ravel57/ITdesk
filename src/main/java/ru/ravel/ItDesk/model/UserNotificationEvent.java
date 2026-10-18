@@ -13,8 +13,6 @@ public enum UserNotificationEvent {
 	INCIDENT_UPDATE_OVERDUE,
 	INCIDENT_DETECTED,
 	INCIDENT_RECOVERY_FAILED,
-	/** Zabbix (веб-хук) молчит дольше таймаута: ни событий, ни проверок связи */
 	MONITORING_CONNECTION_LOST,
-	/** Zabbix снова вышел на связь */
 	MONITORING_CONNECTION_RESTORED,
 }

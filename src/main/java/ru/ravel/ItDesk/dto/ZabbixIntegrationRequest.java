@@ -11,4 +11,10 @@ public class ZabbixIntegrationRequest {
 	private String apiToken;
 	private Boolean active;
 	private Integer requestTimeoutSeconds;
+	/** API_POLLING или WEBHOOK; null — API_POLLING */
+	private String mode;
+	private String publicUrl;
+	private String eventTimezone;
+	private String allowedIps;
+	private Integer heartbeatTimeoutMinutes;
 }

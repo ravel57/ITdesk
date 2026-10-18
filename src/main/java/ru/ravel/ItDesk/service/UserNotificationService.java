@@ -164,6 +164,10 @@ public class UserNotificationService {
 					message,
 					"Просрочено обязательное обновление по инциденту"
 			);
+			case INCIDENT_DETECTED -> fallback(message, "Обнаружен массовый сбой");
+			case INCIDENT_RECOVERY_FAILED -> fallback(message, "Клиент сообщает, что после восстановления проблема сохраняется");
+			case MONITORING_CONNECTION_LOST -> fallback(message, "Нет связи с Zabbix");
+			case MONITORING_CONNECTION_RESTORED -> fallback(message, "Связь с Zabbix восстановлена");
 		};
 	}
 
@@ -201,7 +205,8 @@ public class UserNotificationService {
 
 			case DEADLINE_OVERDUE -> Boolean.TRUE.equals(user.getNotifyDeadlineOverdue());
 
-			case INCIDENT_UPDATE_OVERDUE -> true;
+			case INCIDENT_UPDATE_OVERDUE, INCIDENT_DETECTED, INCIDENT_RECOVERY_FAILED,
+			     MONITORING_CONNECTION_LOST, MONITORING_CONNECTION_RESTORED -> true;
 		};
 	}
 
@@ -423,9 +428,11 @@ public class UserNotificationService {
 						authority.equals("ADMIN") ||
 								authority.equals("MANAGER") ||
 								authority.equals("OPERATOR") ||
+								authority.equals("SENIOR_OPERATOR") ||
 								authority.equals("ROLE_ADMIN") ||
 								authority.equals("ROLE_MANAGER") ||
-								authority.equals("ROLE_OPERATOR")
+								authority.equals("ROLE_OPERATOR") ||
+								authority.equals("ROLE_SENIOR_OPERATOR")
 				);
 	}
 

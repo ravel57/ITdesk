@@ -35,11 +35,14 @@ import java.util.function.Supplier;
 public class MonitoringController {
 
 	private final ZabbixMonitoringService zabbixMonitoringService;
+	private final ZabbixWebhookService zabbixWebhookService;
+	private final ZabbixMediaTypeGenerator zabbixMediaTypeGenerator;
+	private final ru.ravel.ItDesk.repository.ZabbixIntegrationRepository zabbixIntegrationRepository;
 
 
 	@Operation(summary = "Получить интеграции Zabbix", description = "Получить интеграции Zabbix. Endpoint GET /api/v1/zabbix-integrations; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/zabbix-integrations")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
 	public ResponseEntity<Object> getZabbixIntegrations() {
 		return catalogResponse(zabbixMonitoringService::getIntegrations);
 	}
@@ -47,7 +50,7 @@ public class MonitoringController {
 
 	@Operation(summary = "Создать интеграцию Zabbix", description = "Создать интеграцию Zabbix. Endpoint POST /api/v1/zabbix-integration; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/zabbix-integration")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
 	public ResponseEntity<Object> createZabbixIntegration(@RequestBody ZabbixIntegrationRequest request) {
 		return catalogResponse(() -> zabbixMonitoringService.createIntegration(request));
 	}
@@ -55,7 +58,7 @@ public class MonitoringController {
 
 	@Operation(summary = "Обновить интеграцию Zabbix", description = "Обновить интеграцию Zabbix. Endpoint PATCH /api/v1/zabbix-integration/{integrationId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/zabbix-integration/{integrationId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
 	public ResponseEntity<Object> updateZabbixIntegration(
 			@PathVariable Long integrationId,
 			@RequestBody ZabbixIntegrationRequest request
@@ -66,7 +69,7 @@ public class MonitoringController {
 
 	@Operation(summary = "Удалить интеграцию Zabbix", description = "Удалить интеграцию Zabbix. Endpoint DELETE /api/v1/zabbix-integration/{integrationId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/zabbix-integration/{integrationId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
 	public ResponseEntity<Object> deleteZabbixIntegration(@PathVariable Long integrationId) {
 		return catalogResponse(() -> {
 			zabbixMonitoringService.deleteIntegration(integrationId);
@@ -77,15 +80,57 @@ public class MonitoringController {
 
 	@Operation(summary = "Проверить интеграцию Zabbix", description = "Проверить интеграцию Zabbix. Endpoint POST /api/v1/zabbix-integration/{integrationId}/test; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/zabbix-integration/{integrationId}/test")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
 	public ResponseEntity<Object> testZabbixIntegration(@PathVariable Long integrationId) {
 		return catalogResponse(() -> zabbixMonitoringService.testIntegration(integrationId));
 	}
 
 
+	@Operation(summary = "Выпустить токен веб-хука Zabbix",
+			description = "Новый токен заменяет прежний и показывается один раз. Endpoint POST /api/v1/zabbix-integration/{integrationId}/webhook-token")
+	@PostMapping("/zabbix-integration/{integrationId}/webhook-token")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
+	public ResponseEntity<Object> issueZabbixWebhookToken(@PathVariable Long integrationId) {
+		return catalogResponse(() -> zabbixWebhookService.issueToken(integrationId));
+	}
+
+
+	@Operation(summary = "Тип оповещений ULDesk для импорта в Zabbix",
+			description = "YAML для Zabbix 6.0+. Если передан только что выпущенный токен, он подставляется в параметры.")
+	@PostMapping("/zabbix-integration/{integrationId}/media-type")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
+	public ResponseEntity<Object> getZabbixMediaType(
+			@PathVariable Long integrationId,
+			@RequestBody(required = false) Map<String, String> request
+	) {
+		return catalogResponse(() -> {
+			ZabbixIntegration integration = zabbixIntegrationRepository.findById(integrationId).orElseThrow();
+			if (integration.getWebhookKey() == null) {
+				throw new IllegalStateException("Сначала выпустите токен веб-хука");
+			}
+			String token = request == null ? null : request.get("token");
+			return Map.of(
+					"fileName", zabbixMediaTypeGenerator.fileName(integration),
+					"content", zabbixMediaTypeGenerator.yaml(integration, token)
+			);
+		});
+	}
+
+
+	@Operation(summary = "Журнал приёма веб-хуков Zabbix", description = "Endpoint GET /api/v1/zabbix-integration/{integrationId}/webhook-log")
+	@GetMapping("/zabbix-integration/{integrationId}/webhook-log")
+	@PreAuthorize("@access.can('MONITORING_MANAGE')")
+	public ResponseEntity<Object> getZabbixWebhookLog(
+			@PathVariable Long integrationId,
+			@RequestParam(defaultValue = "100") int limit
+	) {
+		return catalogResponse(() -> zabbixWebhookService.log(integrationId, limit));
+	}
+
+
 	@Operation(summary = "Запустить проверку мониторинга услуги", description = "Запустить проверку мониторинга услуги. Endpoint POST /api/v1/service/{serviceId}/monitoring/check; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/service/{serviceId}/monitoring/check")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('MONITORING_USE')")
 	public ResponseEntity<Object> checkServiceMonitoring(@PathVariable Long serviceId) {
 		return catalogResponse(() -> zabbixMonitoringService.checkService(serviceId));
 	}
@@ -93,7 +138,7 @@ public class MonitoringController {
 
 	@Operation(summary = "Получить сводку мониторинга услуг", description = "Получить сводку мониторинга услуг. Endpoint GET /api/v1/services/monitoring/summary; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/services/monitoring/summary")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('MONITORING_USE')")
 	public ResponseEntity<Object> getServiceMonitoringSummary() {
 		return catalogResponse(zabbixMonitoringService::getMonitoringSummary);
 	}

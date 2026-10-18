@@ -52,26 +52,28 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 	) {
 		messages
 				.nullDestMatcher().permitAll()
-				// OBSERVER is read-only and must not acknowledge support messages.
+				// OBSERVER is read-only: it may only request its own chat list.
+				// typing, user-online, mark-read and any future /app endpoint stay staff-only.
 				// Keep this matcher before the generic /app/** rule.
-				.simpDestMatchers("/app/mark-read").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-				.simpDestMatchers("/app/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
-				.simpSubscribeDestMatchers("/topic/authenticated-users/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-				.simpSubscribeDestMatchers("/topic/support-messages/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+				.simpDestMatchers("/app/clients/refresh").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
+				.simpDestMatchers("/app/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/authenticated-users/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR")
+				.simpSubscribeDestMatchers("/topic/support-messages/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR")
 				.simpSubscribeDestMatchers("/topic/clients/**").denyAll()
 				.simpSubscribeDestMatchers(
 						"/user/topic/client-messages/**",
 						"/user/topic/client-message-edited/**",
 						"/user/topic/client-message-deleted/**",
 						"/user/topic/mark-read/**"
-				).hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-				.simpSubscribeDestMatchers("/user/topic/clients/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+				).hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR")
+				.simpSubscribeDestMatchers("/user/topic/clients/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
 				.simpSubscribeDestMatchers(
 						"/user/topic/task-messages/**",
 						"/user/topic/task-updated/**",
+						"/user/topic/incidents-updated/**",
 						"/user/topic/user-notification/**",
 						"/user/topic/force-logout/**"
-				).hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+				).hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
 				.simpSubscribeDestMatchers("/topic/clients-for-observer/**").denyAll()
 				.simpSubscribeDestMatchers(
 						"/user/topic/observer-client-messages/**",
@@ -85,6 +87,7 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 						"/topic/mark-read/**",
 						"/topic/task-messages/**",
 						"/topic/task-updated/**",
+						"/topic/incidents-updated/**",
 						"/topic/user-notification/**",
 						"/topic/force-logout/**"
 				).denyAll()
@@ -95,7 +98,7 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 				.simpSubscribeDestMatchers("/user/**").denyAll()
 				.simpSubscribeDestMatchers("/queue/**").denyAll()
 				// Клиентский портал не должен иметь доступ к общим операторским топикам.
-				.simpSubscribeDestMatchers("/topic/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+				.simpSubscribeDestMatchers("/topic/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
 				.anyMessage().denyAll();
 		return messages.build();
 	}

@@ -43,7 +43,7 @@ public class AutomationController {
 
 	@Operation(summary = "Получить триггеры автоматизации", description = "Получить триггеры автоматизации. Endpoint GET /api/v1/triggers; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/triggers")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> getAllTriggers() {
 		return ResponseEntity.ok().body(automationTriggerService.list());
 
@@ -52,7 +52,7 @@ public class AutomationController {
 
 	@Operation(summary = "Создать триггер автоматизации", description = "Создать триггер автоматизации. Endpoint POST /api/v1/trigger; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/trigger")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> newTrigger(@RequestBody AutomationTriggerDto dto) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(automationTriggerService.create(dto));
@@ -64,7 +64,7 @@ public class AutomationController {
 
 	@Operation(summary = "Обновить триггер автоматизации", description = "Обновить триггер автоматизации. Endpoint PATCH /api/v1/trigger; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/trigger")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> updateTrigger(@RequestBody AutomationTriggerDto dto) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -80,7 +80,7 @@ public class AutomationController {
 
 	@Operation(summary = "Удалить триггер автоматизации", description = "Удалить триггер автоматизации. Endpoint DELETE /api/v1/trigger/{triggerId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/trigger/{triggerId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> deleteTrigger(@PathVariable Long triggerId) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -97,7 +97,7 @@ public class AutomationController {
 
 	@Operation(summary = "Изменить порядок триггеров", description = "Изменить порядок триггеров. Endpoint PATCH /api/v1/triggers/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/triggers/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> resortTriggers(@RequestBody List<AutomationTriggerDto> triggers) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(automationTriggerService.resort(triggers));
@@ -109,7 +109,7 @@ public class AutomationController {
 
 	@Operation(summary = "Протестировать маршрутизацию автоматизации", description = "Протестировать маршрутизацию автоматизации. Endpoint POST /api/v1/automation/test; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/automation/test")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> testAutomationRouting(@RequestBody AutomationRoutingTestRequest request) {
 		return ResponseEntity.ok(automationRoutingTestService.test(request));
 	}
@@ -117,7 +117,7 @@ public class AutomationController {
 
 	@Operation(summary = "Проверить workflow автоматизации", description = "Проверить workflow автоматизации. Endpoint POST /api/v1/automation/validate; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/automation/validate")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> validateAutomationWorkflow(@RequestBody AutomationWorkflowValidationRequest request) {
 		return ResponseEntity.ok(automationWorkflowEngine.validateAsMap(request.getWorkflowDefinition()));
 	}
@@ -125,7 +125,7 @@ public class AutomationController {
 
 	@Operation(summary = "Получить корни выражений автоматизации", description = "Получить корни выражений автоматизации. Endpoint GET /api/v1/automation/expression/roots; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/automation/expression/roots")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> getAutomationExpressionRoots() {
 		return ResponseEntity.ok(automationExpressionMetadataService.roots());
 	}
@@ -133,7 +133,7 @@ public class AutomationController {
 
 	@Operation(summary = "Получить подсказки выражений автоматизации", description = "Получить подсказки выражений автоматизации. Endpoint POST /api/v1/automation/expression/suggestions; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/automation/expression/suggestions")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> getAutomationExpressionSuggestions(
 			@RequestBody AutomationExpressionSuggestionRequest request
 	) {
@@ -143,7 +143,7 @@ public class AutomationController {
 
 	@Operation(summary = "Получить запуски автоматизации", description = "Получить запуски автоматизации. Endpoint GET /api/v1/automation/runs; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/automation/runs")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> getAutomationRuns(@RequestParam Long triggerId) {
 		return ResponseEntity.ok(automationWorkflowRunService.recent(triggerId));
 	}
@@ -151,7 +151,7 @@ public class AutomationController {
 
 	@Operation(summary = "Повторить запуск автоматизации", description = "Повторить запуск автоматизации. Endpoint POST /api/v1/automation/runs/{runId}/retry; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/automation/runs/{runId}/retry")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> retryAutomationRun(@PathVariable Long runId) {
 		return ResponseEntity.ok(automationWorkflowRunService.retry(runId));
 	}
@@ -159,7 +159,7 @@ public class AutomationController {
 
 	@Operation(summary = "Подтвердить запуск автоматизации", description = "Подтвердить запуск автоматизации. Endpoint POST /api/v1/automation/runs/{runId}/approve; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/automation/runs/{runId}/approve")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('AUTOMATION_APPROVE')")
 	public ResponseEntity<Object> approveAutomationRun(
 			@PathVariable Long runId,
 			@RequestBody(required = false) AutomationApprovalDecisionRequest request
@@ -170,7 +170,7 @@ public class AutomationController {
 
 	@Operation(summary = "Отклонить запуск автоматизации", description = "Отклонить запуск автоматизации. Endpoint POST /api/v1/automation/runs/{runId}/reject; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/automation/runs/{runId}/reject")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('AUTOMATION_APPROVE')")
 	public ResponseEntity<Object> rejectAutomationRun(
 			@PathVariable Long runId,
 			@RequestBody(required = false) AutomationApprovalDecisionRequest request
@@ -181,7 +181,7 @@ public class AutomationController {
 
 	@Operation(summary = "Отменить запуск автоматизации", description = "Отменить запуск автоматизации. Endpoint DELETE /api/v1/automation/runs/{runId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/automation/runs/{runId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> cancelAutomationRun(@PathVariable Long runId) {
 		return ResponseEntity.ok(automationWorkflowRunService.cancel(runId));
 	}
@@ -189,10 +189,19 @@ public class AutomationController {
 
 	@Operation(summary = "Получить типы триггеров", description = "Получить типы триггеров. Endpoint GET /api/v1/trigger-types; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/trigger-types")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 	public ResponseEntity<Object> getTriggerTypes() {
 		return ResponseEntity.ok(
 				Arrays.stream(TriggerType.values()).map(Enum::name).toList()
 		);
+	}
+
+
+	@Operation(summary = "Получить события автоматизаций с названиями",
+			description = "Endpoint GET /api/v1/trigger-types/options: код события, название на русском и раздел.")
+	@GetMapping("/trigger-types/options")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
+	public ResponseEntity<List<TriggerTypeOption>> getTriggerTypeOptions() {
+		return ResponseEntity.ok(Arrays.stream(TriggerType.values()).map(TriggerTypeOption::of).toList());
 	}
 }

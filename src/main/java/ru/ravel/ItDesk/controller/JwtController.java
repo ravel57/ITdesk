@@ -28,7 +28,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/jwt")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("@access.can('JWT_MANAGE')")
 @Hidden
 @Tag(name = "JWT", description = "Выпуск, аудит и отзыв JWT для доступа к API. Управление доступно только администраторам из веб-сессии.")
 public class JwtController {

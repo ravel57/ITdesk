@@ -31,6 +31,7 @@ import java.util.function.Supplier;
 @Tag(name = "Сообщения клиентов", description = "Сообщения клиента, сообщения задач, связывание и признаки ответа.")
 public class ClientMessageController {
 
+	private final SecurityAuditService securityAuditService;
 	private final ClientService clientService;
 	private final TaskService taskService;
 	private final WebSocketService webSocketService;
@@ -38,7 +39,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Добавить сообщение в заявку", description = "Добавить сообщение в заявку. Endpoint POST /api/v1/client/{clientId}/task/{taskId}/message; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/task/{taskId}/message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> addTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody Message message) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -56,7 +57,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Изменить сообщение заявки", description = "Изменить сообщение заявки. Endpoint PATCH /api/v1/client/{clientId}/task/{taskId}/message/{messageId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/client/{clientId}/task/{taskId}/message/{messageId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> editTaskMessage(
 			@PathVariable Long clientId,
 			@PathVariable Long taskId,
@@ -81,7 +82,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Отметить сообщение прочитанным", description = "Отметить сообщение прочитанным. Endpoint POST /api/v1/client/{clientId}/task/{taskId}/mark-message-read; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/task/{taskId}/mark-message-read")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> markMessageRead(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody UserId userId) {
 		if (LicenseStarter.isLicenseActive) {
 			clientService.markMessageRead(taskId, userId);
@@ -94,7 +95,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Найти сообщение в заявке", description = "Найти сообщение в заявке. Endpoint POST /api/v1/client/{clientId}/task/{taskId}/search-messages; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/task/{taskId}/search-messages")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> searchTaskMessage(@PathVariable Long clientId, @PathVariable Long taskId, @RequestBody MessageText messageText) {
 		return ResponseEntity.ok().body(clientService.searchTaskMessage(taskId, messageText));
 	}
@@ -102,7 +103,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Отправить сообщение клиенту", description = "Отправить сообщение клиенту. Endpoint POST /api/v1/client/{clientId}/message; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> newMessage(@PathVariable Long clientId, @RequestBody Message message) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -117,7 +118,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Изменить сообщение клиента", description = "Изменить сообщение клиента. Endpoint PATCH /api/v1/client/{clientId}/message/{messageId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/client/{clientId}/message/{messageId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> editMessage(
 			@PathVariable Long clientId,
 			@PathVariable Long messageId,
@@ -128,6 +129,8 @@ public class ClientMessageController {
 		}
 		try {
 			return ResponseEntity.ok(clientService.editMessage(clientId, messageId, message));
+		} catch (AccessDeniedException e) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
 		} catch (IllegalArgumentException e) {
 			return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
 		} catch (Exception e) {
@@ -138,7 +141,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Изменить признак необходимости ответа", description = "Изменить признак необходимости ответа. Endpoint PATCH /api/v1/client/{clientId}/message/{messageId}/answer-required; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/client/{clientId}/message/{messageId}/answer-required")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> answerRequired(
 			@PathVariable Long clientId,
 			@PathVariable Long messageId,
@@ -153,7 +156,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Связать сообщение с заявкой", description = "Связать сообщение с заявкой. Endpoint POST /api/v1/client/{clientId}/link-message-to-task; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/link-message-to-task")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> linkMessageToTask(@PathVariable Long clientId, @RequestBody MessageTask messageTask) {
 		if (LicenseStarter.isLicenseActive) {
 			MessageTask linkedMessageTask = clientService.linkToTask(messageTask);
@@ -172,7 +175,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Получить связанное сообщение", description = "Получить связанное сообщение. Endpoint GET /api/v1/client/{clientId}/linked-message; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/client/{clientId}/linked-message")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> getLinkedMessage(@PathVariable Long clientId, @RequestParam Long linkedMessageId) {
 		return ResponseEntity.ok().body(clientService.getMessagesUntilLinkedMessage(clientId, linkedMessageId));
 	}
@@ -180,11 +183,12 @@ public class ClientMessageController {
 
 	@Operation(summary = "Удалить сообщение", description = "Удалить сообщение. Endpoint DELETE /api/v1/client/{clientId}/delete-message/{messageId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/client/{clientId}/delete-message/{messageId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('CHAT_MESSAGE_DELETE')")
 	public ResponseEntity<Object> deleteMessage(@PathVariable Long clientId, @PathVariable Long messageId) {
 		if (LicenseStarter.isLicenseActive) {
 			boolean isDeleted = clientService.deleteMessage(clientId, messageId);
 			if (isDeleted) {
+				securityAuditService.record(SecurityAuditEventType.MESSAGE_DELETED, "Сообщение #" + messageId, "Клиент #" + clientId);
 				return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 			} else {
 				return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
@@ -197,7 +201,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Получить страницу сообщений клиента", description = "Получить страницу сообщений клиента. Endpoint GET /api/v1/client/{clientId}/messages-page; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/client/{clientId}/messages-page")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('CHAT_VIEW')")
 	public ResponseEntity<Object> getPageOfMessages(@PathVariable Long clientId, @RequestParam Integer page) {
 		return ResponseEntity.ok().body(clientService.getPageOfMessages(clientId, page));
 	}
@@ -205,7 +209,7 @@ public class ClientMessageController {
 
 	@Operation(summary = "Найти сообщения клиента", description = "Найти сообщения клиента. Endpoint POST /api/v1/client/{clientId}/search-messages; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/search-messages")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('CHAT_VIEW')")
 	public ResponseEntity<Object> searchMessages(@PathVariable Long clientId, @RequestBody MessageText messageText) {
 		return ResponseEntity.ok().body(clientService.searchMessages(clientId, messageText));
 	}

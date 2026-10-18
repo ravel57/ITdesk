@@ -89,7 +89,8 @@ public class ClientService {
 			Collection<Message> messages = safeCollection(client.getMessages());
 			client.setMessagesRevision(buildMessagesRevision(messages));
 
-			Message latestActivityMessage = findLatestMessage(messages, false);
+			// Для менеджера организации время активности тоже без комментариев и удалённых, иначе оно их выдаёт
+			Message latestActivityMessage = findLatestMessage(messages, hideDeletedLastMessage);
 			client.setLastActivityDate(latestActivityMessage == null ? null : latestActivityMessage.getDate());
 
 			if (hideDeletedLastMessage) {
@@ -175,11 +176,17 @@ public class ClientService {
 	private Message findLatestMessage(Collection<Message> messages, boolean visibleOnly) {
 		return safeCollection(messages).stream()
 				.filter(Objects::nonNull)
-				.filter(message -> !visibleOnly || !Boolean.TRUE.equals(message.getDeleted()))
+				.filter(message -> !visibleOnly || !isHiddenFromObserver(message))
 				.max(Comparator
 						.comparing(Message::getDate, Comparator.nullsFirst(Comparator.naturalOrder()))
 						.thenComparing(Message::getId, Comparator.nullsFirst(Comparator.naturalOrder())))
 				.orElse(null);
+	}
+
+
+	/** Менеджер организации (OBSERVER) не видит удалённые сообщения и внутренние комментарии поддержки. */
+	private static boolean isHiddenFromObserver(Message message) {
+		return Boolean.TRUE.equals(message.getDeleted()) || Boolean.TRUE.equals(message.getIsComment());
 	}
 
 
@@ -529,12 +536,20 @@ public class ClientService {
 			throw new IllegalArgumentException("clientId must not be null");
 		}
 		Client client = getClientForCurrentUser(clientId);
+		Object organizationName = c.get("organization");
+		Organization organization = safeCollection(organizationService.getOrganizations()).stream()
+				.filter(it -> Objects.equals(it.getName(), organizationName))
+				.findFirst().orElse(null);
+		if (organization != null) {
+			// Оператор с ограниченным списком организаций не может перенести клиента в чужую организацию.
+			userService.assertCurrentUserCanAccessOrganizationId(organization.getId());
+		} else {
+			// Клиент без организации виден только пользователям с доступом ко всем организациям.
+			userService.assertCurrentUserCanAccessClient(Client.builder().id(client.getId()).build());
+		}
 		client.setFirstname(Objects.toString(c.get("firstname"), null));
 		client.setLastname(Objects.toString(c.get("lastname"), null));
-		Object organizationName = c.get("organization");
-		client.setOrganization(safeCollection(organizationService.getOrganizations()).stream()
-				.filter(it -> Objects.equals(it.getName(), organizationName))
-				.findFirst().orElse(null));
+		client.setOrganization(organization);
 		client.setMoreInfo(Objects.toString(c.get("moreInfo"), null));
 		clientsRepository.save(client);
 		globalSearchService.indexClient(client);
@@ -676,6 +691,7 @@ public class ClientService {
 		if (Boolean.TRUE.equals(message.getDeleted())) {
 			throw new IllegalStateException("deleted message cannot be edited");
 		}
+		assertCurrentUserCanEditMessage(message);
 		String newText = Objects.toString(payload.getText(), "").trim();
 		if (newText.isBlank()) {
 			throw new IllegalArgumentException("message text must not be blank");
@@ -719,6 +735,28 @@ public class ClientService {
 		);
 		webSocketService.editedMessage(new ClientMessage(client, savedMessage));
 		return savedMessage;
+	}
+
+
+	/**
+	 * Редактировать можно только исходящие сообщения поддержки и комментарии: автору,
+	 * либо ADMIN/MANAGER. Входящие сообщения клиента не редактируются никогда.
+	 */
+	private void assertCurrentUserCanEditMessage(@NotNull Message message) {
+		boolean staffMessage = Boolean.TRUE.equals(message.getIsSent()) || Boolean.TRUE.equals(message.getIsComment());
+		if (!staffMessage) {
+			throw new org.springframework.security.access.AccessDeniedException("Сообщение клиента нельзя редактировать");
+		}
+		User currentUser = userService.getCurrentUser();
+		if (userService.isAdmin(currentUser) || userService.isManager(currentUser)) {
+			return;
+		}
+		boolean author = currentUser != null && currentUser.getId() != null
+				&& message.getUser() != null
+				&& Objects.equals(message.getUser().getId(), currentUser.getId());
+		if (!author) {
+			throw new org.springframework.security.access.AccessDeniedException("Редактировать можно только свои сообщения");
+		}
 	}
 
 
@@ -893,7 +931,7 @@ public class ClientService {
 						.thenComparing(Message::getId, Comparator.nullsFirst(Comparator.naturalOrder()))
 				)
 				.toList();
-		fillReplyDataForPage(messages);
+		fillReplyDataForPage(messages, hideDeleted);
 		applyLinkedTaskIds(clientId, messages);
 		return new PageMessages(messages, !hasOlderMessages);
 	}
@@ -952,10 +990,10 @@ public class ClientService {
 		}
 		Client client = getClientForCurrentUser(clientId);
 		User currentUser = userService.getCurrentUser();
-		boolean hideDeleted = userService.isObserver(currentUser);
+		boolean observer = userService.isObserver(currentUser);
 		String query = messageText.getText().toLowerCase(Locale.ROOT);
 		return safeCollection(client.getMessages()).stream()
-				.filter(message -> !hideDeleted || !Boolean.TRUE.equals(message.getDeleted()))
+				.filter(message -> !observer || !isHiddenFromObserver(message))
 				.filter(message -> message.getText() != null)
 				.filter(message -> message.getText().toLowerCase(Locale.ROOT).contains(query))
 				.sorted(Comparator.reverseOrder())
@@ -1002,9 +1040,11 @@ public class ClientService {
 			return Collections.emptyList();
 		}
 		Client client = getClientForCurrentUser(clientId);
+		boolean observer = userService.isObserver(userService.getCurrentUser());
 		return safeCollection(client.getMessages()).stream()
 				.filter(m -> m.getFileUuid() != null)
 				.filter(m -> !Boolean.TRUE.equals(m.getDeleted()))
+				.filter(m -> !observer || !Boolean.TRUE.equals(m.getIsComment()))
 				.sorted(Comparator
 						.comparing(Message::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
 						.thenComparing(Message::getId, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -1024,6 +1064,10 @@ public class ClientService {
 			return Collections.emptyList();
 		}
 		getClientByTaskForCurrentUser(taskId);
+		// Файлы заявки — вложения её внутреннего чата, менеджеру организации (OBSERVER) они не отдаются.
+		if (!userService.canUserSeeTaskChat(userService.getCurrentUser())) {
+			return Collections.emptyList();
+		}
 		Task task = taskRepository.findById(taskId).orElseThrow();
 		return safeCollection(task.getMessages()).stream()
 				.filter(m -> m.getFileUuid() != null)
@@ -1141,13 +1185,69 @@ public class ClientService {
 	}
 
 
-	private Map<String, Object> updateAnswerRequired(Client client, Long messageId, AnswerRequired answerRequired) {
-		List<Message> conversationMessages = safeCollection(client.getMessages()).stream()
+	/**
+	 * Автоматическая метка «требует ответа» без сброса таймера: если в текущей цепочке входящих сообщений
+	 * (после последнего ответа оператора или последнего «не требует ответа») уже есть сообщение с меткой
+	 * «требует ответа», метка остаётся на нём, а новое сообщение не помечается. Если цепочку прервало
+	 * «не требует ответа», новое сообщение помечается после него — таймер начинается с нового сообщения,
+	 * а отметка «не требует ответа» сохраняется.
+	 *
+	 * @return id ранее помеченного сообщения цепочки, если метка не перенесена; empty — метка поставлена
+	 */
+	@Transactional
+	public Optional<Long> markAnswerRequiredForSystem(Long clientId, Long messageId) {
+		if (clientId == null || messageId == null) {
+			throw new IllegalArgumentException("clientId and messageId must not be null");
+		}
+		Client client = clientsRepository.findById(clientId)
+				.orElseThrow(() -> new NoSuchElementException("Client not found"));
+		List<Message> conversationMessages = conversationMessages(client);
+		for (int i = conversationMessages.size() - 1; i >= 0; i--) {
+			if (Objects.equals(conversationMessages.get(i).getId(), messageId)) {
+				for (int j = i - 1; j >= 0; j--) {
+					Message previous = conversationMessages.get(j);
+					if (isOutgoingOperatorMessage(previous)
+							|| (isIncomingMessage(previous) && previous.getAnswerRequired() == AnswerRequired.ANSWER_NOT_REQUIRED)) {
+						break;
+					}
+					if (isIncomingMessage(previous) && previous.getAnswerRequired() == AnswerRequired.ANSWER_REQUIRED) {
+						return Optional.of(previous.getId());
+					}
+				}
+				break;
+			}
+		}
+		updateAnswerRequired(client, messageId, AnswerRequired.ANSWER_REQUIRED, false);
+		return Optional.empty();
+	}
+
+
+	private List<Message> conversationMessages(Client client) {
+		return safeCollection(client.getMessages()).stream()
 				.filter(message -> message.getDate() != null)
 				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
 				.filter(message -> !Boolean.TRUE.equals(message.getIsComment()))
 				.sorted()
 				.toList();
+	}
+
+
+	private Map<String, Object> updateAnswerRequired(Client client, Long messageId, AnswerRequired answerRequired) {
+		return updateAnswerRequired(client, messageId, answerRequired, true);
+	}
+
+
+	/**
+	 * @param resetChain true — снять отметки со всех входящих сообщений цепочки (ручная установка и обычные
+	 *                   автоматизации: в цепочке остаётся одна отметка); false — изменить только выбранное сообщение
+	 */
+	private Map<String, Object> updateAnswerRequired(
+			Client client,
+			Long messageId,
+			AnswerRequired answerRequired,
+			boolean resetChain
+	) {
+		List<Message> conversationMessages = conversationMessages(client);
 		int selectedIndex = -1;
 		for (int i = 0; i < conversationMessages.size(); i++) {
 			if (Objects.equals(conversationMessages.get(i).getId(), messageId)) {
@@ -1177,12 +1277,16 @@ public class ClientService {
 			}
 		}
 		List<Message> groupMessages = new ArrayList<>();
-		for (int i = startIndex; i <= endIndex; i++) {
-			Message message = conversationMessages.get(i);
-			if (isIncomingMessage(message)) {
-				message.setAnswerRequired(AnswerRequired.NOT_SET);
-				groupMessages.add(message);
+		if (resetChain) {
+			for (int i = startIndex; i <= endIndex; i++) {
+				Message message = conversationMessages.get(i);
+				if (isIncomingMessage(message)) {
+					message.setAnswerRequired(AnswerRequired.NOT_SET);
+					groupMessages.add(message);
+				}
 			}
+		} else {
+			groupMessages.add(selectedMessage);
 		}
 		selectedMessage.setAnswerRequired(answerRequired);
 		messageRepository.saveAll(groupMessages);
@@ -1397,7 +1501,11 @@ public class ClientService {
 		return messageById;
 	}
 
-	private void fillReplyDataForPage(List<Message> messages) {
+	/**
+	 * @param hideFromObserver ответ на комментарий или удалённое сообщение показывается менеджеру организации
+	 *                         без текста и вложения цитаты
+	 */
+	private void fillReplyDataForPage(List<Message> messages, boolean hideFromObserver) {
 		if (messages == null || messages.isEmpty()) {
 			return;
 		}
@@ -1413,14 +1521,29 @@ public class ClientService {
 		}
 
 		Map<Long, Message> replyMessageById = new HashMap<>();
+		Set<Long> hiddenReplyIds = new HashSet<>();
 
 		messageRepository.findAllById(replyMessageIds).forEach(message -> {
-			if (message != null && message.getId() != null) {
+			if (message == null || message.getId() == null) {
+				return;
+			}
+			if (hideFromObserver && isHiddenFromObserver(message)) {
+				hiddenReplyIds.add(message.getId());
+			} else {
 				replyMessageById.put(message.getId(), message);
 			}
 		});
 
-		messages.forEach(message -> fillReplyMessageText(message, replyMessageById));
+		messages.forEach(message -> {
+			if (hiddenReplyIds.contains(message.getReplyMessageId())) {
+				// Страница читается в readOnly-транзакции: изменения сущности в БД не попадут
+				message.setReplyMessageText("");
+				message.setReplyUuid(null);
+				message.setReplyFileType(null);
+				return;
+			}
+			fillReplyMessageText(message, replyMessageById);
+		});
 	}
 
 

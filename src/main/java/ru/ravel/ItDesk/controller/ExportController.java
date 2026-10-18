@@ -32,13 +32,18 @@ import java.util.function.Supplier;
 @Tag(name = "Экспорт", description = "Выгрузка данных из системы.")
 public class ExportController {
 
+	private final SecurityAuditService securityAuditService;
 	private final ExportService exportService;
 
 
 	@Operation(summary = "Экспортировать данные в Excel", description = "Экспортировать данные в Excel. Endpoint GET /api/v1/export/to-excel; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/export/to-excel")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('TASK_EXPORT')")
 	public ResponseEntity<byte[]> exportToExcel(@RequestParam Map<String, String> params) {
-		return exportService.exportToExcel(params);
+		ResponseEntity<byte[]> response = exportService.exportToExcel(params);
+		if (response.getStatusCode().is2xxSuccessful()) {
+			securityAuditService.record(SecurityAuditEventType.TASKS_EXPORTED, "Excel", "Фильтр: " + params);
+		}
+		return response;
 	}
 }

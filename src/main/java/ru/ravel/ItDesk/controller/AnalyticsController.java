@@ -37,7 +37,7 @@ public class AnalyticsController {
 
 	@Operation(summary = "Получить справочники аналитики", description = "Получить справочники аналитики. Endpoint GET /api/v1/analytics/dictionaries; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/analytics/dictionaries")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('ANALYTICS_VIEW')")
 	public ResponseEntity<Object> getAnalyticsDictionaries() {
 		return ResponseEntity.ok(analyticsService.getDictionaries());
 	}
@@ -45,7 +45,7 @@ public class AnalyticsController {
 
 	@Operation(summary = "Получить сводку аналитики", description = "Получить сводку аналитики. Endpoint GET /api/v1/analytics/summary; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/analytics/summary")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('ANALYTICS_VIEW')")
 	public ResponseEntity<Object> getAnalyticsSummary(
 			@RequestParam(required = false) String from,
 			@RequestParam(required = false) String to,
@@ -79,7 +79,7 @@ public class AnalyticsController {
 
 	@Operation(summary = "Отменить расчёт аналитики", description = "Отменить расчёт аналитики. Endpoint POST /api/v1/analytics/summary/cancel; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/analytics/summary/cancel")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('ANALYTICS_VIEW')")
 	public ResponseEntity<Object> cancelAnalyticsSummary(HttpSession session) {
 		analyticsService.cancelSummary(getAnalyticsRequestKey(session));
 		return ResponseEntity.noContent().build();

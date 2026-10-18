@@ -27,8 +27,9 @@ public class Organization implements Comparable<Organization>, Serializable {
 
 	protected String name;
 
+	@Builder.Default
 	@Column(nullable = false, columnDefinition = "int default 0")
-	protected Integer orderNumber;
+	protected Integer orderNumber = 0;
 
 	@Builder.Default
 	protected Boolean active = true;

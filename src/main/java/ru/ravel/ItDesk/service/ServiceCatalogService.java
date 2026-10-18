@@ -44,6 +44,67 @@ public class ServiceCatalogService {
 		return toDto(requireService(id));
 	}
 
+	/**
+	 * Каталог для пользователя, ограниченного своими организациями (OBSERVER): только услуги,
+	 * назначенные этим организациям. Организация без назначений (legacy) видит весь каталог,
+	 * как и в {@link #getAvailableServices(Long)}.
+	 */
+	@Transactional(readOnly = true)
+	public List<Map<String, Object>> getServicesForOrganizations(Collection<Long> organizationIds, boolean includeInactive) {
+		Set<Long> visibleIds = getServiceIdsForOrganizations(organizationIds, includeInactive);
+		return getServices(includeInactive).stream()
+				.filter(dto -> visibleIds == null || visibleIds.contains(dto.get("id")))
+				.map(dto -> withAssignmentsOf(dto, organizationIds))
+				.toList();
+	}
+
+	@Transactional(readOnly = true)
+	public Map<String, Object> getServiceForOrganizations(Long id, Collection<Long> organizationIds) {
+		Set<Long> visibleIds = getServiceIdsForOrganizations(organizationIds, true);
+		if (visibleIds != null && !visibleIds.contains(id)) {
+			throw new org.springframework.security.access.AccessDeniedException("Нет доступа к услуге");
+		}
+		return withAssignmentsOf(getService(id), organizationIds);
+	}
+
+	/** Список назначений услуги раскрывает чужие организации — оставляем только переданные. */
+	private Map<String, Object> withAssignmentsOf(Map<String, Object> dto, Collection<Long> organizationIds) {
+		Set<Long> allowed = organizationIds == null ? Set.of() : new HashSet<>(organizationIds);
+		Object assignments = dto.get("assignments");
+		if (assignments instanceof Collection<?> items) {
+			dto.put("assignments", items.stream()
+					.filter(item -> item instanceof Map<?, ?> assignment
+							&& assignment.get("organization") instanceof Map<?, ?> organization
+							&& allowed.contains(organization.get("id")))
+					.toList());
+		}
+		return dto;
+	}
+
+	/** null — все услуги: у одной из организаций нет назначений (legacy-режим). */
+	private Set<Long> getServiceIdsForOrganizations(Collection<Long> organizationIds, boolean includeInactive) {
+		Set<Long> ids = new HashSet<>();
+		LocalDate today = LocalDate.now();
+		for (Long organizationId : organizationIds == null ? List.<Long>of() : organizationIds) {
+			if (organizationId == null) {
+				continue;
+			}
+			List<OrganizationServiceAssignment> configured =
+					assignmentRepository.findAllByOrganizationIdOrderByDefaultForOrganizationDescIdAsc(organizationId);
+			if (configured.isEmpty()) {
+				return null;
+			}
+			configured.stream()
+					.filter(item -> includeInactive || (!Boolean.FALSE.equals(item.getActive()) && item.isEffectiveOn(today)))
+					.map(OrganizationServiceAssignment::getService)
+					.filter(Objects::nonNull)
+					.map(ru.ravel.ItDesk.model.Service::getId)
+					.filter(Objects::nonNull)
+					.forEach(ids::add);
+		}
+		return ids;
+	}
+
 	@Transactional
 	public Map<String, Object> create(ServiceSaveRequest request) {
 		validateRequest(request, null);
@@ -121,6 +182,19 @@ public class ServiceCatalogService {
 					.forEach(item -> item.setDefaultSelection(false));
 		}
 		return criticalityRepository.save(entity);
+	}
+
+	@Transactional
+	public List<ServiceCriticality> resortCriticalities(List<Long> orderedIds) {
+		if (orderedIds != null) {
+			for (int i = 0; i < orderedIds.size(); i++) {
+				Long id = orderedIds.get(i);
+				if (id == null) continue;
+				int orderNumber = i;
+				criticalityRepository.findById(id).ifPresent(criticality -> criticality.setOrderNumber(orderNumber));
+			}
+		}
+		return getCriticalities();
 	}
 
 	@Transactional
@@ -540,6 +614,7 @@ public class ServiceCatalogService {
 		result.put("lastTestedAt", integration.getLastTestedAt());
 		result.put("lastTestSuccess", integration.getLastTestSuccess());
 		result.put("lastTestMessage", integration.getLastTestMessage());
+		result.put("mode", integration.getMode());
 		return result;
 	}
 

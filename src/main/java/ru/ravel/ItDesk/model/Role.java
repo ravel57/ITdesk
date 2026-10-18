@@ -11,6 +11,8 @@ import java.util.Arrays;
 public enum Role implements GrantedAuthority {
 	ADMIN("Администратор", true),
 	MANAGER("Менеджер поддержки", true),
+	/** Оператор с правом править базу знаний, удалять сообщения и выгружать заявки. */
+	SENIOR_OPERATOR("Старший оператор", true),
 	OPERATOR("Оператор поддержки", true),
 	OBSERVER("Менеджер организации", false),
 	CLIENT("Клиент", false),

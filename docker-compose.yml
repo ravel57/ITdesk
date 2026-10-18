@@ -83,6 +83,7 @@ services:
       - ELASTICSEARCH_INDEX=uldesk_global_search
       - REDIS_HOST=redis
       - ULDESK_PLUGIN_SECRET_KEY=${ULDESK_PLUGIN_SECRET_KEY}
+      - PUBLIC_URL=${PUBLIC_URL}
     volumes:
       - ./webapp-logs:/home/java/logs
       - ./plugins:/home/java/plugins

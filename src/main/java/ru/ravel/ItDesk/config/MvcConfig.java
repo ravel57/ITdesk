@@ -16,6 +16,8 @@ class MvcConfig implements WebMvcConfigurer {
 		registry.addViewController("/login").setViewName(spa);
 		registry.addViewController("/login-error").setViewName(spa);
 		registry.addViewController("/session-expired").setViewName(spa);
+		registry.addViewController("/reset-password").setViewName(spa);
+		registry.addViewController("/login/mfa").setViewName(spa);
 		registry.addViewController("/portal").setViewName(spa);
 		registry.addViewController("/portal/**").setViewName(spa);
 		registry.addViewController("/chats").setViewName(spa);

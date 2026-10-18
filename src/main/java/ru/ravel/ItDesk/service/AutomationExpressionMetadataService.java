@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.AutomationExpressionSuggestionRequest;
+import ru.ravel.ItDesk.dto.MonitoringProblemEvent;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerFunctionsType;
 
@@ -97,6 +98,9 @@ public class AutomationExpressionMetadataService {
 		register(definitions, "newSupportLine", "Новая линия", typeFactory.constructType(SupportLine.class));
 		register(definitions, "changes", "Изменения события", typeFactory.constructMapType(Map.class, String.class, Object.class));
 		register(definitions, "reason", "Причина изменения", typeFactory.constructType(String.class));
+		register(definitions, "problem", "Проблема мониторинга", typeFactory.constructType(MonitoringProblemEvent.Problem.class));
+		register(definitions, "service", "Сервис (события мониторинга)", typeFactory.constructType(MonitoringProblemEvent.ServiceRef.class));
+		register(definitions, "integration", "Интеграция мониторинга", typeFactory.constructType(MonitoringProblemEvent.IntegrationRef.class));
 		register(definitions, "var", "Переменные автоматизации", null);
 		this.roots = Collections.unmodifiableMap(definitions);
 
@@ -106,6 +110,7 @@ public class AutomationExpressionMetadataService {
 		register(actionDefinitions, "notify", "Уведомления", typeFactory.constructType(AutomationActionExecutor.NotifyApi.class));
 		register(actionDefinitions, "webhook", "Внешние вызовы", typeFactory.constructType(AutomationActionExecutor.WebhookApi.class));
 		register(actionDefinitions, "jev", "Решения Jev (ИИ)", typeFactory.constructType(AutomationActionExecutor.JevApi.class));
+		register(actionDefinitions, "incident", "Инциденты", typeFactory.constructType(AutomationActionExecutor.IncidentApi.class));
 		this.actionRoots = Collections.unmodifiableMap(actionDefinitions);
 	}
 

@@ -27,6 +27,8 @@ import java.util.zip.ZipInputStream;
 @Service
 public class PluginRegistryService {
 
+	private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(PluginRegistryService.class);
+
 	private static final long MAX_PLUGIN_ZIP_BYTES = 25L * 1024L * 1024L;
 	private static final long MAX_PLUGIN_UNCOMPRESSED_BYTES = 100L * 1024L * 1024L;
 	private static final long MAX_PLUGIN_ENTRY_BYTES = 25L * 1024L * 1024L;
@@ -96,6 +98,7 @@ public class PluginRegistryService {
 				throw new IllegalArgumentException("Plugin directory escapes plugins root");
 			}
 			if (new File(pluginDir, ".disabled").exists()) {
+				syncDisabledPluginPermissions(pluginDir);
 				return;
 			}
 			File manifestFile = new File(pluginDir, "manifest.yml");
@@ -116,6 +119,55 @@ public class PluginRegistryService {
 		} catch (Exception e) {
 			throw new IllegalStateException("Failed to load plugin directory: %s".formatted(pluginDir.getAbsolutePath()), e);
 		}
+	}
+
+
+	/**
+	 * Выключенный плагин не загружается, но его запрошенные разрешения синхронизируются с базой,
+	 * чтобы администратор мог посмотреть и одобрить их до включения. Ошибка в манифесте выключенного
+	 * плагина не мешает старту приложения.
+	 */
+	private void syncDisabledPluginPermissions(File pluginDir) {
+		try {
+			readValidatedManifest(pluginDir).ifPresent(manifest ->
+					pluginPermissionService.syncRequested(manifest.getPlugin().getKey(), manifest.getPermissions()));
+		} catch (Exception e) {
+			logger.warn("Failed to read manifest of disabled plugin {}: {}", pluginDir.getName(), e.getMessage());
+		}
+	}
+
+
+	/**
+	 * Манифест установленного плагина — включённого (из памяти) или выключенного (с диска).
+	 * Нужен для настройки секретов и разрешений до включения плагина.
+	 */
+	public Optional<PluginManifest> findInstalledManifest(String pluginKey) {
+		validatePluginKey(pluginKey);
+		PluginManifest loaded = manifests.get(pluginKey);
+		if (loaded != null) {
+			return Optional.of(loaded);
+		}
+		File pluginDir = resolvePluginDirectory(pluginKey).toFile();
+		if (!pluginDir.isDirectory()) {
+			return Optional.empty();
+		}
+		try {
+			return readValidatedManifest(pluginDir)
+					.filter(manifest -> pluginKey.equals(manifest.getPlugin().getKey()));
+		} catch (Exception e) {
+			throw new IllegalStateException("Failed to read plugin manifest: %s".formatted(pluginKey), e);
+		}
+	}
+
+
+	private Optional<PluginManifest> readValidatedManifest(File pluginDir) throws IOException {
+		File manifestFile = new File(pluginDir, "manifest.yml");
+		if (!manifestFile.exists()) {
+			return Optional.empty();
+		}
+		PluginManifest manifest = readYamlBounded(manifestFile.toPath(), PluginManifest.class);
+		validateManifest(manifest, pluginDir);
+		return Optional.of(manifest);
 	}
 
 
@@ -585,8 +637,24 @@ public class PluginRegistryService {
 			if (roles.contains(normalized)) {
 				return true;
 			}
+			// Иерархия ролей: хук для OPERATOR доступен и старшему оператору, менеджеру и администратору
+			String required = normalized.substring("ROLE_".length());
+			if (roles.stream().map(granted -> granted.startsWith("ROLE_") ? granted.substring("ROLE_".length()) : granted)
+					.anyMatch(granted -> includesRole(granted, required))) {
+				return true;
+			}
 		}
 		return false;
+	}
+
+
+	private static boolean includesRole(String granted, String required) {
+		try {
+			return ru.ravel.ItDesk.model.RolePermissions.includes(
+					ru.ravel.ItDesk.model.Role.valueOf(granted), ru.ravel.ItDesk.model.Role.valueOf(required));
+		} catch (IllegalArgumentException e) {
+			return false;
+		}
 	}
 
 

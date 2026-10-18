@@ -37,7 +37,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Получить типы заявок", description = "Получить типы заявок. Endpoint GET /api/v1/task-types; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/task-types")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('REFERENCE_VIEW')")
 	public ResponseEntity<Object> getTaskTypes() {
 		return ResponseEntity.ok(taskService.getTaskTypes());
 	}
@@ -45,7 +45,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Получить тип заявки", description = "Получить тип заявки. Endpoint GET /api/v1/task-types/{id}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/task-types/{id}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('REFERENCE_VIEW')")
 	public ResponseEntity<Object> getTaskType(@PathVariable Long id) {
 		try {
 			return ResponseEntity.ok(taskService.getTaskType(id));
@@ -57,7 +57,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Изменить порядок типов заявок", description = "Изменить порядок типов заявок. Endpoint PATCH /api/v1/task-types/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/task-types/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> resortTaskTypes(@RequestBody List<TaskType> taskTypes) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -68,7 +68,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Создать тип заявки", description = "Создать тип заявки. Endpoint POST /api/v1/task-types; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/task-types")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> createTaskType(@RequestBody TaskType taskType) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -84,7 +84,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Обновить тип заявки", description = "Обновить тип заявки. Endpoint PATCH /api/v1/task-types/{id}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/task-types/{id}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> updateTaskType(
 			@PathVariable Long id,
 			@RequestBody TaskType taskType
@@ -103,7 +103,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Установить тип заявки по умолчанию", description = "Установить тип заявки по умолчанию. Endpoint PATCH /api/v1/task-types/set-default; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/task-types/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> taskTypeSetDefaultSelection(@RequestBody TaskType taskType) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -118,7 +118,7 @@ public class TaskTypeController {
 
 	@Operation(summary = "Удалить тип заявки", description = "Удалить тип заявки. Endpoint DELETE /api/v1/task-types/{id}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/task-types/{id}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> deleteTaskType(@PathVariable Long id) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();

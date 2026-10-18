@@ -28,7 +28,7 @@ public class GlobalSearchController {
 
 	@Operation(summary = "Выполнить глобальный поиск", description = "Выполнить глобальный поиск. Endpoint GET /api/v1/global-search; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/global-search")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('GLOBAL_SEARCH')")
 	public ResponseEntity<Object> globalSearch(
 			@RequestParam String query,
 			@RequestParam(required = false) String types
@@ -58,7 +58,7 @@ public class GlobalSearchController {
 
 	@Operation(summary = "Переиндексировать глобальный поиск", description = "Переиндексировать глобальный поиск. Endpoint POST /api/v1/global-search/reindex; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/global-search/reindex")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('SETTINGS_MANAGE')")
 	public ResponseEntity<Object> reindexGlobalSearch() {
 		return ResponseEntity.ok().body(globalSearchService.reindexAll());
 	}
@@ -66,7 +66,7 @@ public class GlobalSearchController {
 
 	@Operation(summary = "Получить число документов в индексе", description = "Получить число документов в индексе. Endpoint GET /api/v1/global-search/count; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/global-search/count")
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('SETTINGS_MANAGE')")
 	public ResponseEntity<Object> countGlobalSearchDocuments() {
 		return ResponseEntity.ok().body(globalSearchService.countDocuments());
 	}

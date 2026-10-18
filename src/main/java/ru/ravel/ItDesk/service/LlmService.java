@@ -59,7 +59,7 @@ public class LlmService {
 
 	private LlmKnowledgeDocument toLlmDocument(Knowledge knowledge) {
 		String title = knowledge.getTitle() == null ? "Без названия" : knowledge.getTitle().trim();
-		String source = "БЗ #" + knowledge.getId() + " — " + title;
+		String source = "БЗ #%d — %s".formatted(knowledge.getId(), title);
 
 		String text = knowledge.getTexts() == null
 				? ""

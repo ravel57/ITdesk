@@ -45,6 +45,8 @@ public class TaskService {
 	private final OlaService olaService;
 	private final OlaWorkingTimeService olaWorkingTimeService;
 	private final ServiceCatalogService serviceCatalogService;
+	private final WebSocketService webSocketService;
+	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
 
 
 	@Transactional(readOnly = true)
@@ -86,8 +88,10 @@ public class TaskService {
 				page,
 				size
 		);
+		boolean hideTaskChat = !userService.canUserSeeTaskChat(userService.getCurrentUser());
 		List<Map<String, Object>> tasks = pageRows.stream()
 				.map(item -> toTaskPageDto(item.task(), item.client()))
+				.map(taskDto -> hideTaskChat ? TaskUpdatedDto.withoutTaskMessages(taskDto) : taskDto)
 				.toList();
 		Map<String, Object> response = new LinkedHashMap<>();
 		response.put("tasks", tasks);
@@ -2772,6 +2776,11 @@ public class TaskService {
 				"client", client,
 				"changes", buildTaskCreatedChanges(savedTask)
 		));
+		// Realtime-событие для всех способов создания (UI, API, автоматизации) — после коммита
+		Long createdTaskId = savedTask.getId();
+		Long taskClientId = client.getId();
+		afterCommitExecutor.runOnce("task:" + createdTaskId,
+				() -> webSocketService.taskUpdated(buildTaskUpdatedDto(taskClientId, createdTaskId)));
 		if (savedTask.getExecutor() != null) {
 			userNotificationService.send(new UserNotification(
 					UserNotificationEvent.NEW_TASK,

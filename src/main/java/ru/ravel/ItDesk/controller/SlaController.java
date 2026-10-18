@@ -37,15 +37,26 @@ public class SlaController {
 	private final TaskService taskService;
 	private final AppSettingsRepository appSettingsRepository;
 	private final ClientRepository clientRepository;
+	private final UserService userService;
 
 
 	@Operation(summary = "Получить матрицу SLA", description = "Получить матрицу SLA. Endpoint GET /api/v1/sla; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/sla")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('SLA_VIEW')")
 	public ResponseEntity<Map<String, Map<String, Map<String, Object>>>> getSlaByPriority() {
 		Map<String, Map<String, Map<String, Object>>> out = new HashMap<>();
 		Map<Organization, Map<Priority, SlaValue>> slaByPriority = organizationService.getSlaByPriority();
+		User currentUser = userService.getCurrentUser();
+		// OBSERVER видит SLA только своих организаций и стандартный SLA.
+		Set<Long> observerOrganizationIds = userService.isObserver(currentUser)
+				? userService.organizationScope(currentUser).organizationIds()
+				: null;
 		slaByPriority.forEach((organization, priorityMap) -> {
+			if (observerOrganizationIds != null
+					&& !(organization instanceof DefaultOrganization)
+					&& !observerOrganizationIds.contains(organization.getId())) {
+				return;
+			}
 			Map<String, Map<String, Object>> priorities = new HashMap<>();
 			priorityMap.forEach((priority, slaValue) -> {
 				BigDecimal value = slaValue == null || slaValue.getValue() == null
@@ -67,7 +78,7 @@ public class SlaController {
 
 	@Operation(summary = "Приостановить SLA заявки", description = "Приостановить SLA заявки. Endpoint POST /api/v1/task/{taskId}/sla/pause; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/task/{taskId}/sla/pause")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> pauseTaskSla(
 			@PathVariable Long taskId,
 			@RequestParam(required = false) String reason
@@ -91,7 +102,7 @@ public class SlaController {
 
 	@Operation(summary = "Возобновить SLA заявки", description = "Возобновить SLA заявки. Endpoint POST /api/v1/task/{taskId}/sla/resume; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/task/{taskId}/sla/resume")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> resumeTaskSla(@PathVariable Long taskId) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -112,7 +123,7 @@ public class SlaController {
 
 	@Operation(summary = "Получить SLA заявки", description = "Получить SLA заявки. Endpoint GET /api/v1/task/{taskId}/sla/info; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/task/{taskId}/sla/info")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('TASK_VIEW')")
 	public ResponseEntity<SlaInfoDto> getTaskSlaInfo(@PathVariable Long taskId) {
 		Task task;
 		try {
@@ -167,7 +178,7 @@ public class SlaController {
 
 	@Operation(summary = "Сохранить настройки SLA", description = "Сохранить настройки SLA. Endpoint POST /api/v1/sla; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/sla")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SLA_MANAGE')")
 	public ResponseEntity<Object> postSla(@RequestBody OrganizationPriorityDuration sla) {
 		if (LicenseStarter.isLicenseActive) {
 			organizationService.setSla(sla);
@@ -180,7 +191,7 @@ public class SlaController {
 
 	@Operation(summary = "Приостановить SLA клиентской заявки", description = "Приостановить SLA клиентской заявки. Endpoint POST /api/v1/client/{clientId}/task/{taskId}/sla/pause; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/task/{taskId}/sla/pause")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> pauseClientTaskSla(@PathVariable Long clientId, @PathVariable Long taskId, @RequestParam(required = false) String reason) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -201,7 +212,7 @@ public class SlaController {
 
 	@Operation(summary = "Возобновить SLA клиентской заявки", description = "Возобновить SLA клиентской заявки. Endpoint POST /api/v1/client/{clientId}/task/{taskId}/sla/resume; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/task/{taskId}/sla/resume")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('TASK_EDIT')")
 	public ResponseEntity<Object> resumeClientTaskSla(@PathVariable Long clientId, @PathVariable Long taskId) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -222,7 +233,7 @@ public class SlaController {
 
 	@Operation(summary = "Получить SLA клиентской заявки", description = "Получить SLA клиентской заявки. Endpoint GET /api/v1/client/{clientId}/task/{taskId}/sla/info; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/client/{clientId}/task/{taskId}/sla/info")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('TASK_VIEW')")
 	public ResponseEntity<Object> getClientTaskSlaInfo(@PathVariable Long clientId, @PathVariable Long taskId) {
 		Task task;
 		try {

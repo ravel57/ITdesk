@@ -37,6 +37,7 @@ public class SupportController {
 
 	private final UserService userService;
 	private final PasswordResetRateLimiter passwordResetRateLimiter;
+	private final PasswordResetService passwordResetService;
 
 
 //	@Operation(summary = "Отправить служебное сообщение", description = "Отправить служебное сообщение. Endpoint POST /api/v1/support/send-message; действующие проверки ролей, валидация и бизнес-логика сохранены.")
@@ -55,26 +56,59 @@ public class SupportController {
 //	}
 
 
-	@Operation(summary = "Сбросить пароль пользователя", description = "Сбросить пароль пользователя. Endpoint POST /api/v1/support/reset-password; действующие проверки ролей, валидация и бизнес-логика сохранены.")
+	@Operation(summary = "Запросить ссылку для смены пароля", description = "Админ-система отправляет пользователю на email одноразовую ссылку на страницу смены пароля. Пароль до перехода по ссылке не меняется. Endpoint POST /api/v1/support/reset-password.")
 	@PostMapping("/support/reset-password")
 	public ResponseEntity<Object> resetPassword(@RequestBody Username username, HttpServletRequest request) {
 		String normalizedUsername = username == null ? "" : Objects.toString(username.getUsername(), "").trim();
 		if (!passwordResetRateLimiter.allow(request.getRemoteAddr(), normalizedUsername)) {
-			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-					.header("Retry-After", "900")
-					.build();
+			return tooManyPasswordResetRequests();
 		}
 		if (!normalizedUsername.isBlank() && normalizedUsername.length() <= 254) {
-			userService.resetPassword(normalizedUsername);
+			passwordResetService.requestLink(normalizedUsername);
 		}
 		// Always return a generic response; callers cannot distinguish unknown accounts.
 		return ResponseEntity.ok().build();
 	}
 
 
+	@Operation(summary = "Проверить ссылку смены пароля", description = "Действует ли ссылка из письма (не гасит её). Endpoint POST /api/v1/support/reset-password/verify.")
+	@PostMapping("/support/reset-password/verify")
+	public ResponseEntity<Object> verifyResetPasswordLink(@RequestBody PasswordResetConfirm confirm, HttpServletRequest request) {
+		if (!passwordResetRateLimiter.allow(request.getRemoteAddr(), "link-verify")) {
+			return tooManyPasswordResetRequests();
+		}
+		boolean valid = passwordResetService.verify(confirm == null ? null : confirm.getToken()) == PasswordResetService.LinkState.VALID;
+		return ResponseEntity.ok().body(Map.of("valid", valid));
+	}
+
+
+	@Operation(summary = "Задать новый пароль по ссылке", description = "Гасит ссылку из письма и меняет пароль; открытые сессии пользователя завершаются. Endpoint POST /api/v1/support/reset-password/confirm.")
+	@PostMapping("/support/reset-password/confirm")
+	public ResponseEntity<Object> confirmResetPassword(@RequestBody PasswordResetConfirm confirm, HttpServletRequest request) {
+		if (!passwordResetRateLimiter.allow(request.getRemoteAddr(), "link-confirm")) {
+			return tooManyPasswordResetRequests();
+		}
+		try {
+			passwordResetService.complete(confirm == null ? null : confirm.getToken(), confirm == null ? null : confirm.getPassword());
+			return ResponseEntity.ok().build();
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+		} catch (IllegalStateException e) {
+			return ResponseEntity.status(HttpStatus.GONE).body(Map.of("message", e.getMessage()));
+		}
+	}
+
+
+	private ResponseEntity<Object> tooManyPasswordResetRequests() {
+		return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+				.header("Retry-After", "900")
+				.build();
+	}
+
+
 	@Operation(summary = "Получить сведения о лицензии", description = "Получить сведения о лицензии. Endpoint GET /api/v1/license-info; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/license-info")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('SETTINGS_MANAGE')")
 	public ResponseEntity<Object> getLicenseValidUntil() {
 		List<User> users = userService.getManageableUsers();
 		long maxUsers = Objects.requireNonNullElse(LicenseStarter.maxUsers, 0L);
@@ -114,6 +148,7 @@ public class SupportController {
 		result.put("roleCounts", roleCounts);
 		result.put("adminsCount", countsByRole.getOrDefault(Role.ADMIN, 0L));
 		result.put("managersCount", countsByRole.getOrDefault(Role.MANAGER, 0L));
+		result.put("seniorOperatorsCount", countsByRole.getOrDefault(Role.SENIOR_OPERATOR, 0L));
 		result.put("operatorsCount", countsByRole.getOrDefault(Role.OPERATOR, 0L));
 		result.put("observersCount", countsByRole.getOrDefault(Role.OBSERVER, 0L));
 		result.put("clientsCount", countsByRole.getOrDefault(Role.CLIENT, 0L));

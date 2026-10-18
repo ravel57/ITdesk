@@ -37,7 +37,7 @@ public class IncidentController {
 
 	@Operation(summary = "Получить страницу инцидентов", description = "Получить страницу инцидентов. Endpoint POST /api/v1/incidents-page; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/incidents-page")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('INCIDENT_VIEW')")
 	public ResponseEntity<Object> getIncidentsPage(@RequestBody(required = false) IncidentPageRequest request) {
 		return incidentResponse(() -> incidentService.getPage(request));
 	}
@@ -45,7 +45,7 @@ public class IncidentController {
 
 	@Operation(summary = "Получить шаблоны обновлений инцидента", description = "Получить шаблоны обновлений инцидента. Endpoint GET /api/v1/incident-update-templates; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/incident-update-templates")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> getIncidentUpdateTemplates() {
 		return incidentResponse(incidentService::getUpdateTemplates);
 	}
@@ -53,7 +53,7 @@ public class IncidentController {
 
 	@Operation(summary = "Получить активные инциденты клиента", description = "Получить активные инциденты клиента. Endpoint GET /api/v1/client/incidents/active; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/client/incidents/active")
-	@PreAuthorize("hasRole('CLIENT')")
+	@PreAuthorize("@access.can('PORTAL')")
 	public ResponseEntity<Object> getClientActiveIncidents() {
 		return incidentResponse(incidentService::getPortalActiveIncidents);
 	}
@@ -61,7 +61,7 @@ public class IncidentController {
 
 	@Operation(summary = "Подтвердить восстановление по инциденту", description = "Подтвердить восстановление по инциденту. Endpoint PATCH /api/v1/client/incident/{incidentId}/recovery-confirmation; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/client/incident/{incidentId}/recovery-confirmation")
-	@PreAuthorize("hasRole('CLIENT')")
+	@PreAuthorize("@access.can('PORTAL')")
 	public ResponseEntity<Object> confirmClientIncidentRecovery(
 			@PathVariable Long incidentId,
 			@RequestBody IncidentRecoveryConfirmationRequest request
@@ -72,7 +72,7 @@ public class IncidentController {
 
 	@Operation(summary = "Получить инцидент по заявке", description = "Получить инцидент по заявке. Endpoint GET /api/v1/task/{taskId}/incident; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/task/{taskId}/incident")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('INCIDENT_VIEW')")
 	public ResponseEntity<Object> getIncidentByTask(@PathVariable Long taskId) {
 		return incidentResponse(() -> incidentService.getIncidentByTask(taskId));
 	}
@@ -80,7 +80,7 @@ public class IncidentController {
 
 	@Operation(summary = "Получить инцидент", description = "Получить инцидент. Endpoint GET /api/v1/incident/{incidentId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/incident/{incidentId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('INCIDENT_VIEW')")
 	public ResponseEntity<Object> getIncident(@PathVariable Long incidentId) {
 		return incidentResponse(() -> incidentService.getIncident(incidentId));
 	}
@@ -88,7 +88,7 @@ public class IncidentController {
 
 	@Operation(summary = "Создать инцидент", description = "Создать инцидент. Endpoint POST /api/v1/incident; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/incident")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> createIncident(@RequestBody IncidentSaveRequest request) {
 		return incidentResponse(() -> incidentService.createIncident(request));
 	}
@@ -96,7 +96,7 @@ public class IncidentController {
 
 	@Operation(summary = "Создать инцидент из заявок", description = "Создать инцидент из заявок. Endpoint POST /api/v1/incident/from-tasks; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/incident/from-tasks")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> createIncidentFromTasks(@RequestBody IncidentSaveRequest request) {
 		return incidentResponse(() -> incidentService.createFromTasks(request));
 	}
@@ -104,7 +104,7 @@ public class IncidentController {
 
 	@Operation(summary = "Обновить инцидент", description = "Обновить инцидент. Endpoint PATCH /api/v1/incident/{incidentId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/incident/{incidentId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> updateIncident(
 			@PathVariable Long incidentId,
 			@RequestBody IncidentSaveRequest request
@@ -115,7 +115,7 @@ public class IncidentController {
 
 	@Operation(summary = "Добавить запись в таймлайн инцидента", description = "Добавить запись в таймлайн инцидента. Endpoint POST /api/v1/incident/{incidentId}/timeline; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/incident/{incidentId}/timeline")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> addIncidentTimelineEntry(
 			@PathVariable Long incidentId,
 			@RequestBody IncidentTimelineRequest request
@@ -126,7 +126,7 @@ public class IncidentController {
 
 	@Operation(summary = "Привязать заявки к инциденту", description = "Привязать заявки к инциденту. Endpoint POST /api/v1/incident/{incidentId}/tasks; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/incident/{incidentId}/tasks")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> linkIncidentTasks(
 			@PathVariable Long incidentId,
 			@RequestBody IncidentTaskIdsRequest request
@@ -137,7 +137,7 @@ public class IncidentController {
 
 	@Operation(summary = "Отвязать заявку от инцидента", description = "Отвязать заявку от инцидента. Endpoint DELETE /api/v1/incident/{incidentId}/task/{taskId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/incident/{incidentId}/task/{taskId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> unlinkIncidentTask(
 			@PathVariable Long incidentId,
 			@PathVariable Long taskId
@@ -148,7 +148,7 @@ public class IncidentController {
 
 	@Operation(summary = "Изменить подтверждение восстановления заявки", description = "Изменить подтверждение восстановления заявки. Endpoint PATCH /api/v1/incident/{incidentId}/task/{taskId}/recovery-confirmation; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/incident/{incidentId}/task/{taskId}/recovery-confirmation")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> setIncidentTaskRecoveryConfirmation(
 			@PathVariable Long incidentId,
 			@PathVariable Long taskId,
@@ -160,7 +160,7 @@ public class IncidentController {
 
 	@Operation(summary = "Выполнить массовую операцию с заявками инцидента", description = "Выполнить массовую операцию с заявками инцидента. Endpoint POST /api/v1/incident/{incidentId}/tasks/bulk; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/incident/{incidentId}/tasks/bulk")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> runIncidentBulkTaskOperation(
 			@PathVariable Long incidentId,
 			@RequestBody IncidentBulkTaskRequest request
@@ -171,7 +171,7 @@ public class IncidentController {
 
 	@Operation(summary = "Получить рекомендации по инциденту", description = "Получить рекомендации по инциденту. Endpoint GET /api/v1/incident/{incidentId}/suggestions; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/incident/{incidentId}/suggestions")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('INCIDENT_EDIT')")
 	public ResponseEntity<Object> getIncidentSuggestions(@PathVariable Long incidentId) {
 		return incidentResponse(() -> incidentService.getSuggestions(incidentId));
 	}

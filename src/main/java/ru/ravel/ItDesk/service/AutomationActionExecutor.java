@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.AnswerRequired;
 import ru.ravel.ItDesk.dto.AutomationExecutionContext;
+import ru.ravel.ItDesk.dto.MonitoringProblemEvent;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.model.jev.JevThreshold;
@@ -55,6 +56,7 @@ public class AutomationActionExecutor {
 	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
 	private final MessageRepository messageRepository;
 	private final ClientRepository clientRepository;
+	private final MonitoringIncidentService monitoringIncidentService;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -128,6 +130,10 @@ public class AutomationActionExecutor {
 			return new JevApi(ctx);
 		}
 
+		public IncidentApi incident() {
+			return new IncidentApi(ctx);
+		}
+
 		@Nullable
 		Object resolveTarget(String name) {
 			return switch (name) {
@@ -136,6 +142,7 @@ public class AutomationActionExecutor {
 				case "notify" -> notifyApi();
 				case "webhook" -> webhook();
 				case "jev" -> jev();
+				case "incident" -> incident();
 				default -> null;
 			};
 		}
@@ -984,6 +991,47 @@ public class AutomationActionExecutor {
 				return true;
 			}
 			return service.getAllowedTaskTypes().stream().anyMatch(allowed -> sameEntity(allowed, type));
+		}
+	}
+
+	/**
+	 * "incident.*" — инциденты по событиям автоматизаций.
+	 */
+	public final class IncidentApi {
+		private static final com.fasterxml.jackson.databind.ObjectMapper PAYLOAD_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper()
+				.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		private final AutomationExecutionContext ctx;
+
+		IncidentApi(AutomationExecutionContext ctx) {
+			this.ctx = ctx;
+		}
+
+		/**
+		 * События мониторинга Zabbix (Мониторинг: проблема / обновлена / устранена): проблема по сервису создаёт черновик
+		 * инцидента или привязывается к активному инциденту сервиса, а когда открытых проблем не осталось —
+		 * инцидент переводится в «Наблюдение» для проверки восстановления. Без сопоставленного сервиса ничего не делает.
+		 */
+		public void fromMonitoring() {
+			Event event = ctx.getEvent();
+			TriggerType trigger = event == null ? null : event.getTriggerType();
+			if (trigger == null || event.getPayload() == null) {
+				log.warn("incident.fromMonitoring skipped: no monitoring event (rule: {})", ruleName());
+				return;
+			}
+			MonitoringProblemEvent payload;
+			try {
+				payload = PAYLOAD_MAPPER.treeToValue(event.getPayload(), MonitoringProblemEvent.class);
+			} catch (Exception e) {
+				log.warn("incident.fromMonitoring skipped: payload is not a monitoring event: {}", e.getMessage());
+				return;
+			}
+			MonitoringIncidentService.Result result = monitoringIncidentService.handle(trigger, payload);
+			log.info("incident.fromMonitoring: {} {} — {} (rule: {})", trigger, result.outcome(), result.details(), ruleName());
+		}
+
+		private String ruleName() {
+			return ctx.getTrigger() == null ? "-" : "#" + ctx.getTrigger().getId() + " «" + ctx.getTrigger().getName() + "»";
 		}
 	}
 

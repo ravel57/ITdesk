@@ -21,7 +21,12 @@ import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.repository.*;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 
 
 @Service
@@ -38,8 +43,21 @@ public class GlobalSearchService {
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
+	private static final DateTimeFormatter INDEX_SUFFIX = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
+	private static final String ALREADY_EXISTS = "resource_already_exists_exception";
+
+	/**
+	 * Имя алиаса: поиск и запись идут через него, а данные лежат в индексах «{alias}_{время}».
+	 * Переиндексация собирает новый индекс рядом и атомарно переключает на него алиас, так что пустого окна нет.
+	 */
 	@Value("${elasticsearch.index:uldesk_global_search}")
 	private String indexName;
+
+	/** Создание индекса и переключение алиаса не должны пересекаться, иначе алиас окажется на двух индексах. */
+	private final ReentrantLock indexLock = new ReentrantLock();
+	private final AtomicBoolean reindexing = new AtomicBoolean();
+	/** Документы, изменённые во время переиндексации: новый индекс собран из более раннего снимка БД. Пустое значение — удаление. */
+	private final Map<String, Optional<GlobalSearchDocument>> changedDuringReindex = new ConcurrentHashMap<>();
 
 
 	public List<GlobalSearchResultDto> search(String query, Set<String> entityTypes) {
@@ -140,8 +158,17 @@ public class GlobalSearchService {
 
 	@Transactional(readOnly = true)
 	public Map<String, Object> reindexAll() {
+		if (!reindexing.compareAndSet(false, true)) {
+			logger.info("Global reindex skipped: already running");
+			Map<String, Object> result = new LinkedHashMap<>();
+			result.put("index", indexName);
+			result.put("skipped", "already running");
+			return result;
+		}
+		changedDuringReindex.clear();
+		String newIndex = indexName + "_" + LocalDateTime.now().format(INDEX_SUFFIX);
 		try {
-			recreateIndex();
+			createIndex(newIndex, false);
 
 			Map<String, GlobalSearchDocument> documents = new LinkedHashMap<>();
 
@@ -194,7 +221,7 @@ public class GlobalSearchService {
 				}
 				bulk.operations(operation -> operation
 						.index(index -> index
-								.index(indexName)
+								.index(newIndex)
 								.id(document.getId())
 								.document(document)
 						)
@@ -213,15 +240,23 @@ public class GlobalSearchService {
 							)));
 				}
 			}
-			long count = elasticsearchClient.count(request -> request.index(indexName)).count();
+			long count = elasticsearchClient.count(request -> request.index(newIndex)).count();
+			switchAlias(newIndex);
+			replayChangedDuringReindex();
+			deleteStaleIndices(newIndex);
 			Map<String, Object> result = new LinkedHashMap<>();
 			result.put("index", indexName);
+			result.put("physicalIndex", newIndex);
 			result.put("prepared", documents.size());
 			result.put("count", count);
 			result.put("bulkErrors", errors);
 			return result;
 		} catch (IOException | ElasticsearchException e) {
+			deleteIndexQuietly(newIndex);
 			throw new IllegalStateException("Global reindex failed", e);
+		} finally {
+			changedDuringReindex.clear();
+			reindexing.set(false);
 		}
 	}
 
@@ -329,6 +364,7 @@ public class GlobalSearchService {
 		if (id == null || id.isBlank()) {
 			return;
 		}
+		rememberDuringReindex(id, null);
 		try {
 			ensureIndexExists();
 			elasticsearchClient.delete(request -> request
@@ -345,6 +381,7 @@ public class GlobalSearchService {
 		if (document == null || document.getId() == null) {
 			return;
 		}
+		rememberDuringReindex(document.getId(), document);
 		try {
 			ensureIndexExists();
 			elasticsearchClient.index(request -> request
@@ -359,16 +396,44 @@ public class GlobalSearchService {
 	}
 
 
+	private void rememberDuringReindex(String id, GlobalSearchDocument document) {
+		if (reindexing.get()) {
+			changedDuringReindex.put(id, Optional.ofNullable(document));
+		}
+	}
+
+
+	/** Алиас (или старый индекс с тем же именем) есть — ничего не делаем; иначе создаём первый индекс под алиасом. */
 	private void ensureIndexExists() throws IOException {
-		boolean exists = elasticsearchClient.indices()
-				.exists(ExistsRequest.of(request -> request.index(indexName)))
-				.value();
-		if (exists) {
+		if (exists(indexName)) {
 			return;
 		}
-		elasticsearchClient.indices().create(CreateIndexRequest.of(request -> request
-				.index(indexName)
-				.mappings(mapping -> mapping
+		indexLock.lock();
+		try {
+			if (exists(indexName)) {
+				return;
+			}
+			createIndex(indexName + "_" + LocalDateTime.now().format(INDEX_SUFFIX), true);
+		} finally {
+			indexLock.unlock();
+		}
+	}
+
+
+	private boolean exists(String name) throws IOException {
+		return elasticsearchClient.indices().exists(ExistsRequest.of(request -> request.index(name))).value();
+	}
+
+
+	/** Создаёт индекс с нашей схемой; если его успели создать параллельно, это не ошибка. */
+	private void createIndex(String name, boolean withAlias) throws IOException {
+		try {
+			elasticsearchClient.indices().create(CreateIndexRequest.of(request -> {
+				request.index(name);
+				if (withAlias) {
+					request.aliases(indexName, alias -> alias);
+				}
+				return request.mappings(mapping -> mapping
 						.properties("title", property -> property.text(text -> text))
 						.properties("subtitle", property -> property.text(text -> text))
 						.properties("text", property -> property.text(text -> text))
@@ -379,8 +444,94 @@ public class GlobalSearchService {
 						.properties("url", property -> property.keyword(keyword -> keyword))
 						.properties("createdAt", property -> property.date(date -> date))
 						.properties("updatedAt", property -> property.date(date -> date))
-				)
-		));
+				);
+			}));
+		} catch (ElasticsearchException e) {
+			if (!isAlreadyExists(e)) {
+				throw e;
+			}
+		}
+	}
+
+
+	private static boolean isAlreadyExists(ElasticsearchException e) {
+		return e.error() != null && ALREADY_EXISTS.equals(e.error().type());
+	}
+
+
+	/**
+	 * Одним атомарным запросом вешает алиас на новый индекс и снимает его со старых.
+	 * Старый индекс с именем алиаса (до перехода на алиасы) удаляется тем же запросом.
+	 */
+	private void switchAlias(String newIndex) throws IOException {
+		indexLock.lock();
+		try {
+			List<String> previous = aliasTargets();
+			boolean legacyIndex = previous.isEmpty() && exists(indexName);
+			elasticsearchClient.indices().updateAliases(request -> {
+				request.actions(action -> action.add(add -> add.index(newIndex).alias(indexName)));
+				previous.forEach(old -> request.actions(action -> action.remove(remove -> remove.index(old).alias(indexName))));
+				if (legacyIndex) {
+					request.actions(action -> action.removeIndex(remove -> remove.index(indexName)));
+				}
+				return request;
+			});
+		} finally {
+			indexLock.unlock();
+		}
+	}
+
+
+	private List<String> aliasTargets() throws IOException {
+		if (!elasticsearchClient.indices().existsAlias(request -> request.name(indexName)).value()) {
+			return List.of();
+		}
+		return new ArrayList<>(elasticsearchClient.indices().getAlias(request -> request.name(indexName)).result().keySet());
+	}
+
+
+	/** Переносит в новый индекс то, что поменялось, пока он собирался (эти записи ушли в старый индекс). */
+	private void replayChangedDuringReindex() {
+		if (changedDuringReindex.isEmpty()) {
+			return;
+		}
+		changedDuringReindex.forEach((id, document) -> {
+			try {
+				if (document.isPresent()) {
+					elasticsearchClient.index(request -> request.index(indexName).id(id).document(document.get()));
+				} else {
+					elasticsearchClient.delete(request -> request.index(indexName).id(id));
+				}
+			} catch (Exception e) {
+				logger.warn("Failed to replay global search change after reindex: id={}", id, e);
+			}
+		});
+		try {
+			elasticsearchClient.indices().refresh(request -> request.index(indexName));
+		} catch (Exception e) {
+			logger.warn("Failed to refresh global search index after reindex", e);
+		}
+	}
+
+
+	/** Удаляет все наши индексы, кроме текущего: прошлые версии и остатки прерванных переиндексаций. */
+	private void deleteStaleIndices(String keep) {
+		try {
+			elasticsearchClient.indices().get(request -> request.index(indexName + "_*")).result().keySet().stream()
+					.filter(name -> !name.equals(keep))
+					.forEach(this::deleteIndexQuietly);
+		} catch (Exception e) {
+			logger.warn("Failed to clean up old global search indices", e);
+		}
+	}
+
+
+	private void deleteIndexQuietly(String name) {
+		try {
+			elasticsearchClient.indices().delete(request -> request.index(name).ignoreUnavailable(true));
+		} catch (Exception e) {
+			logger.warn("Failed to delete global search index {}", name, e);
+		}
 	}
 
 
@@ -683,17 +834,6 @@ public class GlobalSearchService {
 		} catch (IOException | ElasticsearchException e) {
 			throw new IllegalStateException("Global search count failed", e);
 		}
-	}
-
-
-	private void recreateIndex() throws IOException {
-		boolean exists = elasticsearchClient.indices()
-				.exists(ExistsRequest.of(request -> request.index(indexName)))
-				.value();
-		if (exists) {
-			elasticsearchClient.indices().delete(request -> request.index(indexName));
-		}
-		ensureIndexExists();
 	}
 
 

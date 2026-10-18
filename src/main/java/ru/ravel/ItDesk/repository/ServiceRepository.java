@@ -18,5 +18,7 @@ public interface ServiceRepository extends JpaRepository<Service, Long> {
 	List<Service> findAllByZabbixEnabledTrueAndActiveTrue();
 	long countByMonitoringStatus(ServiceMonitoringStatus status);
 	boolean existsByZabbixIntegrationId(Long integrationId);
+
+	List<Service> findAllByZabbixIntegrationIdAndZabbixEnabledTrueAndActiveTrue(Long integrationId);
 	boolean existsByDependentServicesId(Long serviceId);
 }

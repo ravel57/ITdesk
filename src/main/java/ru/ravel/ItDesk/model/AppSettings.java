@@ -8,7 +8,9 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 
 
@@ -70,7 +72,7 @@ public class AppSettings {
 	private Boolean sundayEnabled = false;
 
 	@Enumerated(EnumType.STRING)
-	@Column(name = "support_line_access_mode", nullable = false, length = 32)
+	@Column(name = "support_line_access_mode", nullable = false, length = 32, columnDefinition = "varchar(32) default 'HYBRID'")
 	@Builder.Default
 	private SupportLineAccessMode supportLineAccessMode = SupportLineAccessMode.HYBRID;
 
@@ -139,6 +141,21 @@ public class AppSettings {
 	@Column(name = "jev_incident_p1_min_clients", nullable = false)
 	@Builder.Default
 	private Integer jevIncidentP1MinClients = 10;
+
+	/** Обязательна ли двухфакторная аутентификация для администраторов. */
+	@Column(name = "mfa_required_for_admins", nullable = false, columnDefinition = "boolean default true")
+	@Builder.Default
+	private Boolean mfaRequiredForAdmins = true;
+
+	/** Разделы, открытые менеджеру организации (OBSERVER), — коды {@link ObserverFeature}. Меняются через /settings/observer-access. */
+	@JsonIgnore
+	@JdbcTypeCode(SqlTypes.JSON)
+	// Значение по умолчанию: Hibernate (ddl-auto) добавляет колонку раньше Flyway, без него ALTER не проходит
+	@Column(name = "observer_features", nullable = false,
+			columnDefinition = "jsonb default '[\"TASKS\",\"INCIDENTS\",\"ANALYTICS\",\"SLA\",\"SERVICES\"]'::jsonb")
+	@Builder.Default
+	private java.util.Set<String> observerFeatures = new LinkedHashSet<>(Arrays.stream(ObserverFeature.values()).map(Enum::name).toList());
+
 
 
 	public Duration getWorkdayDuration() {

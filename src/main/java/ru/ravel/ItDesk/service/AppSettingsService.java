@@ -4,12 +4,18 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.model.AppSettings;
+import ru.ravel.ItDesk.model.ObserverFeature;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
 
 import java.security.SecureRandom;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -17,12 +23,70 @@ public class AppSettingsService {
 
 	private static final Long SETTINGS_ID = 1L;
 
+	private static final long OBSERVER_FEATURES_CACHE_MS = 10_000;
+
 	private final AppSettingsRepository appSettingsRepository;
+
+	/** Права проверяются на каждый запрос: разделы наблюдателя кэшируются ненадолго и сбрасываются при сохранении. */
+	private volatile Set<ObserverFeature> observerFeaturesCache;
+	private volatile long observerFeaturesLoadedAt;
 
 
 	@Transactional(readOnly = true)
 	public AppSettings getGeneralSettings() {
 		return getOrCreate();
+	}
+
+
+	@Transactional(readOnly = true)
+	public Set<ObserverFeature> getObserverFeatures() {
+		Set<ObserverFeature> cached = observerFeaturesCache;
+		if (cached != null && System.currentTimeMillis() - observerFeaturesLoadedAt < OBSERVER_FEATURES_CACHE_MS) {
+			return cached;
+		}
+		Set<ObserverFeature> loaded = parseObserverFeatures(getOrCreate().getObserverFeatures());
+		observerFeaturesCache = loaded;
+		observerFeaturesLoadedAt = System.currentTimeMillis();
+		return loaded;
+	}
+
+
+	@Transactional
+	public Set<ObserverFeature> updateObserverFeatures(Collection<ObserverFeature> features) {
+		Set<ObserverFeature> enabled = features == null || features.isEmpty()
+				? EnumSet.noneOf(ObserverFeature.class)
+				: EnumSet.copyOf(features.stream().filter(Objects::nonNull).toList());
+		AppSettings settings = getOrCreate();
+		settings.setObserverFeatures(enabled.stream().map(Enum::name)
+				.collect(Collectors.toCollection(java.util.LinkedHashSet::new)));
+		appSettingsRepository.save(settings);
+		observerFeaturesCache = null;
+		return enabled;
+	}
+
+
+	private static Set<ObserverFeature> parseObserverFeatures(Collection<String> names) {
+		Set<ObserverFeature> result = EnumSet.noneOf(ObserverFeature.class);
+		if (names == null) {
+			return EnumSet.allOf(ObserverFeature.class);
+		}
+		for (String name : names) {
+			try {
+				result.add(ObserverFeature.valueOf(name));
+			} catch (IllegalArgumentException | NullPointerException ignored) {
+				// Неизвестный раздел (например, после отката версии) пропускаем
+			}
+		}
+		return result;
+	}
+
+
+	@Transactional
+	public boolean updateMfaRequiredForAdmins(boolean required) {
+		AppSettings settings = getOrCreate();
+		settings.setMfaRequiredForAdmins(required);
+		appSettingsRepository.save(settings);
+		return required;
 	}
 
 

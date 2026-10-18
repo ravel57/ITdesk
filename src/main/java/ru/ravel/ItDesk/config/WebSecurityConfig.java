@@ -26,6 +26,8 @@ import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
 import ru.ravel.ItDesk.service.AuthService;
+import ru.ravel.ItDesk.service.MfaService;
+import ru.ravel.ItDesk.service.SecurityAuditService;
 import ru.ravel.ItDesk.service.UserSessionService;
 
 @Configuration
@@ -34,6 +36,7 @@ import ru.ravel.ItDesk.service.UserSessionService;
 class WebSecurityConfig {
 
 	private static final String BEARER_PREFIX = "Bearer ";
+	private static final String ZABBIX_WEBHOOK_PATH = "/api/v1/integrations/zabbix/**";
 
 	private final AuthService authService;
 	private final UserSessionService userSessionService;
@@ -41,6 +44,9 @@ class WebSecurityConfig {
 	private final JwtAuthenticationFilter jwtAuthenticationFilter;
 	private final JwtScopeAuthorizationFilter jwtScopeAuthorizationFilter;
 	private final LoginRateLimitFilter loginRateLimitFilter;
+	private final SecurityAuditService securityAuditService;
+	private final MfaService mfaService;
+	private final ru.ravel.ItDesk.repository.UserRepository userRepository;
 
 	public WebSecurityConfig(
 			AuthService authService,
@@ -48,7 +54,10 @@ class WebSecurityConfig {
 			SingleSessionFilter singleSessionFilter,
 			JwtAuthenticationFilter jwtAuthenticationFilter,
 			JwtScopeAuthorizationFilter jwtScopeAuthorizationFilter,
-			LoginRateLimitFilter loginRateLimitFilter
+			LoginRateLimitFilter loginRateLimitFilter,
+			SecurityAuditService securityAuditService,
+			MfaService mfaService,
+			ru.ravel.ItDesk.repository.UserRepository userRepository
 	) {
 		this.authService = authService;
 		this.userSessionService = userSessionService;
@@ -56,6 +65,9 @@ class WebSecurityConfig {
 		this.jwtAuthenticationFilter = jwtAuthenticationFilter;
 		this.jwtScopeAuthorizationFilter = jwtScopeAuthorizationFilter;
 		this.loginRateLimitFilter = loginRateLimitFilter;
+		this.securityAuditService = securityAuditService;
+		this.mfaService = mfaService;
+		this.userRepository = userRepository;
 	}
 
 	@Bean
@@ -124,7 +136,8 @@ class WebSecurityConfig {
 				.csrf(csrf -> csrf
 						.csrfTokenRepository(csrfRepository)
 						.csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-)
+						// Zabbix отправляет события без сессии: доступ по токену интеграции (X-ULDesk-Token)
+						.ignoringRequestMatchers(ZABBIX_WEBHOOK_PATH))
 				.authorizeHttpRequests(requests -> requests
 						.requestMatchers(
 								"/swagger-ui.html",
@@ -146,7 +159,11 @@ class WebSecurityConfig {
 								"/fonts/**",
 								"/img/**",
 								"/statics/**",
+								"/reset-password",
 								"/api/v1/support/reset-password",
+								"/api/v1/support/reset-password/verify",
+								"/api/v1/support/reset-password/confirm",
+								ZABBIX_WEBHOOK_PATH,
 								"/actuator/health",
 								"/actuator/health/**",
 								"/actuator/prometheus"
@@ -155,13 +172,14 @@ class WebSecurityConfig {
 						.requestMatchers("/api/v1/jwt/**").hasRole("ADMIN")
 						.requestMatchers("/portal", "/portal/**", "/api/v1/portal/**").hasRole("CLIENT")
 						.requestMatchers("/client-portal-ws/**").hasRole("CLIENT")
-						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
-						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
-						.requestMatchers("/incidents/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
-						.requestMatchers("/analytics/**").hasAnyRole("ADMIN", "MANAGER", "OPERATOR", "OBSERVER")
+						.requestMatchers("/chats/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
+						.requestMatchers("/tasks/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
+						.requestMatchers("/incidents/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
+						.requestMatchers("/analytics/**").hasAnyRole("ADMIN", "MANAGER", "SENIOR_OPERATOR", "OPERATOR", "OBSERVER")
 						.requestMatchers("/settings", "/settings/profile").authenticated()
 						.requestMatchers("/settings/jwt", "/settings/jwt/**").hasRole("ADMIN")
-						.requestMatchers("/settings/**").hasAnyRole("ADMIN", "MANAGER")
+						// Страницы настроек — оболочка SPA; данные защищены правами в API (@access.can), раздел скрывает роутер
+						.requestMatchers("/settings/**").authenticated()
 						.requestMatchers("/ws/**").authenticated()
 						.anyRequest().authenticated())
 				.sessionManagement(sessionManagement -> sessionManagement
@@ -187,11 +205,24 @@ class WebSecurityConfig {
 									authentication.getName(),
 									request.getSession()
 							);
+							securityAuditService.loginSucceeded(authentication.getName(), request);
+							// Второй фактор: до подтверждения кода MfaEnforcementFilter пускает только на /login/mfa
+							var mfaState = userRepository.findByUsername(authentication.getName())
+									.flatMap(mfaService::stateAfterPasswordLogin);
+							if (mfaState.isPresent()) {
+								request.getSession().setAttribute(MfaService.SESSION_STATE, mfaState.get());
+								response.sendRedirect(MfaEnforcementFilter.MFA_PAGE);
+								return;
+							}
 							boolean clientPortalUser = authentication.getAuthorities().stream()
 									.anyMatch(authority -> "ROLE_CLIENT".equals(authority.getAuthority()));
 							response.sendRedirect(clientPortalUser ? "/portal" : "/chats");
 						})
-						.failureUrl("/login-error")
+						.failureHandler((request, response, exception) -> {
+							String reason = exception.getClass().getSimpleName().replace("Exception", "");
+							securityAuditService.loginFailed(request.getParameter("username"), reason, request);
+							response.sendRedirect(request.getContextPath() + "/login-error");
+						})
 						.permitAll())
 				.logout(logout -> logout
 						.logoutUrl("/logout")
@@ -212,6 +243,7 @@ class WebSecurityConfig {
 				.requestCache(cache -> cache.requestCache(requestCache))
 				.addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
 				.addFilterAfter(singleSessionFilter, UsernamePasswordAuthenticationFilter.class)
+				.addFilterBefore(new MfaEnforcementFilter(), org.springframework.security.web.access.intercept.AuthorizationFilter.class)
 				.build();
 	}
 

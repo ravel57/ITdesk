@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Task;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -16,6 +17,8 @@ import ru.ravel.ItDesk.model.Message;
 
 @Repository
 public interface ClientRepository extends JpaRepository<Client, Long> {
+
+	long countByOrganizationIdIn(Collection<Long> organizationIds);
 
 	Optional<Client> findByTelegramIdAndTgBotId(Long telegramId, Long tgBotId);
 
@@ -176,6 +179,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 	@Query("""
 		select
 			c as client,
+			t as task,
 			m as message
 		from Client c
 		join c.tasks t
@@ -184,7 +188,7 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 		  and coalesce(m.deleted, false) = false
 		order by m.date desc, m.id desc
 		""")
-	List<FileAccessRow> findTaskMessageFileAccessRowsByFileUuid(@Param("fileUuid") String fileUuid);
+	List<TaskFileAccessRow> findTaskMessageFileAccessRowsByFileUuid(@Param("fileUuid") String fileUuid);
 
 
 	interface TaskAnalyticsAccessRow {
@@ -200,6 +204,11 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 		Client getClient();
 
 		Message getMessage();
+	}
+
+
+	interface TaskFileAccessRow extends FileAccessRow {
+		Task getTask();
 	}
 
 }

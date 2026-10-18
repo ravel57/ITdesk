@@ -38,7 +38,7 @@ public class UserNotificationController {
 
 	@Operation(summary = "Получить настройки уведомлений", description = "Получить настройки уведомлений. Endpoint GET /api/v1/user/notification-settings; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/user/notification-settings")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('NOTIFICATIONS')")
 	public ResponseEntity<Object> getCurrentUserNotificationSettings() {
 		return ResponseEntity.ok().body(userService.getCurrentUserNotificationSettings());
 	}
@@ -46,7 +46,7 @@ public class UserNotificationController {
 
 	@Operation(summary = "Обновить настройки уведомлений", description = "Обновить настройки уведомлений. Endpoint PATCH /api/v1/user/notification-settings; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/user/notification-settings")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('NOTIFICATIONS')")
 	public ResponseEntity<Object> updateCurrentUserNotificationSettings(@RequestBody UserNotificationSettingsDto dto) {
 		return ResponseEntity.ok().body(userService.updateCurrentUserNotificationSettings(dto));
 	}
@@ -54,7 +54,7 @@ public class UserNotificationController {
 
 	@Operation(summary = "Получить уведомления пользователя", description = "Получить уведомления пользователя. Endpoint GET /api/v1/user/notifications; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/user/notifications")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('NOTIFICATIONS')")
 	public ResponseEntity<Object> getCurrentUserNotifications(
 			@RequestParam(defaultValue = "1") int page,
 			@RequestParam(defaultValue = "20") int size,
@@ -68,7 +68,7 @@ public class UserNotificationController {
 
 	@Operation(summary = "Отметить уведомление прочитанным", description = "Отметить уведомление прочитанным. Endpoint PATCH /api/v1/user/notifications/{notificationId}/read; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/user/notifications/{notificationId}/read")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('NOTIFICATIONS')")
 	public ResponseEntity<Object> markCurrentUserNotificationAsRead(@PathVariable Long notificationId) {
 		try {
 			return ResponseEntity.ok(
@@ -82,7 +82,7 @@ public class UserNotificationController {
 
 	@Operation(summary = "Отметить все уведомления прочитанными", description = "Отметить все уведомления прочитанными. Endpoint PATCH /api/v1/user/notifications/read-all; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/user/notifications/read-all")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('NOTIFICATIONS')")
 	public ResponseEntity<Object> markAllCurrentUserNotificationsAsRead() {
 		long unreadCount = userNotificationService.markAllCurrentUserNotificationsAsRead();
 		return ResponseEntity.ok(Map.of("unreadCount", unreadCount));

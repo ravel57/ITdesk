@@ -47,6 +47,7 @@ public class UserService {
 	private final EventPublisher eventPublisher;
 	private final GlobalSearchService globalSearchService;
 	private final AppSettingsService appSettingsService;
+	private final SecurityAuditService securityAuditService;
 
 
 	public List<User> getUsers() {
@@ -113,6 +114,7 @@ public class UserService {
 			}
 //			User saved = userRepository.save(existingUser);
 			globalSearchService.indexUser(existingUser);
+			audit(SecurityAuditEventType.USER_CREATED, existingUser.getUsername(), "Повторно включён, роль: " + requestedRole.getName());
 			return existingUser;
 		}
 
@@ -135,6 +137,7 @@ public class UserService {
 			User saved = userRepository.save(user);
 			globalSearchService.indexUser(saved);
 			eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
+			audit(SecurityAuditEventType.USER_CREATED, saved.getUsername(), "Роль: " + requestedRole.getName());
 			return saved;
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);
@@ -173,11 +176,41 @@ public class UserService {
 				.isAccountNonLocked(savedUser.getIsAccountNonLocked())
 				.isAccountNonExpired(savedUser.getIsAccountNonExpired())
 				.isCredentialsNonExpired(savedUser.getIsCredentialsNonExpired())
+				.mfaEnabled(savedUser.getMfaEnabled())
+				.mfaSecret(savedUser.getMfaSecret())
+				.mfaPendingSecret(savedUser.getMfaPendingSecret())
+				.mfaRecoveryCodes(savedUser.getMfaRecoveryCodes())
+				.mfaLastStep(savedUser.getMfaLastStep())
+				.mfaEnabledAt(savedUser.getMfaEnabledAt())
 				.build();
 		User saved = userRepository.save(user);
 		globalSearchService.indexUser(saved);
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
+		String previousRoles = roleNames(savedUser);
+		String currentRoles = roleNames(saved);
+		if (!previousRoles.equals(currentRoles)) {
+			audit(SecurityAuditEventType.USER_ROLE_CHANGED, saved.getUsername(), previousRoles + " → " + currentRoles);
+		} else {
+			audit(SecurityAuditEventType.USER_UPDATED, saved.getUsername(), "Роль: " + currentRoles);
+		}
 		return saved;
+	}
+
+
+	private static String roleNames(User user) {
+		return user.getAuthorities() == null ? "" : user.getAuthorities().stream()
+				.filter(Role.class::isInstance)
+				.map(role -> ((Role) role).getName())
+				.sorted()
+				.collect(java.util.stream.Collectors.joining(", "));
+	}
+
+
+	/** В тестах UserService часто создаётся частичным моком без журнала. */
+	private void audit(SecurityAuditEventType type, String target, String details) {
+		if (securityAuditService != null) {
+			securityAuditService.record(type, target, details);
+		}
 	}
 
 
@@ -243,6 +276,7 @@ public class UserService {
 		validateRawPassword(rawPassword);
 		user.setPassword(passwordEncoder.encode(rawPassword));
 		userRepository.save(user);
+		audit(SecurityAuditEventType.PASSWORD_CHANGED, user.getUsername(), null);
 		return user;
 	}
 
@@ -262,6 +296,7 @@ public class UserService {
 		User saved = userRepository.save(user);
 		globalSearchService.indexUser(saved);
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
+		audit(SecurityAuditEventType.PASSWORD_CHANGED_BY_ADMIN, saved.getUsername(), null);
 		return saved;
 	}
 
@@ -297,6 +332,7 @@ public class UserService {
 		User saved = userRepository.save(user);
 		globalSearchService.deleteUser(saved.getId());
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
+		audit(SecurityAuditEventType.USER_DELETED, saved.getUsername(), "Роль: " + roleNames(saved));
 	}
 
 
@@ -334,18 +370,7 @@ public class UserService {
 	}
 
 
-	public void resetPassword(String username) {
-		userRepository.findByUsername(username).ifPresent(user -> {
-			UUID license = licenseRepository.findAll().getFirst().getLicense();
-			String password = supportFeignClient.resetPassword(license, username);
-			user.setPassword(passwordEncoder.encode(password));
-			userRepository.save(user);
-		});
-	}
-
-
-
-	private void validateRawPassword(String password) {
+	public static void validateRawPassword(String password) {
 		if (password == null || password.length() < 8) {
 			throw new IllegalArgumentException("Пароль должен содержать минимум 8 символов");
 		}
@@ -442,8 +467,18 @@ public class UserService {
 	}
 
 
+	/**
+	 * Линейная поддержка: OPERATOR, SENIOR_OPERATOR и MANAGER (менеджер работает с заявками как оператор,
+	 * но без ограничения по организациям). ADMIN проверяется отдельно через {@link #isAdmin(User)}.
+	 * Иерархия ролей и права — в {@link ru.ravel.ItDesk.model.RolePermissions}.
+	 */
 	public boolean isOperator(User user) {
-		return hasRole(user, Role.OPERATOR) || isManager(user);
+		return hasRole(user, Role.OPERATOR) || isSeniorOperator(user) || isManager(user);
+	}
+
+
+	public boolean isSeniorOperator(User user) {
+		return hasRole(user, Role.SENIOR_OPERATOR);
 	}
 
 
@@ -454,6 +489,18 @@ public class UserService {
 
 	public boolean isClient(User user) {
 		return hasRole(user, Role.CLIENT);
+	}
+
+
+	/** Организации, явно назначенные пользователю (User.availableOrganizations). */
+	public Set<Long> getAssignedOrganizationIds(User user) {
+		return getAvailableOrganizationIds(user);
+	}
+
+
+	/** Внутренний чат заявки (Task.messages) видит только поддержка; менеджеру организации (OBSERVER) он не отдаётся. */
+	public boolean canUserSeeTaskChat(User user) {
+		return isAdmin(user) || isOperator(user);
 	}
 
 
@@ -531,38 +578,43 @@ public class UserService {
 	}
 
 
+	/**
+	 * Какие организации видит пользователь — единое правило для всех фильтров по организациям.
+	 * ADMIN и MANAGER — все; OPERATOR и SENIOR_OPERATOR — назначенные, а без назначений все;
+	 * OBSERVER — только назначенные; CLIENT — организация своей карточки; остальные — ничего.
+	 */
+	public OrganizationScope organizationScope(User user) {
+		if (user == null) {
+			return OrganizationScope.NONE;
+		}
+		if (isAdmin(user) || isManager(user)) {
+			return OrganizationScope.ALL;
+		}
+		if (isObserver(user)) {
+			return OrganizationScope.of(getAvailableOrganizationIds(user));
+		}
+		if (isOperator(user)) {
+			Set<Long> assigned = getAvailableOrganizationIds(user);
+			return assigned.isEmpty() ? OrganizationScope.ALL : OrganizationScope.of(assigned);
+		}
+		if (isClient(user) && user.getClientId() != null) {
+			return OrganizationScope.of(clientRepository.findById(user.getClientId())
+					.map(Client::getOrganization)
+					.map(Organization::getId)
+					.map(Set::of)
+					.orElse(Set.of()));
+		}
+		return OrganizationScope.NONE;
+	}
+
+
+	public OrganizationScope currentOrganizationScope() {
+		return organizationScope(getCurrentUser());
+	}
+
+
 	public List<Organization> filterOrganizationsByCurrentUser(Collection<Organization> organizations) {
-		if (organizations == null) {
-			return List.of();
-		}
-		User currentUser = getCurrentUser();
-		if (isAdmin(currentUser) || isManager(currentUser)) {
-			return organizations.stream()
-					.filter(Objects::nonNull)
-					.toList();
-		}
-		if (isObserver(currentUser)) {
-			Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
-			return organizations.stream()
-					.filter(Objects::nonNull)
-					.filter(organization -> organization.getId() != null)
-					.filter(organization -> allowedOrganizationIds.contains(organization.getId()))
-					.toList();
-		}
-		if (!isOperator(currentUser)) {
-			return List.of();
-		}
-		if (hasAccessToAllOrganizations(currentUser)) {
-			return organizations.stream()
-					.filter(Objects::nonNull)
-					.toList();
-		}
-		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(currentUser);
-		return organizations.stream()
-				.filter(Objects::nonNull)
-				.filter(organization -> organization.getId() != null)
-				.filter(organization -> allowedOrganizationIds.contains(organization.getId()))
-				.toList();
+		return currentOrganizationScope().filter(organizations, Organization::getId);
 	}
 
 
@@ -695,50 +747,12 @@ public class UserService {
 		if (isClient(user)) {
 			return user.getClientId() != null && Objects.equals(user.getClientId(), client.getId());
 		}
-		if (isObserver(user)) {
-			Long organizationId = client.getOrganization() == null ? null : client.getOrganization().getId();
-			return organizationId != null && getAvailableOrganizationIds(user).contains(organizationId);
-		}
-		if (!isOperator(user)) {
-			return false;
-		}
-		if (hasAccessToAllOrganizations(user)) {
-			return true;
-		}
-		if (client.getOrganization() == null || client.getOrganization().getId() == null) {
-			return false;
-		}
-		return getAvailableOrganizationIds(user).contains(client.getOrganization().getId());
+		return organizationScope(user).allows(client.getOrganization() == null ? null : client.getOrganization().getId());
 	}
 
 
 	private boolean canUserAccessOrganizationId(User user, Long organizationId) {
-		if (user == null || organizationId == null) {
-			return false;
-		}
-		if (isAdmin(user) || isManager(user)) {
-			return true;
-		}
-		if (isObserver(user)) {
-			return getAvailableOrganizationIds(user).contains(organizationId);
-		}
-		if (isClient(user)) {
-			if (user.getClientId() == null) {
-				return false;
-			}
-			return clientRepository.findById(user.getClientId())
-					.map(Client::getOrganization)
-					.map(Organization::getId)
-					.filter(id -> Objects.equals(id, organizationId))
-					.isPresent();
-		}
-		if (!isOperator(user)) {
-			return false;
-		}
-		if (hasAccessToAllOrganizations(user)) {
-			return true;
-		}
-		return getAvailableOrganizationIds(user).contains(organizationId);
+		return organizationId != null && organizationScope(user).allows(organizationId);
 	}
 
 
@@ -755,13 +769,7 @@ public class UserService {
 
 
 	private boolean hasAccessToAllOrganizations(User user) {
-		if (isAdmin(user) || isManager(user)) {
-			return true;
-		}
-		if (!isOperator(user)) {
-			return false;
-		}
-		return user.getAvailableOrganizations() == null || user.getAvailableOrganizations().isEmpty();
+		return (isAdmin(user) || isOperator(user)) && organizationScope(user).all();
 	}
 
 
@@ -963,30 +971,8 @@ public class UserService {
 					.filter(client -> Objects.equals(client.getId(), user.getClientId()))
 					.toList();
 		}
-		if (isObserver(user)) {
-			Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(user);
-			return clients.stream()
-					.filter(Objects::nonNull)
-					.filter(client -> client.getOrganization() != null)
-					.filter(client -> client.getOrganization().getId() != null)
-					.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
-					.toList();
-		}
-		if (!isOperator(user)) {
-			return List.of();
-		}
-		if (hasAccessToAllOrganizations(user)) {
-			return clients.stream()
-					.filter(Objects::nonNull)
-					.toList();
-		}
-		Set<Long> allowedOrganizationIds = getAvailableOrganizationIds(user);
-		return clients.stream()
-				.filter(Objects::nonNull)
-				.filter(client -> client.getOrganization() != null)
-				.filter(client -> client.getOrganization().getId() != null)
-				.filter(client -> allowedOrganizationIds.contains(client.getOrganization().getId()))
-				.toList();
+		return organizationScope(user).filter(clients,
+				client -> client.getOrganization() == null ? null : client.getOrganization().getId());
 	}
 
 

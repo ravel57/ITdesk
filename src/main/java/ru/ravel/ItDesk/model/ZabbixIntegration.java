@@ -25,7 +25,13 @@ public class ZabbixIntegration {
 	@Column(nullable = false, length = 160)
 	private String name;
 
-	@Column(name = "base_url", nullable = false, length = 1024)
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 16)
+	@Builder.Default
+	private ZabbixIntegrationMode mode = ZabbixIntegrationMode.API_POLLING;
+
+	/** Адрес Zabbix. В режиме веб-хука необязателен: нужен только для ссылок на события */
+	@Column(name = "base_url", length = 1024)
 	private String baseUrl;
 
 	@Column(length = 255)
@@ -57,6 +63,58 @@ public class ZabbixIntegration {
 
 	@Column(name = "last_test_message", length = 2048)
 	private String lastTestMessage;
+
+	/* ---- Режим веб-хука ---- */
+
+	/** Часть адреса приёма событий: /api/v1/integrations/zabbix/{webhookKey}/events */
+	@Column(name = "webhook_key", length = 64, unique = true)
+	private String webhookKey;
+
+	/** SHA-256 токена из заголовка X-ULDesk-Token; сам токен показывается один раз при выпуске */
+	@JsonIgnore
+	@ToString.Exclude
+	@Column(name = "webhook_token_hash", length = 128)
+	private String webhookTokenHash;
+
+	@Column(name = "webhook_token_issued_at")
+	private ZonedDateTime webhookTokenIssuedAt;
+
+	/** Внешний адрес ULDesk, на который Zabbix отправляет события (для адреса приёма и ссылок) */
+	@Column(name = "public_url", length = 1024)
+	private String publicUrl;
+
+	/** Часовой пояс дат Zabbix ({EVENT.DATE} {EVENT.TIME}), например Europe/Moscow */
+	@Column(name = "event_timezone", length = 64)
+	private String eventTimezone;
+
+	/** Адреса и подсети, с которых принимаются события, через запятую. Пусто — с любых */
+	@Column(name = "allowed_ips", length = 1024)
+	private String allowedIps;
+
+	/** Через сколько минут без проверки связи считать, что связи с Zabbix нет. 0 — не следить */
+	@Column(name = "heartbeat_timeout_minutes", nullable = false)
+	@Builder.Default
+	private Integer heartbeatTimeoutMinutes = 15;
+
+	@Column(name = "last_event_at")
+	private ZonedDateTime lastEventAt;
+
+	@Column(name = "last_heartbeat_at")
+	private ZonedDateTime lastHeartbeatAt;
+
+	@Column(name = "connection_lost", nullable = false)
+	@Builder.Default
+	private Boolean connectionLost = false;
+
+	@JsonIgnore
+	public boolean isWebhook() {
+		return mode == ZabbixIntegrationMode.WEBHOOK;
+	}
+
+	@JsonIgnore
+	public boolean hasWebhookToken() {
+		return webhookTokenHash != null && !webhookTokenHash.isBlank();
+	}
 
 	@JsonIgnore
 	public boolean hasApiToken() {

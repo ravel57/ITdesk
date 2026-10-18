@@ -38,23 +38,34 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Получить каталог услуг", description = "Получить каталог услуг. Endpoint GET /api/v1/services; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/services")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('SERVICE_VIEW')")
 	public ResponseEntity<Object> getServices(@RequestParam(defaultValue = "false") boolean includeInactive) {
+		User currentUser = userService.getCurrentUser();
+		// Менеджер организации видит только услуги своих организаций; сотрудники поддержки — весь каталог
+		if (userService.isObserver(currentUser)) {
+			Set<Long> organizationIds = userService.organizationScope(currentUser).organizationIds();
+			return catalogResponse(() -> serviceCatalogService.getServicesForOrganizations(organizationIds, includeInactive));
+		}
 		return catalogResponse(() -> serviceCatalogService.getServices(includeInactive));
 	}
 
 
 	@Operation(summary = "Получить услугу", description = "Получить услугу. Endpoint GET /api/v1/services/{serviceId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/services/{serviceId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('SERVICE_VIEW')")
 	public ResponseEntity<Object> getService(@PathVariable Long serviceId) {
+		User currentUser = userService.getCurrentUser();
+		if (userService.isObserver(currentUser)) {
+			Set<Long> organizationIds = userService.organizationScope(currentUser).organizationIds();
+			return catalogResponse(() -> serviceCatalogService.getServiceForOrganizations(serviceId, organizationIds));
+		}
 		return catalogResponse(() -> serviceCatalogService.getService(serviceId));
 	}
 
 
 	@Operation(summary = "Получить услуги организации", description = "Получить услуги организации. Endpoint GET /api/v1/organization/{organizationId}/services; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/organization/{organizationId}/services")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
+	@PreAuthorize("@access.canAny('SERVICE_VIEW', 'PORTAL')")
 	public ResponseEntity<Object> getOrganizationServices(@PathVariable Long organizationId) {
 		userService.assertCurrentUserCanAccessOrganizationId(organizationId);
 		return catalogResponse(() -> serviceCatalogService.getAvailableServices(organizationId));
@@ -63,7 +74,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Создать услугу", description = "Создать услугу. Endpoint POST /api/v1/service; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/service")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> createService(@RequestBody ServiceSaveRequest request) {
 		return catalogResponse(() -> serviceCatalogService.create(request));
 	}
@@ -71,7 +82,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Обновить услугу", description = "Обновить услугу. Endpoint PATCH /api/v1/service/{serviceId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/service/{serviceId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> updateService(@PathVariable Long serviceId, @RequestBody ServiceSaveRequest request) {
 		return catalogResponse(() -> serviceCatalogService.update(serviceId, request));
 	}
@@ -79,7 +90,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Удалить услугу", description = "Удалить услугу. Endpoint DELETE /api/v1/service/{serviceId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/service/{serviceId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> deleteService(@PathVariable Long serviceId) {
 		return catalogResponse(() -> {
 			serviceCatalogService.delete(serviceId);
@@ -90,7 +101,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Изменить порядок услуг", description = "Изменить порядок услуг. Endpoint PATCH /api/v1/services/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/services/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> resortServices(@RequestBody List<Long> orderedIds) {
 		return catalogResponse(() -> serviceCatalogService.resort(orderedIds));
 	}
@@ -98,7 +109,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Получить критичности услуг", description = "Получить критичности услуг. Endpoint GET /api/v1/service-criticalities; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/service-criticalities")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('STAFF_DIRECTORY_VIEW')")
 	public ResponseEntity<Object> getServiceCriticalities() {
 		return catalogResponse(serviceCatalogService::getCriticalities);
 	}
@@ -106,7 +117,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Создать критичность услуги", description = "Создать критичность услуги. Endpoint POST /api/v1/service-criticality; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/service-criticality")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> createServiceCriticality(@RequestBody ServiceCriticality criticality) {
 		criticality.setId(null);
 		return catalogResponse(() -> serviceCatalogService.saveCriticality(criticality));
@@ -115,15 +126,23 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Обновить критичность услуги", description = "Обновить критичность услуги. Endpoint PATCH /api/v1/service-criticality; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/service-criticality")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> updateServiceCriticality(@RequestBody ServiceCriticality criticality) {
 		return catalogResponse(() -> serviceCatalogService.saveCriticality(criticality));
 	}
 
 
+	@Operation(summary = "Изменить порядок критичностей услуг", description = "Изменить порядок критичностей услуг. Endpoint PATCH /api/v1/service-criticalities/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
+	@PatchMapping("/service-criticalities/resort")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
+	public ResponseEntity<Object> resortServiceCriticalities(@RequestBody List<Long> orderedIds) {
+		return catalogResponse(() -> serviceCatalogService.resortCriticalities(orderedIds));
+	}
+
+
 	@Operation(summary = "Удалить критичность услуги", description = "Удалить критичность услуги. Endpoint DELETE /api/v1/service-criticality/{criticalityId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/service-criticality/{criticalityId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> deleteServiceCriticality(@PathVariable Long criticalityId) {
 		return catalogResponse(() -> {
 			serviceCatalogService.deleteCriticality(criticalityId);
@@ -134,7 +153,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Получить привязки услуг к организациям", description = "Получить привязки услуг к организациям. Endpoint GET /api/v1/organization-service-assignments; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/organization-service-assignments")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> getOrganizationServiceAssignments(
 			@RequestParam(required = false) Long organizationId,
 			@RequestParam(required = false) Long serviceId
@@ -145,7 +164,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Создать привязку услуги к организации", description = "Создать привязку услуги к организации. Endpoint POST /api/v1/organization-service-assignment; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/organization-service-assignment")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> createOrganizationServiceAssignment(@RequestBody OrganizationServiceAssignmentRequest request) {
 		return catalogResponse(() -> serviceCatalogService.createAssignment(request));
 	}
@@ -153,7 +172,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Обновить привязку услуги к организации", description = "Обновить привязку услуги к организации. Endpoint PATCH /api/v1/organization-service-assignment/{assignmentId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/organization-service-assignment/{assignmentId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> updateOrganizationServiceAssignment(
 			@PathVariable Long assignmentId,
 			@RequestBody OrganizationServiceAssignmentRequest request
@@ -164,7 +183,7 @@ public class ServiceCatalogController {
 
 	@Operation(summary = "Удалить привязку услуги к организации", description = "Удалить привязку услуги к организации. Endpoint DELETE /api/v1/organization-service-assignment/{assignmentId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/organization-service-assignment/{assignmentId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('SERVICE_MANAGE')")
 	public ResponseEntity<Object> deleteOrganizationServiceAssignment(@PathVariable Long assignmentId) {
 		return catalogResponse(() -> {
 			serviceCatalogService.deleteAssignment(assignmentId);

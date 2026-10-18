@@ -7,9 +7,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import ru.ravel.ItDesk.dto.ZabbixIntegrationRequest;
 import ru.ravel.ItDesk.model.ServiceMonitoringStatus;
 import ru.ravel.ItDesk.model.ZabbixIntegration;
+import ru.ravel.ItDesk.model.ZabbixIntegrationMode;
 import ru.ravel.ItDesk.repository.ServiceRepository;
 import ru.ravel.ItDesk.repository.ZabbixIntegrationRepository;
 
@@ -36,6 +39,8 @@ public class ZabbixMonitoringService {
 	private final ServiceRepository serviceRepository;
 	private final ObjectMapper objectMapper;
 	private final GlobalSearchService globalSearchService;
+	private final ZabbixWebhookService webhookService;
+	private final PlatformTransactionManager transactionManager;
 	private final AtomicLong requestId = new AtomicLong(1);
 	private final HttpClient httpClient = HttpClient.newBuilder()
 			.connectTimeout(Duration.ofSeconds(15))
@@ -55,7 +60,9 @@ public class ZabbixMonitoringService {
 		validate(request, null);
 		ZabbixIntegration integration = new ZabbixIntegration();
 		apply(integration, request, false);
-		return toDto(integrationRepository.save(integration));
+		integration = integrationRepository.save(integration);
+		webhookService.recomputeIntegration(integration);
+		return toDto(integration);
 	}
 
 	@Transactional
@@ -63,7 +70,10 @@ public class ZabbixMonitoringService {
 		validate(request, id);
 		ZabbixIntegration integration = integrationRepository.findById(id).orElseThrow();
 		apply(integration, request, true);
-		return toDto(integrationRepository.save(integration));
+		integration = integrationRepository.save(integration);
+		// После смены режима статусы сервисов сразу считаются по новому источнику
+		webhookService.recomputeIntegration(integration);
+		return toDto(integration);
 	}
 
 	@Transactional
@@ -78,6 +88,15 @@ public class ZabbixMonitoringService {
 	public Map<String, Object> testIntegration(Long id) {
 		ZabbixIntegration integration = integrationRepository.findById(id).orElseThrow();
 		ZonedDateTime now = ZonedDateTime.now();
+		if (integration.isWebhook()) {
+			// В закрытом контуре ULDesk не может обратиться к Zabbix: проверяем, когда Zabbix обращался к нам
+			Map<String, Object> result = webhookService.testResult(integration);
+			integration.setLastTestedAt(now);
+			integration.setLastTestSuccess(Boolean.TRUE.equals(result.get("success")));
+			integration.setLastTestMessage(Objects.toString(result.get("message"), ""));
+			integrationRepository.save(integration);
+			return result;
+		}
 		try {
 			String version = call(integration, "apiinfo.version", Map.of(), false).asText();
 			JsonNode hosts = call(integration, "host.get", Map.of("output", List.of("hostid"), "limit", 1), true);
@@ -109,6 +128,10 @@ public class ZabbixMonitoringService {
 			return monitoringDto(catalogService);
 		}
 		ZabbixIntegration integration = catalogService.getZabbixIntegration();
+		if (integration.isWebhook()) {
+			webhookService.recompute(catalogService);
+			return monitoringDto(catalogService);
+		}
 		if (Boolean.FALSE.equals(integration.getActive())) {
 			updateMonitoring(catalogService, ServiceMonitoringStatus.UNAVAILABLE, "Интеграция Zabbix отключена", Map.of());
 			return monitoringDto(catalogService);
@@ -177,7 +200,8 @@ public class ZabbixMonitoringService {
 	public void pollEnabledServices() {
 		for (ru.ravel.ItDesk.model.Service service : serviceRepository.findAllByZabbixEnabledTrueAndActiveTrue()) {
 			try {
-				checkService(service.getId());
+				// Вызов через this обходит @Transactional: без транзакции ленивая zabbixIntegration не загрузится
+				new TransactionTemplate(transactionManager).executeWithoutResult(status -> checkService(service.getId()));
 			} catch (Exception exception) {
 				log.warn("Scheduled Zabbix check failed for serviceId={}", service.getId(), exception);
 			}
@@ -344,12 +368,15 @@ public class ZabbixMonitoringService {
 	}
 
 	private void updateMonitoring(ru.ravel.ItDesk.model.Service catalogService, ServiceMonitoringStatus status, String message, Map<String, Object> data) {
+		boolean statusChanged = catalogService.getMonitoringStatus() != status;
 		catalogService.setMonitoringStatus(status);
 		catalogService.setLastMonitoringAt(ZonedDateTime.now());
 		catalogService.setLastMonitoringMessage(truncate(message, 2000));
 		catalogService.setLastMonitoringData(data == null ? new LinkedHashMap<>() : new LinkedHashMap<>(data));
 		serviceRepository.save(catalogService);
-		globalSearchService.indexService(catalogService);
+		if (statusChanged) {
+			globalSearchService.indexService(catalogService);
+		}
 	}
 
 	private Map<String, Object> monitoringDto(ru.ravel.ItDesk.model.Service catalogService) {
@@ -364,22 +391,60 @@ public class ZabbixMonitoringService {
 
 	private void validate(ZabbixIntegrationRequest request, Long id) {
 		if (request == null || request.getName() == null || request.getName().isBlank()) throw new IllegalArgumentException("Название интеграции обязательно");
-		if (request.getBaseUrl() == null || request.getBaseUrl().isBlank()) throw new IllegalArgumentException("URL Zabbix обязателен");
-		URI uri = URI.create(normalizeApiUrl(request.getBaseUrl())).normalize();
-		if (!Set.of("http", "https").contains(uri.getScheme())
-				|| uri.getHost() == null
-				|| uri.getUserInfo() != null
-				|| uri.getFragment() != null) {
-			throw new IllegalArgumentException("Некорректный Zabbix URL: разрешены только http/https host URL без userinfo/fragment");
+		ZabbixIntegrationMode mode = mode(request.getMode());
+		boolean hasBaseUrl = request.getBaseUrl() != null && !request.getBaseUrl().isBlank();
+		if (mode == ZabbixIntegrationMode.API_POLLING && !hasBaseUrl) throw new IllegalArgumentException("URL Zabbix обязателен");
+		if (hasBaseUrl) requireHttpUrl(normalizeApiUrl(request.getBaseUrl()), "Некорректный Zabbix URL");
+		if (mode == ZabbixIntegrationMode.WEBHOOK) {
+			if (request.getPublicUrl() == null || request.getPublicUrl().isBlank()) {
+				throw new IllegalArgumentException("Укажите внешний адрес ULDesk: на него Zabbix будет отправлять события");
+			}
+			requireHttpUrl(request.getPublicUrl().trim(), "Некорректный внешний адрес ULDesk");
+			if (request.getEventTimezone() != null && !request.getEventTimezone().isBlank()) {
+				try {
+					java.time.ZoneId.of(request.getEventTimezone().trim());
+				} catch (Exception e) {
+					throw new IllegalArgumentException("Неизвестный часовой пояс: " + request.getEventTimezone());
+				}
+			}
 		}
 		if (integrationRepository.existsByNameIgnoreCaseAndIdNot(request.getName().trim(), id == null ? -1L : id)) {
 			throw new IllegalArgumentException("Интеграция с таким названием уже существует");
 		}
 	}
 
+	private void requireHttpUrl(String value, String message) {
+		URI uri;
+		try {
+			uri = URI.create(value).normalize();
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException(message);
+		}
+		if (!Set.of("http", "https").contains(uri.getScheme())
+				|| uri.getHost() == null
+				|| uri.getUserInfo() != null
+				|| uri.getFragment() != null) {
+			throw new IllegalArgumentException(message + ": разрешены только http/https host URL без userinfo/fragment");
+		}
+	}
+
+	private ZabbixIntegrationMode mode(String value) {
+		if (value == null || value.isBlank()) return ZabbixIntegrationMode.API_POLLING;
+		try {
+			return ZabbixIntegrationMode.valueOf(value.trim().toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			throw new IllegalArgumentException("Неизвестный режим интеграции: " + value);
+		}
+	}
+
 	private void apply(ZabbixIntegration integration, ZabbixIntegrationRequest request, boolean preserveSecrets) {
 		integration.setName(request.getName().trim());
-		integration.setBaseUrl(normalizeApiUrl(request.getBaseUrl()));
+		integration.setMode(mode(request.getMode()));
+		integration.setBaseUrl(request.getBaseUrl() == null || request.getBaseUrl().isBlank() ? null : normalizeApiUrl(request.getBaseUrl()));
+		integration.setPublicUrl(blankToNull(request.getPublicUrl() == null ? null : request.getPublicUrl().replaceAll("/+$", "")));
+		integration.setEventTimezone(blankToNull(request.getEventTimezone()));
+		integration.setAllowedIps(blankToNull(request.getAllowedIps()));
+		integration.setHeartbeatTimeoutMinutes(Math.max(0, Math.min(1440, Objects.requireNonNullElse(request.getHeartbeatTimeoutMinutes(), 15))));
 		integration.setUsername(blankToNull(request.getUsername()));
 		if (!preserveSecrets || request.getPassword() != null && !request.getPassword().isBlank()) integration.setPassword(blankToNull(request.getPassword()));
 		if (!preserveSecrets || request.getApiToken() != null && !request.getApiToken().isBlank()) integration.setApiToken(blankToNull(request.getApiToken()));
@@ -400,6 +465,12 @@ public class ZabbixMonitoringService {
 		result.put("lastTestedAt", integration.getLastTestedAt());
 		result.put("lastTestSuccess", integration.getLastTestSuccess());
 		result.put("lastTestMessage", integration.getLastTestMessage());
+		result.put("mode", integration.getMode());
+		result.put("publicUrl", integration.getPublicUrl());
+		result.put("eventTimezone", integration.getEventTimezone());
+		result.put("allowedIps", integration.getAllowedIps());
+		result.put("heartbeatTimeoutMinutes", integration.getHeartbeatTimeoutMinutes());
+		result.putAll(webhookService.connectionInfo(integration));
 		return result;
 	}
 

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.introspect.BeanPropertyDefinition;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.AutomationExpressionSuggestionRequest;
+import ru.ravel.ItDesk.dto.MonitoringProblemEvent;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerFunctionsType;
 
@@ -30,6 +31,9 @@ public class AutomationExpressionMetadataService {
 
 	private static final Pattern IDENTIFIER = Pattern.compile("[a-zA-Z_][a-zA-Z0-9_-]{0,127}");
 	private static final Pattern ZERO_ARGUMENT_METHOD = Pattern.compile("([a-zA-Z_][a-zA-Z0-9_]*)\\(\\)");
+	/** «target.method» прямо перед открывающей скобкой вызова действия */
+	private static final Pattern ACTION_CALLEE_PATTERN =
+			Pattern.compile("([A-Za-z_][A-Za-z0-9_]*)\\s*\\.\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*$");
 	private static final Set<String> HIDDEN_PROPERTIES = Set.of(
 			"password",
 			"authorities",
@@ -94,6 +98,9 @@ public class AutomationExpressionMetadataService {
 		register(definitions, "newSupportLine", "Новая линия", typeFactory.constructType(SupportLine.class));
 		register(definitions, "changes", "Изменения события", typeFactory.constructMapType(Map.class, String.class, Object.class));
 		register(definitions, "reason", "Причина изменения", typeFactory.constructType(String.class));
+		register(definitions, "problem", "Проблема мониторинга", typeFactory.constructType(MonitoringProblemEvent.Problem.class));
+		register(definitions, "service", "Сервис (события мониторинга)", typeFactory.constructType(MonitoringProblemEvent.ServiceRef.class));
+		register(definitions, "integration", "Интеграция мониторинга", typeFactory.constructType(MonitoringProblemEvent.IntegrationRef.class));
 		register(definitions, "var", "Переменные автоматизации", null);
 		this.roots = Collections.unmodifiableMap(definitions);
 
@@ -102,6 +109,7 @@ public class AutomationExpressionMetadataService {
 		register(actionDefinitions, "task", "Действия с заявкой", typeFactory.constructType(AutomationActionExecutor.TaskApi.class));
 		register(actionDefinitions, "notify", "Уведомления", typeFactory.constructType(AutomationActionExecutor.NotifyApi.class));
 		register(actionDefinitions, "webhook", "Внешние вызовы", typeFactory.constructType(AutomationActionExecutor.WebhookApi.class));
+		register(actionDefinitions, "incident", "Инциденты", typeFactory.constructType(AutomationActionExecutor.IncidentApi.class));
 		this.actionRoots = Collections.unmodifiableMap(actionDefinitions);
 	}
 
@@ -176,7 +184,76 @@ public class AutomationExpressionMetadataService {
 		result.put("query", context.query());
 		result.put("mode", effectiveMode);
 		result.put("suggestions", suggestions);
+		if (actionMode && actionContext.insideArguments()) {
+			Map<String, Object> signatureHelp = actionSignatureHelp(text, cursor);
+			if (signatureHelp != null) {
+				result.put("signatureHelp", signatureHelp);
+			}
+		}
 		return result;
+	}
+
+
+	/**
+	 * Подсказка параметров, как в IDE: вызов действия, внутри скобок которого стоит курсор,
+	 * все его перегрузки и номер текущего аргумента. Вложенные вызовы (task.name.trim()) пропускаются.
+	 */
+	private Map<String, Object> actionSignatureHelp(String text, int cursor) {
+		Deque<int[]> openCalls = new ArrayDeque<>(); // [позиция «(», число запятых до курсора]
+		char quote = 0;
+		boolean escaped = false;
+		for (int index = 0; index < cursor; index++) {
+			char value = text.charAt(index);
+			if (quote != 0) {
+				if (escaped) {
+					escaped = false;
+				} else if (value == '\\') {
+					escaped = true;
+				} else if (value == quote) {
+					quote = 0;
+				}
+				continue;
+			}
+			if (value == '\'' || value == '"') {
+				quote = value;
+			} else if (value == '(') {
+				openCalls.push(new int[]{index, 0});
+			} else if (value == ')') {
+				openCalls.poll();
+			} else if (value == ',' && !openCalls.isEmpty()) {
+				openCalls.peek()[1]++;
+			}
+		}
+
+		for (int[] call : openCalls) {
+			Matcher callee = ACTION_CALLEE_PATTERN.matcher(text.substring(0, call[0]));
+			if (!callee.find()) continue;
+			RootDefinition root = actionRoots.get(callee.group(1));
+			if (root == null) continue;
+			String methodName = callee.group(2);
+			List<Map<String, Object>> signatures = actionMethodDefinitions(root.type()).stream()
+					.filter(method -> method.expressionName().equals(methodName))
+					.map(method -> {
+						List<Map<String, Object>> parameters = new ArrayList<>();
+						for (int index = 0; index < method.parameterTypes().size(); index++) {
+							Map<String, Object> parameter = new LinkedHashMap<>();
+							parameter.put("type", method.parameterTypes().get(index));
+							if (index < method.parameterNames().size()) {
+								parameter.put("name", method.parameterNames().get(index));
+							}
+							parameters.add(parameter);
+						}
+						return Map.<String, Object>of("parameters", parameters);
+					})
+					.toList();
+			if (signatures.isEmpty()) continue;
+			Map<String, Object> help = new LinkedHashMap<>();
+			help.put("method", callee.group(1) + "." + methodName);
+			help.put("activeParameter", call[1]);
+			help.put("signatures", signatures);
+			return help;
+		}
+		return null;
 	}
 
 
@@ -674,13 +751,18 @@ public class AutomationExpressionMetadataService {
 	private List<MemberDefinition> actionMethodMembers(JavaType type) {
 		return actionMethodDefinitions(type).stream()
 				.map(method -> {
-					String parametersText = String.join(", ", method.parameterTypes());
-					String signature = method.expressionName() + "(" + parametersText + ")";
-					boolean hasParameters = !method.parameterTypes().isEmpty();
+					List<String> parameterTexts = new ArrayList<>();
 					List<Map<String, Object>> parameters = new ArrayList<>();
 					for (int index = 0; index < method.parameterTypes().size(); index++) {
-						parameters.add(Map.of("index", index, "type", method.parameterTypes().get(index)));
+						String parameterType = method.parameterTypes().get(index);
+						String name = index < method.parameterNames().size() ? method.parameterNames().get(index) : null;
+						parameterTexts.add(name == null ? parameterType : parameterType + " " + name);
+						parameters.add(name == null
+								? Map.of("index", index, "type", parameterType)
+								: Map.of("index", index, "type", parameterType, "name", name));
 					}
+					String signature = method.expressionName() + "(" + String.join(", ", parameterTexts) + ")";
+					boolean hasParameters = !method.parameterTypes().isEmpty();
 					return new MemberDefinition(
 							method.expressionName() + "()",
 							method.expressionName(),
@@ -727,6 +809,11 @@ public class AutomationExpressionMetadataService {
 			for (java.lang.reflect.Type parameterType : method.getGenericParameterTypes()) {
 				parameterTypes.add(displayType(objectMapper.getTypeFactory().constructType(parameterType)));
 			}
+			// Имена параметров есть, если код собран с -parameters (по умолчанию в Spring Boot)
+			List<String> parameterNames = Arrays.stream(method.getParameters())
+					.filter(java.lang.reflect.Parameter::isNamePresent)
+					.map(java.lang.reflect.Parameter::getName)
+					.toList();
 			String key = method.getName().toLowerCase(Locale.ROOT) + "(" + String.join(",", parameterTypes) + ")";
 			String javaSignature = method.getName() + "(" + String.join(", ", parameterTypes) + ")";
 			unique.putIfAbsent(key, new MethodDefinition(
@@ -734,6 +821,7 @@ public class AutomationExpressionMetadataService {
 					javaSignature,
 					method.getDeclaringClass().getSimpleName(),
 					parameterTypes,
+					parameterNames.size() == parameterTypes.size() ? parameterNames : List.of(),
 					returnType
 			));
 		}
@@ -819,6 +907,7 @@ public class AutomationExpressionMetadataService {
 					javaSignature,
 					method.getDeclaringClass().getSimpleName(),
 					parameterTypes,
+					List.of(),
 					returnType
 			));
 		}
@@ -1140,6 +1229,7 @@ public class AutomationExpressionMetadataService {
 			String javaSignature,
 			String declaringType,
 			List<String> parameterTypes,
+			List<String> parameterNames,
 			JavaType returnType
 	) {}
 

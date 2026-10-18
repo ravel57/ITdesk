@@ -32,6 +32,8 @@ public class IncidentService {
 	private final UserService userService;
 	private final UserNotificationService userNotificationService;
 	private final ClientService clientService;
+	private final WebSocketService webSocketService;
+	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
 
 	@Transactional(readOnly = true)
 	public Map<String, Object> getPage(IncidentPageRequest request) {
@@ -146,6 +148,7 @@ public class IncidentService {
 				.author(currentUser)
 				.createdAt(now)
 				.build());
+		publishIncidentChanged(incident.getId());
 		return toPortalDto(incident, client);
 	}
 
@@ -170,7 +173,7 @@ public class IncidentService {
 		if (request.getTaskIds() != null && !request.getTaskIds().isEmpty()) {
 			linkTasksInternal(saved, request.getTaskIds(), request.getPrimaryTaskId(), currentUser);
 		}
-		return toDetailDto(saved);
+		return changed(saved);
 	}
 
 	@Transactional
@@ -218,7 +221,7 @@ public class IncidentService {
 					? "Руководитель инцидента снят"
 					: "Руководителем инцидента назначен %s".formatted(userDisplayName(saved.getLeader())));
 		}
-		return toDetailDto(saved);
+		return changed(saved);
 	}
 
 	@Transactional
@@ -256,7 +259,7 @@ public class IncidentService {
 		}
 		incident.setUpdatedAt(now);
 		incidentRepository.save(incident);
-		return toDetailDto(incident);
+		return changed(incident);
 	}
 
 	@Transactional
@@ -264,7 +267,7 @@ public class IncidentService {
 		SupportIncident incident = getAccessibleIncidentForChange(incidentId);
 		List<Long> taskIds = request == null ? List.of() : Objects.requireNonNullElse(request.getTaskIds(), List.of());
 		linkTasksInternal(incident, taskIds, request == null ? null : request.getPrimaryTaskId(), userService.getCurrentUser());
-		return toDetailDto(incident);
+		return changed(incident);
 	}
 
 	@Transactional
@@ -279,7 +282,7 @@ public class IncidentService {
 		incident.setUpdatedAt(ZonedDateTime.now());
 		incidentRepository.save(incident);
 		saveSystemEntry(incident, "Заявка #%d отвязана от инцидента".formatted(taskId));
-		return toDetailDto(incident);
+		return changed(incident);
 	}
 
 	@Transactional
@@ -299,7 +302,7 @@ public class IncidentService {
 				.text("По заявке #%d восстановление %s".formatted(taskId, confirmed ? "подтверждено" : "снято"))
 				.author(userService.getCurrentUser())
 				.build());
-		return toDetailDto(incident);
+		return changed(incident);
 	}
 
 	@Transactional
@@ -333,7 +336,7 @@ public class IncidentService {
 			incidentTaskLinkRepository.save(link);
 		}
 		saveSystemEntry(incident, "Выполнена массовая операция %s для %d заявок".formatted(operation, taskIds.size()));
-		return toDetailDto(incident);
+		return changed(incident);
 	}
 
 	@Transactional(readOnly = true)
@@ -426,8 +429,285 @@ public class IncidentService {
 			incident.setUpdatedAt(now);
 			incidentRepository.save(incident);
 			saveSystemEntry(incident, "Обязательное обновление просрочено");
+			publishIncidentChanged(incident.getId());
 		}
 	}
+
+	// ------------------------------------------------------------------
+	// Системные операции для автоматизаций (детектор массовых инцидентов Jev).
+	// Работают без пользовательской сессии и не бросают исключений на ожидаемых ситуациях
+	// (заявка уже в другом инциденте и т.п.), чтобы не помечать транзакцию автоматизации rollback-only.
+	// ------------------------------------------------------------------
+
+	/**
+	 * Поля черновика инцидента, заполненные детектором.
+	 */
+	public record SystemIncidentDraft(
+			String title,
+			String description,
+			String publicDescription,
+			String impactSummary,
+			IncidentSeverity severity,
+			Long serviceId,
+			Long supportLineId,
+			Long leaderId,
+			Long technicalOwnerId,
+			Collection<Long> participantIds,
+			Collection<Long> clientIds,
+			Collection<Long> taskIds,
+			ZonedDateTime actualStartedAt,
+			Integer updateIntervalMinutes
+	) {
+	}
+
+
+	/**
+	 * Создаёт инцидент в статусе DRAFT от имени системы и привязывает свободные заявки.
+	 */
+	@Transactional
+	public SupportIncident createDraftForSystem(SystemIncidentDraft draft) {
+		return createDraftForSystem(draft, "детектор Jev");
+	}
+
+
+	/**
+	 * То же с указанием источника для таймлайна, например «мониторинг Zabbix».
+	 */
+	@Transactional
+	public SupportIncident createDraftForSystem(SystemIncidentDraft draft, String source) {
+		User system = SystemUser.getInstance();
+		ZonedDateTime now = ZonedDateTime.now();
+		SupportIncident incident = SupportIncident.builder()
+				.title(draft.title())
+				.description(Objects.requireNonNullElse(draft.description(), ""))
+				.publicDescription(Objects.requireNonNullElse(draft.publicDescription(), ""))
+				.impactSummary(Objects.requireNonNullElse(draft.impactSummary(), ""))
+				.severity(draft.severity())
+				.status(IncidentStatus.DRAFT)
+				.createdBy(system)
+				.createdAt(now)
+				.updatedAt(now)
+				.detectedAt(now)
+				.actualStartedAt(draft.actualStartedAt())
+				.updateIntervalMinutes(draft.updateIntervalMinutes() == null ? 30 : Math.max(5, draft.updateIntervalMinutes()))
+				.build();
+		if (draft.serviceId() != null) {
+			incident.setServices(resolveServices(List.of(draft.serviceId())));
+			incident.setServiceName(incident.getServices().stream()
+					.map(ru.ravel.ItDesk.model.Service::getName)
+					.filter(Objects::nonNull)
+					.collect(Collectors.joining(", ")));
+		}
+		if (draft.supportLineId() != null) {
+			supportLineRepository.findById(draft.supportLineId()).ifPresent(incident::setSupportLine);
+		}
+		if (draft.leaderId() != null) {
+			userRepository.findById(draft.leaderId()).ifPresent(leader -> {
+				incident.setLeader(leader);
+				incident.setLeaderAssignedAt(now);
+			});
+		}
+		if (draft.technicalOwnerId() != null) {
+			userRepository.findById(draft.technicalOwnerId()).ifPresent(incident::setTechnicalOwner);
+		}
+		if (draft.participantIds() != null && !draft.participantIds().isEmpty()) {
+			incident.getParticipants().addAll(userRepository.findAllById(draft.participantIds()));
+		}
+		if (draft.clientIds() != null) {
+			for (Client client : clientRepository.findAllById(draft.clientIds())) {
+				incident.getClients().add(client);
+				if (client.getOrganization() != null) incident.getOrganizations().add(client.getOrganization());
+			}
+		}
+		SupportIncident saved = incidentRepository.saveAndFlush(incident);
+		saved.setIncidentNumber("INC-%06d".formatted(saved.getId()));
+		saved = incidentRepository.saveAndFlush(saved);
+		saveSystemEntry(saved, "Инцидент %s создан автоматически (%s)".formatted(saved.getIncidentNumber(), source));
+		linkTasksForSystem(saved.getId(), draft.taskIds());
+		publishIncidentChanged(saved.getId());
+		return saved;
+	}
+
+
+	/**
+	 * Привязывает заявки к инциденту от имени системы. Заявки, уже связанные с активным инцидентом,
+	 * и несуществующие пропускаются.
+	 *
+	 * @return id реально привязанных заявок
+	 */
+	@Transactional
+	public List<Long> linkTasksForSystem(Long incidentId, Collection<Long> taskIds) {
+		if (incidentId == null || taskIds == null || taskIds.isEmpty()) return List.of();
+		SupportIncident incident = incidentRepository.findById(incidentId).orElse(null);
+		if (incident == null || !incident.getStatus().isActive()) return List.of();
+		User system = SystemUser.getInstance();
+		List<Long> linked = new ArrayList<>();
+		for (Long taskId : taskIds.stream().filter(Objects::nonNull).distinct().toList()) {
+			Task task = taskRepository.findById(taskId).orElse(null);
+			Client client = task == null ? null : clientRepository.findByTaskId(taskId).orElse(null);
+			if (task == null || client == null || incidentTaskLinkRepository.existsByTaskIdAndActiveTrue(taskId)) {
+				continue;
+			}
+			incidentTaskLinkRepository.save(IncidentTaskLink.builder()
+					.incident(incident)
+					.task(task)
+					.linkedBy(system)
+					.primaryTask(false)
+					.build());
+			incident.getClients().add(client);
+			if (client.getOrganization() != null) incident.getOrganizations().add(client.getOrganization());
+			if (task.getService() != null) incident.getServices().add(task.getService());
+			saveSystemEntry(incident, "Заявка #%d связана с инцидентом (детектор Jev)".formatted(taskId));
+			linked.add(taskId);
+		}
+		if (!linked.isEmpty()) {
+			incident.setUpdatedAt(ZonedDateTime.now());
+			incidentRepository.save(incident);
+			publishIncidentChanged(incident.getId());
+		}
+		return linked;
+	}
+
+
+	/**
+	 * Подтверждение восстановления по заявке от имени системы (например, клиент сам написал, что всё работает).
+	 *
+	 * @return true, если состояние изменилось
+	 */
+	@Transactional
+	public boolean setRecoveryConfirmationForSystem(Long incidentId, Long taskId, boolean confirmed, String reason) {
+		IncidentTaskLink link = incidentTaskLinkRepository.findFirstByIncidentIdAndTaskIdAndActiveTrue(incidentId, taskId)
+				.orElse(null);
+		if (link == null || Boolean.TRUE.equals(link.getRecoveryConfirmed()) == confirmed) {
+			return false;
+		}
+		link.setRecoveryConfirmed(confirmed);
+		link.setRecoveryConfirmedAt(confirmed ? ZonedDateTime.now() : null);
+		link.setRecoveryConfirmedBy(confirmed ? SystemUser.getInstance() : null);
+		incidentTaskLinkRepository.save(link);
+		incidentTimelineEntryRepository.save(IncidentTimelineEntry.builder()
+				.incident(link.getIncident())
+				.type(IncidentTimelineType.RECOVERY_CONFIRMATION)
+				.audience(IncidentTimelineAudience.INTERNAL)
+				.text("По заявке #%d восстановление %s (%s)".formatted(taskId, confirmed ? "подтверждено" : "снято", reason))
+				.createdAt(ZonedDateTime.now())
+				.build());
+		publishIncidentChanged(incidentId);
+		return true;
+	}
+
+
+	/**
+	 * Клиент сообщает, что после восстановления проблема сохраняется: запись в таймлайн и уведомление
+	 * руководителю, техническому владельцу, ответственному за коммуникацию и участникам.
+	 */
+	@Transactional
+	public void reportRecoveryProblemForSystem(Long incidentId, Long taskId, String details) {
+		SupportIncident incident = incidentRepository.findById(incidentId).orElse(null);
+		if (incident == null) {
+			return;
+		}
+		saveSystemEntry(incident, "После восстановления проблема сохраняется: %s".formatted(details));
+		Set<User> recipients = new LinkedHashSet<>();
+		addIfNotNull(recipients, incident.getLeader());
+		addIfNotNull(recipients, incident.getTechnicalOwner());
+		addIfNotNull(recipients, incident.getCommunicationOwner());
+		recipients.addAll(incident.getParticipants());
+		for (User user : recipients) {
+			if (user.getId() != null) {
+				userNotificationService.send(new UserNotification(
+						UserNotificationEvent.INCIDENT_RECOVERY_FAILED,
+						"%s «%s»: клиент сообщает, что проблема сохраняется (заявка #%d)".formatted(
+								incident.getIncidentNumber(), incident.getTitle(), taskId),
+						user.getId()
+				));
+			}
+		}
+		publishIncidentChanged(incidentId);
+	}
+
+
+	/**
+	 * Итог перевода инцидента к проверке восстановления.
+	 */
+	public enum RecoveryCheckResult {
+		/** Переведён в «Наблюдение» */
+		MOVED,
+		/** Статус не изменён (черновик, уже наблюдение или восстановлен): оставлена заметка */
+		NOTE_ONLY,
+		/** Инцидент не найден или уже закрыт */
+		SKIPPED
+	}
+
+
+	/**
+	 * Проблема устранена (например, по данным мониторинга): объявленный инцидент переводится в «Наблюдение»,
+	 * где проверяется восстановление у клиентов. Черновик и проверка не переводятся — их ещё не подтвердили
+	 * и они не видны клиентам, поэтому только заметка.
+	 */
+	@Transactional
+	public RecoveryCheckResult moveToRecoveryCheckForSystem(Long incidentId, String reason) {
+		SupportIncident incident = incidentId == null ? null : incidentRepository.findById(incidentId).orElse(null);
+		if (incident == null || !incident.getStatus().isActive()) {
+			return RecoveryCheckResult.SKIPPED;
+		}
+		IncidentStatus status = incident.getStatus();
+		if (status != IncidentStatus.DECLARED && status != IncidentStatus.DIAGNOSIS && status != IncidentStatus.MITIGATION) {
+			saveSystemEntry(incident, status == IncidentStatus.DRAFT || status == IncidentStatus.VERIFYING
+					? "%s. Инцидент ещё не объявлен: проверьте, нужен ли он, или отмените".formatted(reason)
+					: reason);
+			publishIncidentChanged(incident.getId());
+			return RecoveryCheckResult.NOTE_ONLY;
+		}
+		ZonedDateTime now = ZonedDateTime.now();
+		incident.setStatus(IncidentStatus.MONITORING);
+		if (incident.getMitigatedAt() == null) incident.setMitigatedAt(now);
+		if (incident.getNextUpdateAt() == null) {
+			incident.setNextUpdateAt(now.plusMinutes(Objects.requireNonNullElse(incident.getUpdateIntervalMinutes(), 30)));
+		}
+		incident.setUpdatedAt(now);
+		incidentRepository.save(incident);
+		saveSystemEntry(incident, "Статус изменён: %s → %s. %s".formatted(status, IncidentStatus.MONITORING, reason));
+		publishIncidentChanged(incident.getId());
+		return RecoveryCheckResult.MOVED;
+	}
+
+
+	/**
+	 * Системная запись во внутренний таймлайн инцидента.
+	 */
+	@Transactional
+	public void addSystemNote(Long incidentId, String text) {
+		incidentRepository.findById(incidentId).ifPresent(incident -> {
+			saveSystemEntry(incident, text);
+			publishIncidentChanged(incident.getId());
+		});
+	}
+
+
+	/**
+	 * Realtime-событие «инцидент изменился» — после коммита, только пользователям, которые видят инцидент.
+	 */
+	public void publishIncidentChanged(Long incidentId) {
+		if (incidentId == null) {
+			return;
+		}
+		afterCommitExecutor.runOnce("incident:" + incidentId, () -> incidentRepository.findById(incidentId)
+				.ifPresent(incident -> {
+					for (User user : userService.getUsers()) {
+						if (user.isEnabled() && canUserView(incident, user)) {
+							webSocketService.incidentUpdated(user.getUsername(), incidentId);
+						}
+					}
+				}));
+	}
+
+
+	private Map<String, Object> changed(SupportIncident incident) {
+		publishIncidentChanged(incident.getId());
+		return toDetailDto(incident);
+	}
+
 
 	private void applyRequest(SupportIncident incident, IncidentSaveRequest request) {
 		if (request == null) {
@@ -856,7 +1136,8 @@ public class IncidentService {
 
 	private boolean canUserView(SupportIncident incident, User user) {
 		if (incident == null || user == null) return false;
-		if (userService.isAdmin(user)) return true;
+		// Менеджер, как и в заявках, видит инциденты всех организаций
+		if (userService.isAdmin(user) || userService.isManager(user)) return true;
 		boolean operator = userService.isOperator(user);
 		boolean observer = hasAuthority(user, "OBSERVER");
 		if (!operator && !observer) return false;
@@ -1059,6 +1340,7 @@ public class IncidentService {
 	private Map<String, Object> template(String key, String title, String text) {
 		return Map.of("key", key, "title", title, "text", text);
 	}
+
 
 	private long secondsBetween(ZonedDateTime start, ZonedDateTime end) {
 		if (start == null || end == null || end.isBefore(start)) return 0;

@@ -73,6 +73,8 @@ services:
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
       - LLM_URL=${LLM_URL}
+      - JEV_ENABLED=${JEV_ENABLED:true}
+      - JEV_API_KEY=${JEV_API_KEY:-}
       - PLUGINS_DIR=/home/java/plugins
       - ULDESK_PLUGINS_RUNNER_SOCKET=/run/uldesk-ipc/plugin-runner.sock
       - ULDESK_PLUGINS_BROKER_SOCKET=/run/uldesk-ipc/plugin-broker.sock

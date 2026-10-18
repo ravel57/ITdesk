@@ -1141,13 +1141,69 @@ public class ClientService {
 	}
 
 
-	private Map<String, Object> updateAnswerRequired(Client client, Long messageId, AnswerRequired answerRequired) {
-		List<Message> conversationMessages = safeCollection(client.getMessages()).stream()
+	/**
+	 * Автоматическая метка «требует ответа» без сброса таймера: если в текущей цепочке входящих сообщений
+	 * (после последнего ответа оператора или последнего «не требует ответа») уже есть сообщение с меткой
+	 * «требует ответа», метка остаётся на нём, а новое сообщение не помечается. Если цепочку прервало
+	 * «не требует ответа», новое сообщение помечается после него — таймер начинается с нового сообщения,
+	 * а отметка «не требует ответа» сохраняется.
+	 *
+	 * @return id ранее помеченного сообщения цепочки, если метка не перенесена; empty — метка поставлена
+	 */
+	@Transactional
+	public Optional<Long> markAnswerRequiredForSystem(Long clientId, Long messageId) {
+		if (clientId == null || messageId == null) {
+			throw new IllegalArgumentException("clientId and messageId must not be null");
+		}
+		Client client = clientsRepository.findById(clientId)
+				.orElseThrow(() -> new NoSuchElementException("Client not found"));
+		List<Message> conversationMessages = conversationMessages(client);
+		for (int i = conversationMessages.size() - 1; i >= 0; i--) {
+			if (Objects.equals(conversationMessages.get(i).getId(), messageId)) {
+				for (int j = i - 1; j >= 0; j--) {
+					Message previous = conversationMessages.get(j);
+					if (isOutgoingOperatorMessage(previous)
+							|| (isIncomingMessage(previous) && previous.getAnswerRequired() == AnswerRequired.ANSWER_NOT_REQUIRED)) {
+						break;
+					}
+					if (isIncomingMessage(previous) && previous.getAnswerRequired() == AnswerRequired.ANSWER_REQUIRED) {
+						return Optional.of(previous.getId());
+					}
+				}
+				break;
+			}
+		}
+		updateAnswerRequired(client, messageId, AnswerRequired.ANSWER_REQUIRED, false);
+		return Optional.empty();
+	}
+
+
+	private List<Message> conversationMessages(Client client) {
+		return safeCollection(client.getMessages()).stream()
 				.filter(message -> message.getDate() != null)
 				.filter(message -> !Boolean.TRUE.equals(message.getDeleted()))
 				.filter(message -> !Boolean.TRUE.equals(message.getIsComment()))
 				.sorted()
 				.toList();
+	}
+
+
+	private Map<String, Object> updateAnswerRequired(Client client, Long messageId, AnswerRequired answerRequired) {
+		return updateAnswerRequired(client, messageId, answerRequired, true);
+	}
+
+
+	/**
+	 * @param resetChain true — снять отметки со всех входящих сообщений цепочки (ручная установка и обычные
+	 *                   автоматизации: в цепочке остаётся одна отметка); false — изменить только выбранное сообщение
+	 */
+	private Map<String, Object> updateAnswerRequired(
+			Client client,
+			Long messageId,
+			AnswerRequired answerRequired,
+			boolean resetChain
+	) {
+		List<Message> conversationMessages = conversationMessages(client);
 		int selectedIndex = -1;
 		for (int i = 0; i < conversationMessages.size(); i++) {
 			if (Objects.equals(conversationMessages.get(i).getId(), messageId)) {
@@ -1177,12 +1233,16 @@ public class ClientService {
 			}
 		}
 		List<Message> groupMessages = new ArrayList<>();
-		for (int i = startIndex; i <= endIndex; i++) {
-			Message message = conversationMessages.get(i);
-			if (isIncomingMessage(message)) {
-				message.setAnswerRequired(AnswerRequired.NOT_SET);
-				groupMessages.add(message);
+		if (resetChain) {
+			for (int i = startIndex; i <= endIndex; i++) {
+				Message message = conversationMessages.get(i);
+				if (isIncomingMessage(message)) {
+					message.setAnswerRequired(AnswerRequired.NOT_SET);
+					groupMessages.add(message);
+				}
 			}
+		} else {
+			groupMessages.add(selectedMessage);
 		}
 		selectedMessage.setAnswerRequired(answerRequired);
 		messageRepository.saveAll(groupMessages);

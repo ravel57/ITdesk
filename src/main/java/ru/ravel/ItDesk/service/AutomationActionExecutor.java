@@ -10,6 +10,7 @@ import ru.ravel.ItDesk.dto.AnswerRequired;
 import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.model.jev.JevThreshold;
 import ru.ravel.ItDesk.repository.*;
 
 import java.lang.reflect.Method;
@@ -48,6 +49,12 @@ public class AutomationActionExecutor {
 	private final WebSocketService webSocketService;
 	private final EventPublisher eventPublisher;
 	private final WebhookService webhookService;
+	private final JevService jevService;
+	private final IncidentDetectorService incidentDetectorService;
+	private final JevAssistService jevAssistService;
+	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
+	private final MessageRepository messageRepository;
+	private final ClientRepository clientRepository;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -72,7 +79,12 @@ public class AutomationActionExecutor {
 			return;
 		}
 		try {
-			invoke(target, call.method, args);
+			if (target instanceof JevApi) {
+				// журнал решений Jev знает, какое правило и действие спросили Jev
+				invokeJevAction(target, call.method, args, ctx);
+			} else {
+				invoke(target, call.method, args);
+			}
 		} catch (Exception e) {
 			log.error("Action failed: {}({}) event={}",
 					actionType, args, safeEventInfo(ctx.getEvent()), e);
@@ -112,6 +124,10 @@ public class AutomationActionExecutor {
 			return new WebhookApi(ctx);
 		}
 
+		public JevApi jev() {
+			return new JevApi(ctx);
+		}
+
 		@Nullable
 		Object resolveTarget(String name) {
 			return switch (name) {
@@ -119,6 +135,7 @@ public class AutomationActionExecutor {
 				case "task" -> task();
 				case "notify" -> notifyApi();
 				case "webhook" -> webhook();
+				case "jev" -> jev();
 				default -> null;
 			};
 		}
@@ -146,8 +163,10 @@ public class AutomationActionExecutor {
 				log.warn("client.setAnswerRequired skipped: clientId/messageId is null, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			clientService.answerRequiredForSystem(clientId, messageId, AnswerRequired.ANSWER_REQUIRED);
-			log.info("AUTO client.setAnswerRequired(clientId={}, messageId={})", clientId, messageId);
+			// Не переносим метку внутри цепочки сообщений, чтобы не сбрасывать таймер ожидания ответа
+			Optional<Long> alreadyFlagged = clientService.markAnswerRequiredForSystem(clientId, messageId);
+			log.info("AUTO client.setAnswerRequired(clientId={}, messageId={}){}", clientId, messageId,
+					alreadyFlagged.map(id -> " skipped: message " + id + " in this chain is already flagged").orElse(""));
 		}
 
 		public void sendMessage(String text) {
@@ -502,11 +521,9 @@ public class AutomationActionExecutor {
 		if (taskId == null) {
 			return;
 		}
-		try {
-			webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(null, taskId));
-		} catch (Exception e) {
-			log.warn("Unable to send task update after automation, taskId={}", taskId, e);
-		}
+		// После коммита автоматизации и один раз на заявку, даже если правило поменяло несколько полей
+		afterCommitExecutor.runOnce("task:" + taskId,
+				() -> webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(null, taskId)));
 	}
 
 	public final class NotifyApi {
@@ -524,6 +541,449 @@ public class AutomationActionExecutor {
 
 			// TODO: notificationService.notifyUser(...)
 			log.info("AUTO notify.user(userId={}, text={})", userId, text);
+		}
+	}
+
+	/** Jev actions exposed to automation rules. */
+	public final class JevApi {
+		private static final org.slf4j.Logger jevLog = org.slf4j.LoggerFactory.getLogger("JEV");
+
+		private final AutomationExecutionContext ctx;
+
+		JevApi(AutomationExecutionContext ctx) {
+			this.ctx = ctx;
+		}
+
+		/**
+		 * Определяет тип заявки, сервис и линию поддержки по тексту заявки (и связанного сообщения).
+		 * Значения, в которых Jev не уверен, не меняются.
+		 */
+		public void classifyTask() {
+			Long taskId = resolveTaskId(ctx);
+			if (!ready("jev.classifyTask", taskId == null ? "no task in event" : null)) {
+				return;
+			}
+			String context = "task=" + taskId;
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			Organization organization = clientRepository.findByTaskId(taskId)
+					.map(Client::getOrganization)
+					.orElse(null);
+			Optional<JevService.Triage> result = jevService.classify(context, taskText(task), organization);
+			if (result.isEmpty()) {
+				jevLog.info("[{}] jev.classifyTask: no confident decision, task unchanged", context);
+				return;
+			}
+			JevService.Triage triage = result.get();
+			ru.ravel.ItDesk.model.Service oldService = task.getService();
+			TaskType oldType = task.getType();
+			boolean changed = false;
+
+			ru.ravel.ItDesk.model.Service newService = triage.service();
+			if (newService != null && !sameEntity(oldService, newService)) {
+				task.setService(newService);
+				changed = true;
+			}
+			TaskType newType = triage.type();
+			if (newType != null && !sameEntity(oldType, newType)) {
+				if (typeAllowedForService(newType, task.getService())) {
+					task.setType(newType);
+					changed = true;
+				} else {
+					jevLog.info("[{}] jev.classifyTask: type «{}» skipped, not allowed for service «{}»",
+							context, newType.getType(), task.getService().getName());
+				}
+			}
+			if (changed) {
+				task.setLastActivity(ZonedDateTime.now());
+				taskRepository.save(task);
+				if (!sameEntity(oldService, task.getService())) {
+					publishTaskEvent(TriggerType.TASK_SERVICE_CHANGED, task, ctx,
+							"oldService", oldService,
+							"newService", task.getService());
+				}
+				if (!sameEntity(oldType, task.getType())) {
+					publishTaskEvent(TriggerType.TASK_TYPE_CHANGED, task, ctx,
+							"oldType", oldType,
+							"newType", task.getType());
+				}
+				notifyTaskUpdated(taskId);
+				jevLog.info("[{}] jev.classifyTask: type «{}» -> «{}», service «{}» -> «{}» (rule: {})", context,
+						oldType == null ? null : oldType.getType(),
+						task.getType() == null ? null : task.getType().getType(),
+						oldService == null ? null : oldService.getCode(),
+						task.getService() == null ? null : task.getService().getCode(),
+						ruleName());
+			}
+			SupportLine newLine = triage.supportLine();
+			SupportLine oldLine = task.getSupportLine();
+			if (newLine != null && !sameEntity(oldLine, newLine)) {
+				taskRoutingService.routeExistingTask(taskId, newLine.getId(), false, "Jev");
+				notifyTaskUpdated(taskId);
+				jevLog.info("[{}] jev.classifyTask: support line «{}» -> «{}» (rule: {})", context,
+						oldLine == null ? null : oldLine.getName(), newLine.getName(), ruleName());
+			} else if (!changed) {
+				jevLog.info("[{}] jev.classifyTask: Jev agrees with current values, task unchanged", context);
+			}
+		}
+
+		/**
+		 * Назначает приоритет по тексту заявки. Приоритет остаётся прежним, если Jev не уверен.
+		 */
+		public void setPriority() {
+			Long taskId = resolveTaskId(ctx);
+			if (!ready("jev.setPriority", taskId == null ? "no task in event" : null)) {
+				return;
+			}
+			String context = "task=" + taskId;
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			Priority oldPriority = task.getPriority();
+			Optional<Priority> suggested = jevService.suggestPriority(context, taskText(task));
+			if (suggested.isEmpty()) {
+				jevLog.info("[{}] jev.setPriority: no confident decision, priority unchanged", context);
+				return;
+			}
+			Priority priority = suggested.get();
+			if (sameEntity(oldPriority, priority)) {
+				jevLog.info("[{}] jev.setPriority: Jev agrees with current priority «{}»", context, priority.getName());
+				return;
+			}
+			new TaskApi(ctx).setPriority(priority.getName());
+			jevLog.info("[{}] jev.setPriority: «{}» -> «{}» (rule: {})", context,
+					oldPriority == null ? null : oldPriority.getName(), priority.getName(), ruleName());
+		}
+
+		/**
+		 * Выставляет «нужен ответ» / «ответ не нужен» для входящего сообщения: ответ нужен на вопросы
+		 * и проблемы, не нужен на благодарности и подтверждения. В сомнительных случаях флаг не меняется.
+		 */
+		public void setAnswerRequiredIfNeeded() {
+			Long clientId = resolveClientId(ctx);
+			Long messageId = resolveMessageId(ctx);
+			if (!ready("jev.setAnswerRequiredIfNeeded",
+					clientId == null || messageId == null ? "no client or message in event" : null)) {
+				return;
+			}
+			String context = "client=" + clientId + ", message=" + messageId;
+			JsonNode text = readByPath(ctx.getEvent().getPayload(), "message.text");
+			if (text == null || !text.isTextual()) {
+				jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: message has no text, skipped", context);
+				return;
+			}
+			AnswerRequired answer = switch (jevService.needsReply(context, text.asText())) {
+				case REQUIRED -> AnswerRequired.ANSWER_REQUIRED;
+				case NOT_REQUIRED -> AnswerRequired.ANSWER_NOT_REQUIRED;
+				case UNDECIDED -> null;
+			};
+			if (answer == null) {
+				jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: undecided, flag unchanged", context);
+				return;
+			}
+			if (answer == AnswerRequired.ANSWER_REQUIRED) {
+				// Метка остаётся на первом сообщении цепочки, чтобы не сбрасывать таймер ожидания ответа
+				Optional<Long> alreadyFlagged = clientService.markAnswerRequiredForSystem(clientId, messageId);
+				if (alreadyFlagged.isPresent()) {
+					jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: ANSWER_REQUIRED, but message {} in this chain "
+							+ "is already flagged — flag and timer kept (rule: {})", context, alreadyFlagged.get(), ruleName());
+					return;
+				}
+			} else {
+				clientService.answerRequiredForSystem(clientId, messageId, answer);
+			}
+			jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: {} (rule: {})", context, answer, ruleName());
+		}
+
+		/**
+		 * Детектор массовых инцидентов для входящего сообщения: Jev размечает сообщение, детектор считает
+		 * похожие сбои разных клиентов в окне и, в зависимости от режима, уведомляет ответственных
+		 * или создаёт черновик инцидента (см. IncidentDetectorService).
+		 */
+		public void detectIncident() {
+			Long clientId = resolveClientId(ctx);
+			Long messageId = resolveMessageId(ctx);
+			if (!ready("jev.detectIncident",
+					clientId == null || messageId == null ? "no client or message in event" : null)) {
+				return;
+			}
+			String context = "client=" + clientId + ", message=" + messageId;
+			JsonNode text = readByPath(ctx.getEvent().getPayload(), "message.text");
+			if (text == null || !text.isTextual() || text.asText().isBlank()) {
+				jevLog.info("[{}] jev.detectIncident: message has no text, skipped", context);
+				return;
+			}
+			incidentDetectorService.handleIncomingMessage(context, clientId, messageId, text.asText());
+		}
+
+		/**
+		 * Входящее сообщение: нужна ли новая заявка. Замена правилу «нет открытых заявок» + «текст не спасибо»:
+		 * Jev учитывает открытые и недавно закрытые заявки клиента. Без уверенного ответа Jev — прежнее правило.
+		 */
+		public void createTaskIfNeeded() {
+			Long clientId = resolveClientId(ctx);
+			Long messageId = resolveMessageId(ctx);
+			if (clientId == null || messageId == null) {
+				jevLog.warn("jev.createTaskIfNeeded skipped: no client or message in event (rule: {})", ruleName());
+				return;
+			}
+			String context = "client=" + clientId + ", message=" + messageId;
+			String text = messageText();
+			if (text == null) {
+				jevLog.info("[{}] jev.createTaskIfNeeded: message has no text, skipped", context);
+				return;
+			}
+			jevAssistService.createTaskIfNeeded(context, clientId, messageId, text);
+		}
+
+		/**
+		 * Подбирает статью базы знаний к входящему сообщению (или к заявке) и пишет оператору комментарий в чате.
+		 */
+		public void suggestKnowledgeArticle() {
+			Long clientId = resolveClientId(ctx);
+			Long taskId = resolveTaskId(ctx);
+			if (!ready("jev.suggestKnowledgeArticle", clientId == null ? "no client in event" : null)) {
+				return;
+			}
+			String text = messageText();
+			if (text == null && taskId != null) {
+				text = taskRepository.findById(taskId).map(this::taskText).orElse(null);
+			}
+			String context = "client=" + clientId + (taskId == null ? "" : ", task=" + taskId);
+			if (text == null) {
+				jevLog.info("[{}] jev.suggestKnowledgeArticle: nothing to analyze", context);
+				return;
+			}
+			jevAssistService.suggestKnowledgeArticle(context, clientId, text);
+		}
+
+		/**
+		 * Входящее сообщение клиента, чья заявка в инциденте «Наблюдение»/«Восстановлен»:
+		 * подтверждение восстановления или сообщение о сохраняющейся проблеме.
+		 */
+		public void checkIncidentRecovery() {
+			Long clientId = resolveClientId(ctx);
+			Long messageId = resolveMessageId(ctx);
+			if (!ready("jev.checkIncidentRecovery",
+					clientId == null || messageId == null ? "no client or message in event" : null)) {
+				return;
+			}
+			String text = messageText();
+			if (text == null) {
+				return;
+			}
+			jevAssistService.checkIncidentRecovery("client=" + clientId + ", message=" + messageId, clientId, messageId, text);
+		}
+
+		/**
+		 * Выбирает линию поддержки для заявки (обычно на «Заявка создана»).
+		 */
+		public void selectSupportLine() {
+			Long taskId = resolveTaskId(ctx);
+			if (!ready("jev.selectSupportLine", taskId == null ? "no task in event" : null)) {
+				return;
+			}
+			String context = "task=" + taskId;
+			Task task = taskRepository.findById(taskId).orElseThrow();
+			jevAssistService.selectSupportLine(context, task).ifPresentOrElse(line -> {
+				taskRoutingService.routeExistingTask(taskId, line.getId(), false, "Jev: выбор линии");
+				notifyTaskUpdated(taskId);
+				jevLog.info("[{}] jev.selectSupportLine: «{}» -> «{}» (rule: {})", context,
+						task.getSupportLine() == null ? null : task.getSupportLine().getName(), line.getName(), ruleName());
+			}, () -> jevLog.info("[{}] jev.selectSupportLine: line unchanged", context));
+		}
+
+		/**
+		 * Нужно ли перевести заявку на следующую линию. Работает на событиях заявки (task в событии)
+		 * и на входящем сообщении (берётся последняя открытая заявка клиента).
+		 */
+		public void escalateIfNeeded() {
+			Long taskId = resolveTaskId(ctx);
+			Long clientId = resolveClientId(ctx);
+			if (taskId == null && clientId != null) {
+				taskId = clientRepository.findById(clientId)
+						.map(Client::getTasks)
+						.flatMap(tasks -> tasks.stream()
+								.filter(task -> !Boolean.TRUE.equals(task.getCompleted()))
+								.max(Comparator.comparing(Task::getCreatedAt, Comparator.nullsFirst(Comparator.naturalOrder()))))
+						.map(Task::getId)
+						.orElse(null);
+			}
+			if (!ready("jev.escalateIfNeeded", taskId == null ? "no task in event and no open task of the client" : null)) {
+				return;
+			}
+			Long resolvedTaskId = taskId;
+			String context = "task=" + resolvedTaskId;
+			Task task = taskRepository.findById(resolvedTaskId).orElseThrow();
+			Client client = clientRepository.findByTaskId(resolvedTaskId).orElse(null);
+			jevAssistService.escalationTarget(context, task, client).ifPresentOrElse(line -> {
+				jevAssistService.escalate(context, task, client == null ? null : client.getId(), line,
+						"Jev: эскалация (правило " + ruleName() + ")");
+				notifyTaskUpdated(resolvedTaskId);
+			}, () -> jevLog.info("[{}] jev.escalateIfNeeded: stays on current line", context));
+		}
+
+		/**
+		 * Новая заявка — дубль открытой? Дубль заявки из активного инцидента привязывается к инциденту,
+		 * про прочие дубли оператор получает комментарий.
+		 */
+		public void findDuplicate() {
+			Long taskId = resolveTaskId(ctx);
+			if (!ready("jev.findDuplicate", taskId == null ? "no task in event" : null)) {
+				return;
+			}
+			jevAssistService.findDuplicate("task=" + taskId, taskId)
+					.ifPresent(match -> notifyTaskUpdated(taskId));
+		}
+
+		/*
+		 * Те же действия с порогом уверенности, заданным в правиле (число от 0 до 1), например
+		 * jev.createTaskIfNeeded(0.7, 0.85). Перекрывает порог из настроек Jev только для этого правила;
+		 * null — взять значение из настроек.
+		 */
+
+		/** Классификация с порогом threshold для типа, сервиса и линии. */
+		public void classifyTask(BigDecimal threshold) {
+			withThresholds("jev.classifyTask", JevThresholdOverride.of(JevThreshold.CLASSIFY_TASK,
+					ratio("jev.classifyTask", "threshold", threshold)), this::classifyTask);
+		}
+
+		/** Приоритет с порогом threshold. */
+		public void setPriority(BigDecimal threshold) {
+			withThresholds("jev.setPriority", JevThresholdOverride.of(JevThreshold.SET_PRIORITY,
+					ratio("jev.setPriority", "threshold", threshold)), this::setPriority);
+		}
+
+		/** «Ответ нужен» при вероятности не ниже requiredThreshold, «не нужен» — не выше notRequiredThreshold. */
+		public void setAnswerRequiredIfNeeded(BigDecimal requiredThreshold, BigDecimal notRequiredThreshold) {
+			String action = "jev.setAnswerRequiredIfNeeded";
+			Double required = ratio(action, "requiredThreshold", requiredThreshold);
+			Double notRequired = ratio(action, "notRequiredThreshold", notRequiredThreshold);
+			if (required != null && notRequired != null && notRequired >= required) {
+				throw new IllegalArgumentException(action + ": notRequiredThreshold должен быть меньше requiredThreshold");
+			}
+			withThresholds(action, new JevThresholdOverride(null, required, notRequired, null), this::setAnswerRequiredIfNeeded);
+		}
+
+		/** Детектор инцидентов: считать сбоем при вероятности не ниже outageThreshold. */
+		public void detectIncident(BigDecimal outageThreshold) {
+			detectIncident(outageThreshold, null);
+		}
+
+		/** Детектор инцидентов: порог «это сбой» и порог разбора (сервис, симптом, проверка пачки). */
+		public void detectIncident(BigDecimal outageThreshold, BigDecimal analysisThreshold) {
+			String action = "jev.detectIncident";
+			Double analysis = ratio(action, "analysisThreshold", analysisThreshold);
+			withThresholds(action, new JevThresholdOverride(
+					analysis == null ? null : Map.of(JevThreshold.INCIDENT_ANALYSIS, analysis),
+					null, null, ratio(action, "outageThreshold", outageThreshold)), this::detectIncident);
+		}
+
+		/** Создание заявки с порогом threshold (тип сообщения, совпадение с открытой, повтор закрытой). */
+		public void createTaskIfNeeded(BigDecimal threshold) {
+			createTaskIfNeeded(threshold, null);
+		}
+
+		/** Создание заявки: порог решения и порог splitThreshold для разбиения на заявки по сервисам. */
+		public void createTaskIfNeeded(BigDecimal threshold, BigDecimal splitThreshold) {
+			String action = "jev.createTaskIfNeeded";
+			Map<JevThreshold, Double> thresholds = new EnumMap<>(JevThreshold.class);
+			Double create = ratio(action, "threshold", threshold);
+			Double split = ratio(action, "splitThreshold", splitThreshold);
+			if (create != null) thresholds.put(JevThreshold.CREATE_TASK, create);
+			if (split != null) thresholds.put(JevThreshold.SPLIT_TASKS, split);
+			withThresholds(action, new JevThresholdOverride(thresholds, null, null, null), this::createTaskIfNeeded);
+		}
+
+		/** Статья базы знаний с порогом threshold. */
+		public void suggestKnowledgeArticle(BigDecimal threshold) {
+			withThresholds("jev.suggestKnowledgeArticle", JevThresholdOverride.of(JevThreshold.KNOWLEDGE_ARTICLE,
+					ratio("jev.suggestKnowledgeArticle", "threshold", threshold)), this::suggestKnowledgeArticle);
+		}
+
+		/** Проверка восстановления после инцидента с порогом threshold. */
+		public void checkIncidentRecovery(BigDecimal threshold) {
+			withThresholds("jev.checkIncidentRecovery", JevThresholdOverride.of(JevThreshold.INCIDENT_RECOVERY,
+					ratio("jev.checkIncidentRecovery", "threshold", threshold)), this::checkIncidentRecovery);
+		}
+
+		/** Выбор линии с порогом threshold. */
+		public void selectSupportLine(BigDecimal threshold) {
+			withThresholds("jev.selectSupportLine", JevThresholdOverride.of(JevThreshold.SUPPORT_LINE,
+					ratio("jev.selectSupportLine", "threshold", threshold)), this::selectSupportLine);
+		}
+
+		/** Эскалация с порогом threshold. */
+		public void escalateIfNeeded(BigDecimal threshold) {
+			withThresholds("jev.escalateIfNeeded", JevThresholdOverride.of(JevThreshold.ESCALATION,
+					ratio("jev.escalateIfNeeded", "threshold", threshold)), this::escalateIfNeeded);
+		}
+
+		/** Поиск дублей с порогом threshold. */
+		public void findDuplicate(BigDecimal threshold) {
+			withThresholds("jev.findDuplicate", JevThresholdOverride.of(JevThreshold.DUPLICATE,
+					ratio("jev.findDuplicate", "threshold", threshold)), this::findDuplicate);
+		}
+
+		private Double ratio(String action, String name, BigDecimal value) {
+			if (value == null) {
+				return null;
+			}
+			double ratio = value.doubleValue();
+			if (Double.isNaN(ratio) || ratio < 0 || ratio > 1) {
+				throw new IllegalArgumentException("%s: %s должен быть числом от 0 до 1, указано %s"
+						.formatted(action, name, value.toPlainString()));
+			}
+			return ratio;
+		}
+
+		private void withThresholds(String action, JevThresholdOverride override, Runnable run) {
+			if (!override.isEmpty()) {
+				jevLog.info("{}: thresholds from rule «{}»: {}", action, ruleName(), override);
+			}
+			override.apply(run);
+		}
+
+		private String messageText() {
+			JsonNode text = readByPath(ctx.getEvent().getPayload(), "message.text");
+			return text == null || !text.isTextual() || text.asText().isBlank() ? null : text.asText();
+		}
+
+		/**
+		 * Общие проверки перед действием; причину пропуска пишет в лог.
+		 */
+		private boolean ready(String action, String missingReason) {
+			if (missingReason != null) {
+				jevLog.warn("{} skipped: {} (rule: {}, event: {})", action, missingReason, ruleName(), safeEventInfo(ctx.getEvent()));
+				return false;
+			}
+			if (!jevService.isEnabled()) {
+				jevLog.debug("{} skipped: Jev disabled or API key is not set (rule: {})", action, ruleName());
+				return false;
+			}
+			return true;
+		}
+
+		private String ruleName() {
+			return ctx.getTrigger() == null ? "-" : "#" + ctx.getTrigger().getId() + " «" + ctx.getTrigger().getName() + "»";
+		}
+
+		private String taskText(Task task) {
+			StringBuilder text = new StringBuilder(Objects.toString(task.getName(), ""));
+			if (task.getDescription() != null && !task.getDescription().isBlank()) {
+				text.append("\n").append(task.getDescription());
+			}
+			if (task.getLinkedMessageId() != null) {
+				messageRepository.findById(task.getLinkedMessageId())
+						.map(Message::getText)
+						.filter(linked -> linked != null && !linked.isBlank())
+						.ifPresent(linked -> text.append("\n").append(linked));
+			}
+			return text.toString().trim();
+		}
+
+		private boolean typeAllowedForService(TaskType type, ru.ravel.ItDesk.model.Service service) {
+			if (service == null || service.getAllowedTaskTypes() == null || service.getAllowedTaskTypes().isEmpty()) {
+				return true;
+			}
+			return service.getAllowedTaskTypes().stream().anyMatch(allowed -> sameEntity(allowed, type));
 		}
 	}
 
@@ -584,6 +1044,27 @@ public class AutomationActionExecutor {
 	// ======================================================================
 	// INVOKE (рефлексия) — чтобы actionType работал как вызов метода объекта
 	// ======================================================================
+
+	private void invokeJevAction(Object target, String methodName, List<Object> rawArgs, AutomationExecutionContext ctx)
+			throws Exception {
+		Exception[] failure = new Exception[1];
+		AutomationTrigger trigger = ctx.getTrigger();
+		JevDecisionRecorder.inAction(
+				new JevDecisionRecorder.ActionContext(
+						trigger == null ? null : trigger.getId(),
+						trigger == null ? null : trigger.getName(),
+						methodName),
+				() -> {
+					try {
+						invoke(target, methodName, rawArgs);
+					} catch (Exception e) {
+						failure[0] = e;
+					}
+				});
+		if (failure[0] != null) {
+			throw failure[0];
+		}
+	}
 
 	private void invoke(Object target, String methodName, List<Object> rawArgs) throws Exception {
 		// Критичные системные действия вызываем явно. Это исключает зависимость

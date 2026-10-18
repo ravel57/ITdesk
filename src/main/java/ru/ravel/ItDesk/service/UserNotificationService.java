@@ -164,6 +164,8 @@ public class UserNotificationService {
 					message,
 					"Просрочено обязательное обновление по инциденту"
 			);
+			case INCIDENT_DETECTED -> fallback(message, "Обнаружен массовый сбой");
+			case INCIDENT_RECOVERY_FAILED -> fallback(message, "Клиент сообщает, что после восстановления проблема сохраняется");
 		};
 	}
 
@@ -201,7 +203,7 @@ public class UserNotificationService {
 
 			case DEADLINE_OVERDUE -> Boolean.TRUE.equals(user.getNotifyDeadlineOverdue());
 
-			case INCIDENT_UPDATE_OVERDUE -> true;
+			case INCIDENT_UPDATE_OVERDUE, INCIDENT_DETECTED, INCIDENT_RECOVERY_FAILED -> true;
 		};
 	}
 

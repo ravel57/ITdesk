@@ -21,7 +21,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/webhooks")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
 @Tag(name = "Webhooks", description = "Проверка исходящих webhook-вызовов")
 public class WebhookController {
 

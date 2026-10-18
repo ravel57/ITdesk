@@ -27,6 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.server.ResponseStatusException;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.service.UserService;
 
@@ -57,7 +58,7 @@ public class FileController {
 
 	@Operation(summary = "Загрузить файлы", description = "Загружает файлы сообщений в объектное хранилище с проверкой допустимого размера.")
 	@PostMapping("/upload")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'CLIENT')")
+	@PreAuthorize("@access.can('FILE_UPLOAD')")
 	public ResponseEntity<Object> uploadFiles(@RequestParam("files") List<MultipartFile> files) {
 		if (files == null || files.isEmpty()) {
 			return ResponseEntity.badRequest().body(Map.of("message", "Не переданы файлы"));
@@ -134,7 +135,7 @@ public class FileController {
 
 	@Operation(summary = "Получить изображение", description = "Возвращает изображение по UUID после проверки доступа текущего пользователя к связанному клиенту.")
 	@GetMapping(value = "/images/{uuid}", produces = MediaType.IMAGE_JPEG_VALUE)
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
+	@PreAuthorize("@access.can('FILE_VIEW')")
 	public ResponseEntity<Object> imageFile(@PathVariable String uuid) {
 		resolveFileAccess(uuid);
 		byte[] fileBytes = getCachedFileBytesOrThrow("images", uuid);
@@ -147,7 +148,7 @@ public class FileController {
 
 	@Operation(summary = "Скачать документ", description = "Возвращает документ по UUID как вложение после проверки доступа к связанному сообщению.")
 	@GetMapping(value = "/documents/{uuid}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
+	@PreAuthorize("@access.can('FILE_VIEW')")
 	public ResponseEntity<Object> documentFile(@PathVariable String uuid) {
 		FileAccessContext fileAccess = resolveFileAccess(uuid);
 		String filename = fileAccess.message().getFileName();
@@ -168,7 +169,7 @@ public class FileController {
 
 	@Operation(summary = "Получить видео", description = "Возвращает видеофайл по UUID после проверки доступа к связанному сообщению.")
 	@GetMapping(value = "/videos/{uuid}", produces = "video/mp4")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
+	@PreAuthorize("@access.can('FILE_VIEW')")
 	public ResponseEntity<Object> videoFile(@PathVariable String uuid) {
 		resolveFileAccess(uuid);
 		byte[] fileBytes = getCachedFileBytesOrThrow("videos", uuid);
@@ -183,7 +184,7 @@ public class FileController {
 
 	@Operation(summary = "Получить аудио", description = "Возвращает аудиофайл по UUID после проверки доступа к связанному сообщению.")
 	@GetMapping(value = "/audios/{uuid}", produces = "video/mp4")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER', 'CLIENT')")
+	@PreAuthorize("@access.can('FILE_VIEW')")
 	public ResponseEntity<Object> audioFile(@PathVariable String uuid) {
 		resolveFileAccess(uuid);
 		byte[] fileBytes = getCachedFileBytesOrThrow("audios", uuid);
@@ -199,26 +200,63 @@ public class FileController {
 		if (uuid == null || uuid.isBlank()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Некорректный идентификатор файла");
 		}
-		List<ClientRepository.FileAccessRow> rows = new ArrayList<>();
-		rows.addAll(clientRepository.findClientMessageFileAccessRowsByFileUuid(uuid));
-		rows.addAll(clientRepository.findTaskMessageFileAccessRowsByFileUuid(uuid));
-		if (rows.isEmpty()) {
+		List<ClientRepository.FileAccessRow> clientRows = clientRepository.findClientMessageFileAccessRowsByFileUuid(uuid);
+		List<ClientRepository.TaskFileAccessRow> taskRows = clientRepository.findTaskMessageFileAccessRowsByFileUuid(uuid);
+		if (clientRows.isEmpty() && taskRows.isEmpty()) {
 			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Файл не найден");
 		}
-		ClientRepository.FileAccessRow allowedRow = rows.stream()
-				.filter(Objects::nonNull)
-				.filter(row -> row.getClient() != null)
-				.filter(row -> row.getMessage() != null)
-				.filter(row -> canCurrentUserAccessClient(row.getClient()))
-				.findFirst()
+		User currentUser = userService.getCurrentUser();
+		Optional<ClientRepository.FileAccessRow> allowedClientRow = clientRows.stream()
+				.filter(row -> canUserAccessClientMessageFile(currentUser, row))
+				.findFirst();
+		ClientRepository.FileAccessRow allowedRow = allowedClientRow.or(() -> taskRows.stream()
+						.filter(row -> canUserAccessTaskMessageFile(currentUser, row))
+						.map(ClientRepository.FileAccessRow.class::cast)
+						.findFirst())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Нет доступа к файлу"));
 		return new FileAccessContext(allowedRow.getClient(), allowedRow.getMessage());
 	}
 
 
-	private boolean canCurrentUserAccessClient(Client client) {
+	/**
+	 * Файл из чата клиента: нужен доступ к клиенту. Комментарии (внутренние заметки поддержки)
+	 * не отдаются ни клиенту портала, ни менеджеру организации (OBSERVER); удалённые сообщения не отдаются никому.
+	 */
+	private boolean canUserAccessClientMessageFile(User user, ClientRepository.FileAccessRow row) {
+		if (row == null || row.getClient() == null || row.getMessage() == null) {
+			return false;
+		}
+		Message message = row.getMessage();
+		if (Boolean.TRUE.equals(message.getDeleted())) {
+			return false;
+		}
+		if (Boolean.TRUE.equals(message.getIsComment()) && (userService.isClient(user) || userService.isObserver(user))) {
+			return false;
+		}
+		return canUserAccessClient(user, row.getClient());
+	}
+
+
+	/**
+	 * Файл из внутреннего чата заявки: только поддержка, и с учётом видимости линии поддержки для оператора.
+	 */
+	private boolean canUserAccessTaskMessageFile(User user, ClientRepository.TaskFileAccessRow row) {
+		if (row == null || row.getClient() == null || row.getMessage() == null || row.getTask() == null) {
+			return false;
+		}
+		if (Boolean.TRUE.equals(row.getMessage().getDeleted())) {
+			return false;
+		}
+		if (!userService.canUserSeeTaskChat(user)) {
+			return false;
+		}
+		return userService.canUserAccessTask(user, row.getClient(), row.getTask());
+	}
+
+
+	private boolean canUserAccessClient(User user, Client client) {
 		try {
-			userService.assertCurrentUserCanAccessClient(client);
+			userService.assertUserCanAccessClient(user, client);
 			return true;
 		} catch (AccessDeniedException e) {
 			return false;

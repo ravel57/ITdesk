@@ -5,7 +5,9 @@ server:
       timeout: 120m
       cookie:
         http-only: true
-        secure: true
+        # Secure-cookie браузер принимает только по HTTPS или на localhost. Для проверки по http с IP в локальной сети:
+        # SESSION_COOKIE_SECURE=false (в рабочем окружении не выключать)
+        secure: ${SESSION_COOKIE_SECURE:true}
         same-site: lax
         max-age: -1
   tomcat.max-swallow-size: 15MB
@@ -18,7 +20,7 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 100
+      maximum-pool-size: 20
   jpa:
     hibernate:
       ddl-auto: update
@@ -86,12 +88,19 @@ elasticsearch:
 
 app:
   allowed-origin: ${ALLOWED_ORIGIN:http://localhost:8080}
+  # Адрес, по которому пользователи открывают ULDesk: на него ведут ссылки смены пароля из писем.
+  # Пусто — первый адрес из allowed-origin
+  public-url: ${PUBLIC_URL:}
+  security:
+    mfa:
+      # Аварийно отключить двухфакторную аутентификацию (например, все администраторы потеряли телефоны)
+      disabled: ${MFA_DISABLED:false}
   instance-name: ${INSTANCE_NAME}
   license-server-url: https://admin.uldesk.ru
   is-demo: ${IS_DEMO:false}
   demo:
     allow-destructive-reset: ${ALLOW_DESTRUCTIVE_DEMO_RESET:false}
-  llm-url: ${LLM_URL:''}
+  llm-url: ${LLM_URL:}
   automation:
     worker-delay-ms: 200
     http:
@@ -122,13 +131,8 @@ uldesk:
     hooks:
       max-per-minute: ${PLUGIN_HOOK_MAX_PER_MINUTE:30}
     http:
-      # Пусто = без дополнительного сужения: плагину доступно то, что одобрил
-      # администратор инсталляции. Заполняется, только если оператор хочет
-      # ограничить плагины конкретными адресами.
       allowed-prefixes: ${PLUGIN_HTTP_ALLOWED_PREFIXES:}
       denied-hosts: ${PLUGIN_HTTP_DENIED_HOSTS:}
-      # Разрешить плагинам обращаться во внутреннюю сеть инсталляции
-      # (1С, AD, мониторинг). Выключено по умолчанию: это снимает защиту от SSRF.
       allow-private-targets: ${PLUGIN_HTTP_ALLOW_PRIVATE_TARGETS:false}
       allow-plaintext: ${PLUGIN_HTTP_ALLOW_PLAINTEXT:false}
       connect-timeout-ms: ${PLUGIN_HTTP_CONNECT_TIMEOUT_MS:3000}
@@ -137,11 +141,7 @@ uldesk:
       max-response-bytes: ${PLUGIN_HTTP_MAX_RESPONSE_BYTES:262144}
       max-request-body-bytes: ${PLUGIN_HTTP_MAX_REQUEST_BODY_BYTES:65536}
     secrets:
-      # Ключ шифрования секретов плагинов: openssl rand -base64 32
-      # Без него администратор не сможет сохранить ни одного секрета.
       master-key: ${ULDESK_PLUGIN_SECRET_KEY:}
-      # Значения секретов конкретных плагинов задаются администратором через API
-      # и хранятся в БД. Имена и значения plugin-specific токенов здесь не задаются.
 
 springdoc:
   api-docs:

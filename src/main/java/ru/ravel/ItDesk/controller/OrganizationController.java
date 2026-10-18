@@ -40,7 +40,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Получить организации", description = "Получить организации. Endpoint GET /api/v1/organizations; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/organizations")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('REFERENCE_VIEW')")
 	public ResponseEntity<Object> getOrganizations() {
 		return ResponseEntity.ok().body(
 				userService.filterOrganizationsByCurrentUser(organizationService.getOrganizations())
@@ -50,7 +50,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Получить статистику заявок по организациям", description = "Получить статистику заявок по организациям. Endpoint GET /api/v1/organizations/task-stats; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/organizations/task-stats")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('ORGANIZATION_STATS')")
 	public ResponseEntity<Object> getOrganizationTaskStats() {
 		return ResponseEntity.ok().body(taskService.getOrganizationTaskStats());
 	}
@@ -58,7 +58,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Создать организацию", description = "Создать организацию. Endpoint POST /api/v1/organization; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/organization")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('ORGANIZATION_MANAGE')")
 	public ResponseEntity<Object> newOrganization(@RequestBody Organization organization) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(organizationService.newOrganization(organization));
@@ -70,7 +70,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Обновить организацию", description = "Обновить организацию. Endpoint PATCH /api/v1/organization; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/organization")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('ORGANIZATION_MANAGE')")
 	public ResponseEntity<Object> updateOrganization(@RequestBody Organization organization) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(organizationService.updateOrganization(organization));
@@ -82,7 +82,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Удалить организацию", description = "Удалить организацию. Endpoint DELETE /api/v1/organization/{organizationId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/organization/{organizationId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('ORGANIZATION_MANAGE')")
 	public ResponseEntity<Object> deleteOrganization(@PathVariable Long organizationId) {
 		if (LicenseStarter.isLicenseActive) {
 			organizationService.deleteOrganization(organizationId);
@@ -95,7 +95,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Изменить порядок организаций", description = "Изменить порядок организаций. Endpoint PATCH /api/v1/organizations/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/organizations/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('ORGANIZATION_MANAGE')")
 	public ResponseEntity<Object> resortOrganizations(@RequestBody List<Organization> organizations) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(organizationService.resortOrganizations(organizations));
@@ -107,7 +107,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Получить причины визитов", description = "Получить причины визитов. Endpoint GET /api/v1/visit-reasons; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/visit-reasons")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('STAFF_DIRECTORY_VIEW')")
 	public ResponseEntity<Object> getOrganizationVisitReasons() {
 		return ResponseEntity.ok().body(organizationVisitReasonService.getReasons());
 	}
@@ -115,7 +115,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Создать причину визита", description = "Создать причину визита. Endpoint POST /api/v1/visit-reason; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/visit-reason")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> newOrganizationVisitReason(@RequestBody OrganizationVisitReason reason) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -126,7 +126,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Обновить причину визита", description = "Обновить причину визита. Endpoint PATCH /api/v1/visit-reason; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/visit-reason")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> updateOrganizationVisitReason(@RequestBody OrganizationVisitReason reason) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -137,7 +137,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Удалить причину визита", description = "Удалить причину визита. Endpoint DELETE /api/v1/visit-reason/{reasonId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/visit-reason/{reasonId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> deleteOrganizationVisitReason(@PathVariable Long reasonId) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -149,7 +149,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Изменить порядок причин визитов", description = "Изменить порядок причин визитов. Endpoint PATCH /api/v1/visit-reasons/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/visit-reasons/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> resortOrganizationVisitReasons(@RequestBody List<OrganizationVisitReason> reasons) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -160,7 +160,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Получить визиты организации", description = "Получить визиты организации. Endpoint GET /api/v1/organization/{organizationId}/visits; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/organization/{organizationId}/visits")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('ORGANIZATION_VISITS')")
 	public ResponseEntity<Object> getOrganizationVisits(@PathVariable Long organizationId) {
 		userService.assertCurrentUserCanAccessOrganizationId(organizationId);
 		return ResponseEntity.ok().body(organizationService.getVisitHistory(organizationId));
@@ -169,7 +169,7 @@ public class OrganizationController {
 
 	@Operation(summary = "Добавить визит организации", description = "Добавить визит организации. Endpoint POST /api/v1/organization/{organizationId}/visits; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/organization/{organizationId}/visits")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('ORGANIZATION_VISITS')")
 	public ResponseEntity<Object> addOrganizationVisit(@PathVariable Long organizationId, @RequestBody OrganizationVisit visit) {
 		if (LicenseStarter.isLicenseActive) {
 			userService.assertCurrentUserCanAccessOrganizationId(organizationId);

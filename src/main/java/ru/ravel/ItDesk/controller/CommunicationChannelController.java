@@ -32,7 +32,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Получить Telegram-ботов", description = "Получить Telegram-ботов. Endpoint GET /api/v1/telegram-bots; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/telegram-bots")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('STAFF_DIRECTORY_VIEW')")
 	public ResponseEntity<Object> getTelegramBots() {
 		return ResponseEntity.ok().body(telegramService.getTelegramBots());
 	}
@@ -40,7 +40,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Добавить Telegram-бота", description = "Добавить Telegram-бота. Endpoint POST /api/v1/telegram-bot; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/telegram-bot")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> newTelegramBot(@RequestBody TgBot telegramBot) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(telegramService.newTelegramBot(telegramBot));
@@ -52,7 +52,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Обновить Telegram-бота", description = "Обновить Telegram-бота. Endpoint PATCH /api/v1/telegram-bot; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/telegram-bot")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> updateTelegramBot(@RequestBody TgBot telegramBot) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(telegramService.updateTelegramBot(telegramBot));
@@ -64,7 +64,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Удалить Telegram-бота", description = "Удалить Telegram-бота. Endpoint DELETE /api/v1/telegram-bot/{tgBotId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/telegram-bot/{tgBotId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> deleteTelegramBot(@PathVariable Long tgBotId) {
 		if (LicenseStarter.isLicenseActive) {
 			telegramService.deleteTelegramBot(tgBotId);
@@ -77,7 +77,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Получить email-аккаунты", description = "Получить email-аккаунты. Endpoint GET /api/v1/emails; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/emails")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('STAFF_DIRECTORY_VIEW')")
 	public ResponseEntity<Object> getEmailAccounts() {
 		return ResponseEntity.ok().body(emailService.getEmailsAccounts());
 	}
@@ -85,7 +85,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Добавить email-аккаунт", description = "Добавить email-аккаунт. Endpoint POST /api/v1/email; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/email")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> newEmailAccount(@RequestBody EmailAccount emailAccount) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(emailService.newEmailAccount(emailAccount));
@@ -97,7 +97,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Обновить email-аккаунт", description = "Обновить email-аккаунт. Endpoint PATCH /api/v1/email; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/email")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> updateEmailAccount(@RequestBody EmailAccount emailAccount) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(emailService.updateEmailAccount(emailAccount));
@@ -109,7 +109,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Удалить email-аккаунт", description = "Удалить email-аккаунт. Endpoint DELETE /api/v1/email/{emailAccountId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/email/{emailAccountId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> deleteEmailAccount(@PathVariable Long emailAccountId) {
 		if (LicenseStarter.isLicenseActive) {
 			emailService.deleteEmailAccount(emailAccountId);
@@ -122,7 +122,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Получить WhatsApp-аккаунты", description = "Получить WhatsApp-аккаунты. Endpoint GET /api/v1/whatsapp; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/whatsapp")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('STAFF_DIRECTORY_VIEW')")
 	public ResponseEntity<Object> getWhatsappAccounts() {
 		return ResponseEntity.ok().body(whatsappService.getWhatsappAccounts());
 	}
@@ -130,7 +130,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Добавить WhatsApp-аккаунт", description = "Добавить WhatsApp-аккаунт. Endpoint POST /api/v1/whatsapp; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/whatsapp")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> newWhatsappAccount(@RequestBody WhatsappAccount whatsappAccount) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(whatsappService.newWhatsappAccount(whatsappAccount));
@@ -142,7 +142,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Обновить WhatsApp-аккаунт", description = "Обновить WhatsApp-аккаунт. Endpoint PATCH /api/v1/whatsapp; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/whatsapp")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> updateWhatsappAccount(@RequestBody WhatsappAccount whatsappAccount) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(whatsappService.updateWhatsappAccount(whatsappAccount));
@@ -154,7 +154,7 @@ public class CommunicationChannelController {
 
 	@Operation(summary = "Удалить WhatsApp-аккаунт", description = "Удалить WhatsApp-аккаунт. Endpoint DELETE /api/v1/whatsapp/{accountId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/whatsapp/{accountId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CHANNEL_MANAGE')")
 	public ResponseEntity<Object> deleteWhatsappAccount(@PathVariable Long accountId) {
 		if (LicenseStarter.isLicenseActive) {
 			whatsappService.deleteWhatsappAccount(accountId);

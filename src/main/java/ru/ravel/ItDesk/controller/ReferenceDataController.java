@@ -40,7 +40,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Создать статус", description = "Создать статус. Endpoint POST /api/v1/status; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/status")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> newStatus(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(statusService.newStatus(status));
@@ -52,7 +52,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Обновить статус", description = "Обновить статус. Endpoint PATCH /api/v1/status; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/status")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> updateStatus(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -68,7 +68,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Удалить статус", description = "Удалить статус. Endpoint DELETE /api/v1/status/{statusId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/status/{statusId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> deleteStatus(@PathVariable Long statusId) {
 		if (LicenseStarter.isLicenseActive) {
 			try {
@@ -85,7 +85,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Получить приоритеты", description = "Получить приоритеты. Endpoint GET /api/v1/priorities; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/priorities")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('REFERENCE_VIEW')")
 	public ResponseEntity<Object> getPriorities() {
 		return ResponseEntity.ok().body(priorityService.getPriorities());
 	}
@@ -93,7 +93,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Создать приоритет", description = "Создать приоритет. Endpoint POST /api/v1/priority; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/priority")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> newPriority(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.newPriority(priority));
@@ -105,7 +105,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Обновить приоритет", description = "Обновить приоритет. Endpoint PATCH /api/v1/priority; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/priority")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> updatePriority(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.updatePriority(priority));
@@ -117,7 +117,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Удалить приоритет", description = "Удалить приоритет. Endpoint DELETE /api/v1/priority/{priorityId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/priority/{priorityId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> deletePriority(@PathVariable Long priorityId) {
 		if (LicenseStarter.isLicenseActive) {
 			priorityService.deletePriority(priorityId);
@@ -130,7 +130,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Установить приоритет по умолчанию", description = "Установить приоритет по умолчанию. Endpoint PATCH /api/v1/priority/set-default; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/priority/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> prioritySetDefaultSelection(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.prioritySetDefaultSelection(priority));
@@ -142,7 +142,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Установить высокий приоритет", description = "Установить высокий приоритет. Endpoint PATCH /api/v1/priority/set-high-priority; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/priority/set-high-priority")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> prioritySetCritical(@RequestBody Priority priority) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.prioritySetCritical(priority));
@@ -154,7 +154,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Изменить порядок приоритетов", description = "Изменить порядок приоритетов. Endpoint PATCH /api/v1/priorities/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/priorities/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> resortPriorities(@RequestBody List<Priority> priorities) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(priorityService.resortPriorities(priorities));
@@ -166,7 +166,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Получить шаблоны", description = "Получить шаблоны. Endpoint GET /api/v1/templates; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/templates")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> getTemplates() {
 		return ResponseEntity.ok().body(templateService.getTemplates());
 	}
@@ -174,7 +174,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Создать шаблон", description = "Создать шаблон. Endpoint POST /api/v1/template; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/template")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> newTemplate(@RequestBody Template template) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(templateService.newTemplate(template));
@@ -186,7 +186,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Обновить шаблон", description = "Обновить шаблон. Endpoint PATCH /api/v1/template; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/template")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> updateTemplate(@RequestBody Template template) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(templateService.updateTemplate(template));
@@ -198,7 +198,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Удалить шаблон", description = "Удалить шаблон. Endpoint DELETE /api/v1/template/{templateId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/template/{templateId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> deleteTemplate(@PathVariable Long templateId) {
 		if (LicenseStarter.isLicenseActive) {
 			templateService.deleteTemplate(templateId);
@@ -211,7 +211,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Установить статус по умолчанию", description = "Установить статус по умолчанию. Endpoint PATCH /api/v1/status/set-default; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/status/set-default")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> statusSetDefaultSelection(@RequestBody Status status) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(statusService.statusSetDefaultSelection(status));
@@ -223,7 +223,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Получить активные аутентифицированные сессии", description = "Получить активные аутентифицированные сессии. Endpoint POST /api/v1/get-authenticated-users; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/get-authenticated-users")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('STAFF_DIRECTORY_VIEW')")
 	public ResponseEntity<Object> getAllAuthenticatedUsers() {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(userService.getUsersOnline());
@@ -235,7 +235,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Получить статусы", description = "Получить статусы. Endpoint GET /api/v1/statuses; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/statuses")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('REFERENCE_VIEW')")
 	public ResponseEntity<Object> getStatuses() {
 		return ResponseEntity.ok().body(statusService.getStatuses());
 	}
@@ -243,7 +243,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Изменить порядок статусов", description = "Изменить порядок статусов. Endpoint PATCH /api/v1/status/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/status/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> resortStatuses(@RequestBody List<Status> statuses) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(statusService.resortStatuses(statuses));
@@ -255,7 +255,7 @@ public class ReferenceDataController {
 
 	@Operation(summary = "Изменить порядок шаблонов", description = "Изменить порядок шаблонов. Endpoint PATCH /api/v1/templates/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/templates/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('REFERENCE_MANAGE')")
 	public ResponseEntity<Object> resortTemplates(@RequestBody List<Template> templates) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(templateService.resortTemplates(templates));

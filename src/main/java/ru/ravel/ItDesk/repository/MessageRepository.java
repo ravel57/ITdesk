@@ -67,10 +67,12 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 			from message m
 			where m.client_id = :clientId
 			  and coalesce(m.deleted, false) = false
+			  and coalesce(m.is_comment, false) = false
 			order by m.date desc nulls last, m.id desc
 			limit :limit
 			offset :offset
 			""", nativeQuery = true)
+	/** «Видимые» — для менеджера организации (OBSERVER): без удалённых сообщений и внутренних комментариев. */
 	List<Message> findVisibleClientMessagesPageFromEnd(
 			@Param("clientId") Long clientId,
 			@Param("limit") int limit,
@@ -85,6 +87,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 				from message m
 				where m.client_id in (:clientIds)
 				  and coalesce(m.deleted, false) = false
+				  and coalesce(m.is_comment, false) = false
 				order by m.client_id, m.date desc nulls last, m.id desc
 			) latest
 			""", nativeQuery = true)
@@ -114,6 +117,7 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 			from message m
 			where m.client_id = :clientId
 			  and coalesce(m.deleted, false) = false
+			  and coalesce(m.is_comment, false) = false
 			  and (
 			       m.date > (select lm.date from message lm where lm.id = :messageId)
 			    or (

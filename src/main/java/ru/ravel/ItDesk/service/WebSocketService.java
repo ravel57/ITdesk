@@ -20,6 +20,7 @@ import ru.ravel.ItDesk.repository.TaskRepository;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -120,7 +121,10 @@ public class WebSocketService {
 		if (task == null || client == null) {
 			return;
 		}
-		sendTaskEvent("/topic/task-messages/", client, task, new TaskMessageDto(client.getId(), taskId, message));
+		TaskMessageDto payload = new TaskMessageDto(client.getId(), taskId, message);
+		// Внутренний чат заявки менеджеру организации (OBSERVER) не отправляется.
+		sendTaskEvent("/topic/task-messages/", client, task,
+				user -> userService.canUserSeeTaskChat(user) ? payload : null);
 	}
 
 
@@ -138,7 +142,20 @@ public class WebSocketService {
 			return;
 		}
 		TaskUpdatedDto safeDto = new TaskUpdatedDto(client.getId(), taskUpdatedDto.getTask());
-		sendTaskEvent("/topic/task-updated/", client, task, safeDto);
+		TaskUpdatedDto withoutChatDto = safeDto.withoutTaskMessages();
+		sendTaskEvent("/topic/task-updated/", client, task,
+				user -> userService.canUserSeeTaskChat(user) ? safeDto : withoutChatDto);
+	}
+
+
+	/**
+	 * Инцидент изменился: фронт перезагружает список/карточку через API (там же проверка доступа).
+	 */
+	public void incidentUpdated(String username, Long incidentId) {
+		if (username == null || username.isBlank() || incidentId == null) {
+			return;
+		}
+		simpMessaging.convertAndSendToUser(username, "/topic/incidents-updated/", Map.of("incidentId", incidentId));
 	}
 
 
@@ -198,9 +215,14 @@ public class WebSocketService {
 	}
 
 
-	private void sendTaskEvent(String destination, Client client, Task task, Object payload) {
+	/** payloadForUser возвращает null, если пользователю событие не отправляется. */
+	private void sendTaskEvent(String destination, Client client, Task task, Function<User, Object> payloadForUser) {
 		for (User user : userService.getUsers()) {
-			if (userService.canUserAccessTask(user, client, task)) {
+			if (!userService.canUserAccessTask(user, client, task)) {
+				continue;
+			}
+			Object payload = payloadForUser.apply(user);
+			if (payload != null) {
 				simpMessaging.convertAndSendToUser(user.getUsername(), destination, payload);
 			}
 		}

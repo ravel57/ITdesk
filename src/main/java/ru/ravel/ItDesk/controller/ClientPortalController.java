@@ -21,7 +21,7 @@ import ru.ravel.ItDesk.service.ClientPortalService;
 @RestController
 @RequestMapping("/api/v1/portal")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CLIENT')")
+@PreAuthorize("@access.can('PORTAL')")
 @Hidden
 @Tag(name = "Клиентский портал", description = "Профиль клиента и обмен сообщениями через клиентский портал.")
 public class ClientPortalController {

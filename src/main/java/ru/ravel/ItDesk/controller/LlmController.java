@@ -25,21 +25,21 @@ public class LlmController {
 
 	@Operation(summary = "Выполнить LLM-запрос")
 	@GetMapping("/query")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CHAT_REPLY')")
 	public ResponseEntity<Object> getLlmQuery(@RequestParam String query) {
 		return ResponseEntity.ok(llmService.askLlm(query));
 	}
 
 	@Operation(summary = "Переобучить LLM на актуальной базе знаний")
 	@PostMapping("/retrain")
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('LLM_MANAGE')")
 	public ResponseEntity<Object> retrainLlm() {
 		return ResponseEntity.ok(llmService.retrainFromKnowledgeBase());
 	}
 
 	@Operation(summary = "Получить количество чанков БЗ в LLM-индексе текущего инстанса")
 	@GetMapping("/kb-count")
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('LLM_MANAGE')")
 	public ResponseEntity<Object> getLlmKbCount() {
 		return ResponseEntity.ok(llmService.getKbCount());
 	}

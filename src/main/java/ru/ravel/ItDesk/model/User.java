@@ -65,48 +65,76 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@Builder.Default
 	protected Boolean isEnabled = true;
 
+	/** Двухфакторная аутентификация (TOTP) включена. Секреты наружу не отдаются. */
 	@Builder.Default
-	@Column(name = "notify_chat_ping", nullable = false)
+	@Column(name = "mfa_enabled", nullable = false, columnDefinition = "boolean default false")
+	protected Boolean mfaEnabled = false;
+
+	@JsonIgnore
+	@Column(name = "mfa_secret", columnDefinition = "text")
+	protected String mfaSecret;
+
+	/** Секрет, который пользователь подключает прямо сейчас: станет mfaSecret после подтверждения кодом. */
+	@JsonIgnore
+	@Column(name = "mfa_pending_secret", columnDefinition = "text")
+	protected String mfaPendingSecret;
+
+	/** SHA-256 неиспользованных кодов восстановления через запятую. */
+	@JsonIgnore
+	@Column(name = "mfa_recovery_codes", columnDefinition = "text")
+	protected String mfaRecoveryCodes;
+
+	/** Последний принятый 30-секундный интервал TOTP: один и тот же код дважды не принимается. */
+	@JsonIgnore
+	@Column(name = "mfa_last_step")
+	protected Long mfaLastStep;
+
+	@JsonIgnore
+	@Column(name = "mfa_enabled_at")
+	protected java.time.ZonedDateTime mfaEnabledAt;
+
+	@Builder.Default
+	@Column(name = "notify_chat_ping", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyChatPing = false;
 
 	@Builder.Default
-	@Column(name = "notify_task_chat_ping", nullable = false)
+	@Column(name = "notify_task_chat_ping", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyTaskChatPing = false;
 
 	@Builder.Default
-	@Column(name = "notify_new_assigned_task", nullable = false)
+	@Column(name = "notify_new_assigned_task", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyNewAssignedTask = false;
 
 	@Builder.Default
-	@Column(name = "notify_task_new_message_assigned", nullable = false)
+	@Column(name = "notify_task_new_message_assigned", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyTaskNewMessageAssigned = false;
 
 	@Builder.Default
-	@Column(name = "notify_sla_half_time_passed", nullable = false)
+	@Column(name = "notify_sla_half_time_passed", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifySlaHalfTimePassed = false;
 
 	@Builder.Default
-	@Column(name = "notify_sla_overdue", nullable = false)
+	@Column(name = "notify_sla_overdue", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifySlaOverdue = false;
 
 	@Builder.Default
-	@Column(name = "notify_chat_unanswered_too_long", nullable = false)
+	@Column(name = "notify_chat_unanswered_too_long", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyChatUnansweredTooLong = false;
 
 	@Builder.Default
-	@Column(name = "notify_chat_unanswered_too_long_minutes", nullable = false)
+	@Column(name = "notify_chat_unanswered_too_long_minutes", nullable = false, columnDefinition = "int default 30")
 	protected Integer notifyChatUnansweredTooLongMinutes = 30;
 
 	@Builder.Default
-	@Column(name = "notify_deadline_overdue_before_minutes_enabled", nullable = false)
+	@Column(name = "notify_deadline_overdue_before_minutes_enabled", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyDeadlineOverdueBeforeMinutesEnabled = false;
 
 	@Builder.Default
-	@Column(name = "notify_deadline_overdue_before_minutes", nullable = false)
+	@Column(name = "notify_deadline_overdue_before_minutes", nullable = false, columnDefinition = "int default 30")
 	protected Integer notifyDeadlineOverdueBeforeMinutes = 30;
 
 	@Builder.Default
-	@Column(name = "notify_deadline_overdue", nullable = false)
+	@Column(name = "notify_deadline_overdue", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyDeadlineOverdue = false;
 
 

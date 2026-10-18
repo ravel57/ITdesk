@@ -35,6 +35,7 @@ import java.util.function.Supplier;
 @Tag(name = "Клиенты", description = "Карточки клиентов и связанные клиентские данные.")
 public class ClientController {
 
+	private final SecurityAuditService securityAuditService;
 	private final ClientService clientService;
 	private final ClientCsvImportService clientCsvImportService;
 	private final ClientUserCsvImportService clientUserCsvImportService;
@@ -42,7 +43,7 @@ public class ClientController {
 
 	@Operation(summary = "Получить список клиентов", description = "Получить список клиентов. Endpoint GET /api/v1/clients; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/clients")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('CHAT_VIEW')")
 	public ResponseEntity<Object> getClients() {
 		return ResponseEntity.ok().body(clientService.getClients());
 	}
@@ -50,7 +51,7 @@ public class ClientController {
 
 	@Operation(summary = "Импортировать клиентов из CSV", description = "Загрузить CSV с клиентами. Поддерживаются стандартные колонки firstname, lastname, email, phoneNumber, organization, moreInfo и распространённые имена полей Active Directory. Существующие клиенты определяются по email.")
 	@PostMapping(value = "/clients/import-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('CLIENT_IMPORT')")
 	public ResponseEntity<Object> importClientsCsv(
 			@RequestParam("file") MultipartFile file,
 			@RequestParam(value = "updateExisting", defaultValue = "false") boolean updateExisting
@@ -71,7 +72,7 @@ public class ClientController {
 
 	@Operation(summary = "Скачать шаблон CSV для импорта клиентов")
 	@GetMapping(value = "/clients/import-csv/template", produces = "text/csv")
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('CLIENT_IMPORT')")
 	public ResponseEntity<byte[]> getClientsCsvTemplate() {
 		return ResponseEntity.ok()
 				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=clients-import-template.csv")
@@ -82,7 +83,7 @@ public class ClientController {
 
 	@Operation(summary = "Скачать шаблон CSV для импорта клиентских учётных записей")
 	@GetMapping(value = "/client-users/import-csv/template", produces = "text/csv")
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('CLIENT_IMPORT')")
 	public ResponseEntity<byte[]> getClientUsersCsvTemplate() {
 		return ResponseEntity.ok()
 				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=client-users-import-template.csv")
@@ -93,7 +94,7 @@ public class ClientController {
 
 	@Operation(summary = "Предпросмотр импорта клиентских учётных записей из CSV", description = "Разбирает CSV, нормализует поля AD и возвращает редактируемые строки без создания пользователей.")
 	@PostMapping(value = "/client-users/import-csv/preview", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('CLIENT_IMPORT')")
 	public ResponseEntity<Object> previewClientUsersCsv(@RequestParam("file") MultipartFile file) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -111,7 +112,7 @@ public class ClientController {
 
 	@Operation(summary = "Импортировать клиентские учётные записи после предпросмотра", description = "Создаёт выбранные клиентские учётные записи, генерирует пароли и возвращает пароли только в ответе этой операции.")
 	@PostMapping(value = "/client-users/import-csv")
-	@PreAuthorize("hasRole('ADMIN')")
+	@PreAuthorize("@access.can('CLIENT_IMPORT')")
 	public ResponseEntity<Object> importClientUsersCsv(@RequestBody ClientUserImportRequest request) {
 		if (!LicenseStarter.isLicenseActive) {
 			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
@@ -126,7 +127,7 @@ public class ClientController {
 
 	@Operation(summary = "Получить файлы клиента", description = "Получить файлы клиента. Endpoint GET /api/v1/client-files/{clientId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/client-files/{clientId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR', 'OBSERVER')")
+	@PreAuthorize("@access.can('CHAT_VIEW')")
 	public ResponseEntity<Object> getClientFiles(@PathVariable Long clientId) {
 		return ResponseEntity.ok().body(clientService.getClientFiles(clientId));
 	}
@@ -134,7 +135,7 @@ public class ClientController {
 
 	@Operation(summary = "Обновить клиента", description = "Обновить клиента. Endpoint PATCH /api/v1/client/{clientId}/client; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("/client/{clientId}/client")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('CLIENT_EDIT')")
 	public ResponseEntity<Object> updateClient(@PathVariable Long clientId, @RequestBody Map<String, Object> client) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(clientService.updateClient(clientId, client));
@@ -146,11 +147,12 @@ public class ClientController {
 
 	@Operation(summary = "Удалить клиента", description = "Удалить клиента. Endpoint DELETE /api/v1/client/{clientId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("/client/{clientId}")
-	@PreAuthorize("hasAnyRole('ADMIN')")
+	@PreAuthorize("@access.can('CLIENT_DELETE')")
 	public ResponseEntity<Object> deleteClient(@PathVariable Long clientId) {
 		if (LicenseStarter.isLicenseActive) {
 			boolean isDeleted = clientService.deleteClient(clientId);
 			if (isDeleted) {
+				securityAuditService.record(SecurityAuditEventType.CLIENT_DELETED, "Клиент #" + clientId, null);
 				return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
 			} else {
 				return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();

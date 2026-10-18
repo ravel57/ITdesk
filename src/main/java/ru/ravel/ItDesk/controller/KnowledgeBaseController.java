@@ -38,7 +38,7 @@ public class KnowledgeBaseController {
 
 	@Operation(summary = "Получить базу знаний", description = "Получить базу знаний. Endpoint GET /api/v1/knowledge-base; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("knowledge-base")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'OPERATOR')")
+	@PreAuthorize("@access.can('KB_VIEW')")
 	public ResponseEntity<Object> getKnowledgeBase() {
 		return ResponseEntity.ok().body(knowledgeService.getKnowledgeBase());
 	}
@@ -46,7 +46,7 @@ public class KnowledgeBaseController {
 
 	@Operation(summary = "Создать статью базы знаний", description = "Создать статью базы знаний. Endpoint POST /api/v1/knowledge-base; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("knowledge-base")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('KB_EDIT')")
 	public ResponseEntity<Object> newKnowledge(@RequestBody Knowledge knowledge) {
 		if (LicenseStarter.isLicenseActive) {
 			Knowledge savedKnowledge = knowledgeService.newKnowledge(knowledge);
@@ -60,7 +60,7 @@ public class KnowledgeBaseController {
 
 	@Operation(summary = "Обновить статью базы знаний", description = "Обновить статью базы знаний. Endpoint PATCH /api/v1/knowledge-base; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PatchMapping("knowledge-base")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('KB_EDIT')")
 	public ResponseEntity<Object> updateKnowledge(@RequestBody Knowledge knowledge) {
 		if (LicenseStarter.isLicenseActive) {
 			Knowledge savedKnowledge = knowledgeService.updateKnowledge(knowledge);
@@ -74,7 +74,7 @@ public class KnowledgeBaseController {
 
 	@Operation(summary = "Удалить статью базы знаний", description = "Удалить статью базы знаний. Endpoint DELETE /api/v1/knowledge-base/{knowledgeId}; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@DeleteMapping("knowledge-base/{knowledgeId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('KB_EDIT')")
 	public ResponseEntity<Object> deleteKnowledge(@PathVariable Long knowledgeId) {
 		if (LicenseStarter.isLicenseActive) {
 			knowledgeService.deleteKnowledge(knowledgeId);
@@ -88,7 +88,7 @@ public class KnowledgeBaseController {
 
 	@Operation(summary = "Изменить порядок базы знаний", description = "Изменить порядок базы знаний. Endpoint POST /api/v1/knowledge-base/resort; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("knowledge-base/resort")
-	@PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+	@PreAuthorize("@access.can('KB_EDIT')")
 	public ResponseEntity<Object> resortKnowledgeBase(@RequestBody List<Knowledge> knowledge) {
 		if (LicenseStarter.isLicenseActive) {
 			return ResponseEntity.ok().body(knowledgeService.resortKnowledge(knowledge));

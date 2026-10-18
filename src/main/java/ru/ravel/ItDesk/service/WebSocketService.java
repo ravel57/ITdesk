@@ -128,17 +128,6 @@ public class WebSocketService {
 	}
 
 
-	/**
-	 * Инцидент изменился: фронт перезагружает список/карточку через API (там же проверка доступа).
-	 */
-	public void incidentUpdated(String username, Long incidentId) {
-		if (username == null || username.isBlank() || incidentId == null) {
-			return;
-		}
-		simpMessaging.convertAndSendToUser(username, "/topic/incidents-updated/", Map.of("incidentId", incidentId));
-	}
-
-
 	public void taskUpdated(TaskUpdatedDto taskUpdatedDto) {
 		if (taskUpdatedDto == null || taskUpdatedDto.getTask() == null) {
 			return;

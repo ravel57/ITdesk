@@ -26,7 +26,7 @@ import java.util.Map;
 @CrossOrigin
 @RequiredArgsConstructor
 @Hidden
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("@access.can('SETTINGS_MANAGE')")
 public class JevSettingsController {
 
 	private final JevSettingsService jevSettingsService;

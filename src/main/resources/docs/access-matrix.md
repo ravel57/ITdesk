@@ -203,6 +203,11 @@
 | GET | `/api/v1/session/current` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET | `/api/v1/settings/general` | can('SETTINGS_VIEW') | ✅ | ✅ | — | — | — | — |
 | PATCH | `/api/v1/settings/general` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
+| GET | `/api/v1/settings/jev` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
+| PATCH | `/api/v1/settings/jev` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
+| GET | `/api/v1/settings/jev/decisions` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
+| GET | `/api/v1/settings/jev/decisions/object` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
+| GET | `/api/v1/settings/jev/decisions/stats` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/settings/observer-access` | can('SETTINGS_VIEW') | ✅ | ✅ | — | — | — | — |
 | PATCH | `/api/v1/settings/observer-access` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/settings/security` | can('SETTINGS_VIEW') | ✅ | ✅ | — | — | — | — |

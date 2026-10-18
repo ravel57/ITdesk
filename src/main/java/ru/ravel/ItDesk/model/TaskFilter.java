@@ -31,7 +31,7 @@ public class TaskFilter {
 
 	@Builder.Default
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
+	@Column(nullable = false, columnDefinition = "varchar(255) default 'GLOBAL'")
 	TaskFilterScope scope = TaskFilterScope.GLOBAL;
 
 	Long ownerUserId;

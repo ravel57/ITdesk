@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.AnswerRequired;
 import ru.ravel.ItDesk.dto.AutomationExecutionContext;
+import ru.ravel.ItDesk.dto.MonitoringProblemEvent;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.*;
@@ -48,6 +49,10 @@ public class AutomationActionExecutor {
 	private final WebSocketService webSocketService;
 	private final EventPublisher eventPublisher;
 	private final WebhookService webhookService;
+	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
+	private final MessageRepository messageRepository;
+	private final ClientRepository clientRepository;
+	private final MonitoringIncidentService monitoringIncidentService;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -112,6 +117,10 @@ public class AutomationActionExecutor {
 			return new WebhookApi(ctx);
 		}
 
+		public IncidentApi incident() {
+			return new IncidentApi(ctx);
+		}
+
 		@Nullable
 		Object resolveTarget(String name) {
 			return switch (name) {
@@ -119,6 +128,7 @@ public class AutomationActionExecutor {
 				case "task" -> task();
 				case "notify" -> notifyApi();
 				case "webhook" -> webhook();
+				case "incident" -> incident();
 				default -> null;
 			};
 		}
@@ -146,8 +156,10 @@ public class AutomationActionExecutor {
 				log.warn("client.setAnswerRequired skipped: clientId/messageId is null, event={}", safeEventInfo(ctx.getEvent()));
 				return;
 			}
-			clientService.answerRequiredForSystem(clientId, messageId, AnswerRequired.ANSWER_REQUIRED);
-			log.info("AUTO client.setAnswerRequired(clientId={}, messageId={})", clientId, messageId);
+			// Не переносим метку внутри цепочки сообщений, чтобы не сбрасывать таймер ожидания ответа
+			Optional<Long> alreadyFlagged = clientService.markAnswerRequiredForSystem(clientId, messageId);
+			log.info("AUTO client.setAnswerRequired(clientId={}, messageId={}){}", clientId, messageId,
+					alreadyFlagged.map(id -> " skipped: message " + id + " in this chain is already flagged").orElse(""));
 		}
 
 		public void sendMessage(String text) {
@@ -502,11 +514,9 @@ public class AutomationActionExecutor {
 		if (taskId == null) {
 			return;
 		}
-		try {
-			webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(null, taskId));
-		} catch (Exception e) {
-			log.warn("Unable to send task update after automation, taskId={}", taskId, e);
-		}
+		// После коммита автоматизации и один раз на заявку, даже если правило поменяло несколько полей
+		afterCommitExecutor.runOnce("task:" + taskId,
+				() -> webSocketService.taskUpdated(taskService.buildTaskUpdatedDto(null, taskId)));
 	}
 
 	public final class NotifyApi {
@@ -524,6 +534,47 @@ public class AutomationActionExecutor {
 
 			// TODO: notificationService.notifyUser(...)
 			log.info("AUTO notify.user(userId={}, text={})", userId, text);
+		}
+	}
+
+	/**
+	 * "incident.*" — инциденты по событиям автоматизаций.
+	 */
+	public final class IncidentApi {
+		private static final com.fasterxml.jackson.databind.ObjectMapper PAYLOAD_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper()
+				.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+		private final AutomationExecutionContext ctx;
+
+		IncidentApi(AutomationExecutionContext ctx) {
+			this.ctx = ctx;
+		}
+
+		/**
+		 * События мониторинга Zabbix (Мониторинг: проблема / обновлена / устранена): проблема по сервису создаёт черновик
+		 * инцидента или привязывается к активному инциденту сервиса, а когда открытых проблем не осталось —
+		 * инцидент переводится в «Наблюдение» для проверки восстановления. Без сопоставленного сервиса ничего не делает.
+		 */
+		public void fromMonitoring() {
+			Event event = ctx.getEvent();
+			TriggerType trigger = event == null ? null : event.getTriggerType();
+			if (trigger == null || event.getPayload() == null) {
+				log.warn("incident.fromMonitoring skipped: no monitoring event (rule: {})", ruleName());
+				return;
+			}
+			MonitoringProblemEvent payload;
+			try {
+				payload = PAYLOAD_MAPPER.treeToValue(event.getPayload(), MonitoringProblemEvent.class);
+			} catch (Exception e) {
+				log.warn("incident.fromMonitoring skipped: payload is not a monitoring event: {}", e.getMessage());
+				return;
+			}
+			MonitoringIncidentService.Result result = monitoringIncidentService.handle(trigger, payload);
+			log.info("incident.fromMonitoring: {} {} — {} (rule: {})", trigger, result.outcome(), result.details(), ruleName());
+		}
+
+		private String ruleName() {
+			return ctx.getTrigger() == null ? "-" : "#" + ctx.getTrigger().getId() + " «" + ctx.getTrigger().getName() + "»";
 		}
 	}
 

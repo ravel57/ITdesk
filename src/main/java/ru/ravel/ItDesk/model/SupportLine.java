@@ -70,31 +70,31 @@ public class SupportLine implements Comparable<SupportLine> {
     private Set<User> observers = new LinkedHashSet<>();
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "assignment_strategy", nullable = false, length = 32)
+    @Column(name = "assignment_strategy", nullable = false, length = 32, columnDefinition = "varchar(32) default 'KEEP_UNASSIGNED'")
     @Builder.Default
     private SupportLineAssignmentStrategy assignmentStrategy = SupportLineAssignmentStrategy.KEEP_UNASSIGNED;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "visibility_mode", nullable = false, length = 40)
+    @Column(name = "visibility_mode", nullable = false, length = 40, columnDefinition = "varchar(40) default 'INHERIT'")
     @Builder.Default
     private SupportLineVisibilityMode visibilityMode = SupportLineVisibilityMode.INHERIT;
 
-    @Column(name = "allow_self_assignment", nullable = false)
+    @Column(name = "allow_self_assignment", nullable = false, columnDefinition = "boolean default true")
     @Builder.Default
     private Boolean allowSelfAssignment = true;
 
-    @Column(name = "notify_on_new_task", nullable = false)
+    @Column(name = "notify_on_new_task", nullable = false, columnDefinition = "boolean default true")
     @Builder.Default
     private Boolean notifyOnNewTask = true;
 
-    @Column(name = "capacity_per_member", nullable = false)
+    @Column(name = "capacity_per_member", nullable = false, columnDefinition = "int default 0")
     @Builder.Default
     private Integer capacityPerMember = 0;
 
     @Column(name = "round_robin_cursor")
     private Long roundRobinCursor;
 
-    @Column(name = "ola_enabled", nullable = false)
+    @Column(name = "ola_enabled", nullable = false, columnDefinition = "boolean default false")
     @Builder.Default
     private Boolean olaEnabled = false;
 
@@ -102,15 +102,15 @@ public class SupportLine implements Comparable<SupportLine> {
     private Integer olaValue;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "ola_unit", nullable = false, length = 24)
+    @Column(name = "ola_unit", nullable = false, length = 24, columnDefinition = "varchar(24) default 'HOURS'")
     @Builder.Default
     private OlaUnit olaUnit = OlaUnit.HOURS;
 
-    @Column(name = "ola_warning_percent", nullable = false)
+    @Column(name = "ola_warning_percent", nullable = false, columnDefinition = "int default 80")
     @Builder.Default
     private Integer olaWarningPercent = 80;
 
-    @Column(name = "ola_use_working_time", nullable = false)
+    @Column(name = "ola_use_working_time", nullable = false, columnDefinition = "boolean default true")
     @Builder.Default
     private Boolean olaUseWorkingTime = true;
 

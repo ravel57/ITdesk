@@ -1,0 +1,18 @@
+-- Событие уведомления INCIDENT_RECOVERY_FAILED: клиент сообщает, что после восстановления проблема сохраняется
+alter table if exists user_notification_history drop constraint if exists user_notification_history_event_check;
+alter table if exists user_notification_history add constraint user_notification_history_event_check check (
+    event in (
+        'MENTIONED_USER',
+        'MENTIONED_USER_IN_TASK_CHAT',
+        'NEW_TASK',
+        'NEW_CHAT_MESSAGE',
+        'SLA_HALF_TIME_PASSED',
+        'SLA_OVERDUE',
+        'CHAT_UNANSWERED_TOO_LONG',
+        'DEADLINE_SOON',
+        'DEADLINE_OVERDUE',
+        'INCIDENT_UPDATE_OVERDUE',
+        'INCIDENT_DETECTED',
+        'INCIDENT_RECOVERY_FAILED'
+    )
+);

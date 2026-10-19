@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.dto.JevSettingsDto;
 import ru.ravel.ItDesk.dto.JevSettingsRequest;
 import ru.ravel.ItDesk.model.AppSettings;
-import ru.ravel.ItDesk.model.incident.IncidentDetectorMode;
 import ru.ravel.ItDesk.model.jev.JevThreshold;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
 
@@ -78,40 +77,6 @@ public class JevSettingsService {
 
 
 	/**
-	 * Параметры детектора массовых инцидентов.
-	 */
-	public record IncidentDetectorConfig(
-			int windowMinutes,
-			int minClients,
-			double outageThreshold,
-			int cooldownMinutes,
-			IncidentDetectorMode mode,
-			int p1MinClients
-	) {
-	}
-
-
-	/**
-	 * Параметры детектора; порог «это сбой» может быть задан в правиле (jev.detectIncident(0.8)).
-	 */
-	@Transactional(readOnly = true)
-	public IncidentDetectorConfig incidentDetector() {
-		AppSettings settings = appSettingsService.getGeneralSettings();
-		JevThresholdOverride override = JevThresholdOverride.current();
-		return new IncidentDetectorConfig(
-				settings.getJevIncidentWindowMinutes(),
-				settings.getJevIncidentMinClients(),
-				override != null && override.incidentOutage() != null
-						? override.incidentOutage()
-						: settings.getJevIncidentOutageThreshold(),
-				settings.getJevIncidentCooldownMinutes(),
-				settings.getJevIncidentMode(),
-				settings.getJevIncidentP1MinClients()
-		);
-	}
-
-
-	/**
 	 * Конфигурация для вызовов Jev. Пороги — из настроек, но заданные в выполняемом правиле
 	 * (аргументы действия jev.*) перекрывают их.
 	 */
@@ -170,28 +135,6 @@ public class JevSettingsService {
 		settings.setJevPriorityExcluded(request.priorityExcluded() == null
 				? ""
 				: String.join(PRIORITY_SEPARATOR, cleanNames(request.priorityExcluded())));
-		if (request.incidentWindowMinutes() != null) {
-			settings.setJevIncidentWindowMinutes(requireRange(request.incidentWindowMinutes(), 1, 1440, "Окно детектора, мин"));
-		}
-		if (request.incidentMinClients() != null) {
-			settings.setJevIncidentMinClients(requireRange(request.incidentMinClients(), 2, 1000, "Минимум разных клиентов"));
-		}
-		if (request.incidentOutageThreshold() != null) {
-			settings.setJevIncidentOutageThreshold(requireRatio(request.incidentOutageThreshold(), "Порог «это сбой»"));
-		}
-		if (request.incidentCooldownMinutes() != null) {
-			settings.setJevIncidentCooldownMinutes(requireRange(request.incidentCooldownMinutes(), 0, 10080, "Пауза после срабатывания, мин"));
-		}
-		if (request.incidentMode() != null) {
-			try {
-				settings.setJevIncidentMode(IncidentDetectorMode.valueOf(request.incidentMode().trim()));
-			} catch (IllegalArgumentException e) {
-				throw new IllegalArgumentException("Неизвестный режим детектора: " + request.incidentMode());
-			}
-		}
-		if (request.incidentP1MinClients() != null) {
-			settings.setJevIncidentP1MinClients(requireRange(request.incidentP1MinClients(), 2, 10000, "Клиентов для P1"));
-		}
 		return toDto(appSettingsRepository.save(settings));
 	}
 
@@ -203,13 +146,7 @@ public class JevSettingsService {
 				thresholds(settings),
 				settings.getJevReplyRequiredThreshold(),
 				settings.getJevReplyNotRequiredThreshold(),
-				priorityExcluded(settings),
-				settings.getJevIncidentWindowMinutes(),
-				settings.getJevIncidentMinClients(),
-				settings.getJevIncidentOutageThreshold(),
-				settings.getJevIncidentCooldownMinutes(),
-				settings.getJevIncidentMode().name(),
-				settings.getJevIncidentP1MinClients()
+				priorityExcluded(settings)
 		);
 	}
 
@@ -247,14 +184,6 @@ public class JevSettingsService {
 	private double requireRatio(Double value, String label) {
 		if (value == null || Double.isNaN(value) || value < 0 || value > 1) {
 			throw new IllegalArgumentException(label + ": допустимо число от 0 до 1");
-		}
-		return value;
-	}
-
-
-	private int requireRange(int value, int min, int max, String label) {
-		if (value < min || value > max) {
-			throw new IllegalArgumentException("%s: допустимо от %d до %d".formatted(label, min, max));
 		}
 		return value;
 	}

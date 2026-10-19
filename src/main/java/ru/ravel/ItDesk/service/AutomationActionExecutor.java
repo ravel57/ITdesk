@@ -11,6 +11,10 @@ import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.dto.MonitoringProblemEvent;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.model.incident.IncidentSeverity;
+import ru.ravel.ItDesk.model.incident.IncidentSignal;
+import ru.ravel.ItDesk.model.incident.IncidentSignalDecision;
+import ru.ravel.ItDesk.model.incident.SupportIncident;
 import ru.ravel.ItDesk.model.jev.JevThreshold;
 import ru.ravel.ItDesk.repository.*;
 
@@ -57,6 +61,7 @@ public class AutomationActionExecutor {
 	private final MessageRepository messageRepository;
 	private final ClientRepository clientRepository;
 	private final MonitoringIncidentService monitoringIncidentService;
+	private final AutomationWorkflowValueService workflowValueService;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
@@ -700,24 +705,69 @@ public class AutomationActionExecutor {
 		}
 
 		/**
-		 * Детектор массовых инцидентов для входящего сообщения: Jev размечает сообщение, детектор считает
-		 * похожие сбои разных клиентов в окне и, в зависимости от режима, уведомляет ответственных
-		 * или создаёт черновик инцидента (см. IncidentDetectorService).
+		 * Шаг детектора массовых инцидентов: Jev размечает входящее сообщение (сбой ли это, какой сервис и симптом,
+		 * относится ли к открытому инциденту). Только разметка — что делать дальше (посчитать обращения, сравнить с
+		 * порогом, создать инцидент) решают следующие ноды правила. Пишет: {@code var.signalId},
+		 * {@code var.outageProbability}, {@code var.outageServiceId}, {@code var.outageServiceName},
+		 * {@code var.outageSymptom}, {@code var.organizationId}, {@code var.monitoringStatus},
+		 * {@code var.matchedIncidentId}, {@code var.matchedIncidentNumber}. Если Jev не ответил — ничего не пишет.
 		 */
-		public void detectIncident() {
+		public void analyzeOutage() {
 			Long clientId = resolveClientId(ctx);
 			Long messageId = resolveMessageId(ctx);
-			if (!ready("jev.detectIncident",
+			if (!ready("jev.analyzeOutage",
 					clientId == null || messageId == null ? "no client or message in event" : null)) {
 				return;
 			}
 			String context = "client=" + clientId + ", message=" + messageId;
-			JsonNode text = readByPath(ctx.getEvent().getPayload(), "message.text");
-			if (text == null || !text.isTextual() || text.asText().isBlank()) {
-				jevLog.info("[{}] jev.detectIncident: message has no text, skipped", context);
+			String text = messageText();
+			if (text == null) {
+				jevLog.info("[{}] jev.analyzeOutage: message has no text, skipped", context);
 				return;
 			}
-			incidentDetectorService.handleIncomingMessage(context, clientId, messageId, text.asText());
+			Optional<IncidentDetectorService.Analysis> analysis = incidentDetectorService.analyze(context, clientId, messageId, text);
+			if (analysis.isEmpty()) {
+				return;
+			}
+			IncidentSignal signal = analysis.get().signal();
+			JevService.OutageSignal outage = analysis.get().outage();
+			ru.ravel.ItDesk.model.Service service = outage.service();
+			SupportIncident matched = outage.matchedIncident();
+			setVar(ctx, "signalId", signal.getId());
+			setVar(ctx, "outageProbability", outage.outageProbability());
+			setVar(ctx, "outageServiceId", service == null ? null : service.getId());
+			setVar(ctx, "outageServiceName", service == null ? null : service.getName());
+			setVar(ctx, "outageSymptom", outage.symptom());
+			setVar(ctx, "organizationId", signal.getOrganizationId());
+			setVar(ctx, "monitoringStatus", service == null || service.getMonitoringStatus() == null
+					? null : service.getMonitoringStatus().name());
+			setVar(ctx, "matchedIncidentId", matched == null ? null : matched.getId());
+			setVar(ctx, "matchedIncidentNumber", matched == null ? null : matched.getIncidentNumber());
+		}
+
+		/**
+		 * Шаг детектора: Jev проверяет, что сообщения окна ({@code var.signalIds} после {@code incident.countSignals})
+		 * и текущее описывают одну проблему. Пишет {@code var.batchSameProblem} (вероятность 0..1),
+		 * {@code var.batchSeverity} (P1..P4 по оценке Jev), {@code var.batchSeverityScore}, {@code var.batchCause};
+		 * если проверка недоступна (Jev не ответил, меньше двух сообщений) — ничего не пишет.
+		 */
+		public void verifyBatch() {
+			Long signalId = varLong(ctx, "signalId");
+			if (!ready("jev.verifyBatch", signalId == null ? "no signal: call jev.analyzeOutage() first" : null)) {
+				return;
+			}
+			String context = "signal=" + signalId;
+			String text = messageText();
+			if (text == null) {
+				jevLog.info("[{}] jev.verifyBatch: message has no text, skipped", context);
+				return;
+			}
+			incidentDetectorService.verifyBatch(context, varLongs(ctx, "signalIds"), text).ifPresent(verdict -> {
+				setVar(ctx, "batchSameProblem", verdict.sameProblemProbability());
+				setVar(ctx, "batchSeverity", verdict.severity().name());
+				setVar(ctx, "batchSeverityScore", verdict.severityScore());
+				setVar(ctx, "batchCause", verdict.probableCause());
+			});
 		}
 
 		/**
@@ -866,21 +916,19 @@ public class AutomationActionExecutor {
 			if (required != null && notRequired != null && notRequired >= required) {
 				throw new IllegalArgumentException(action + ": notRequiredThreshold должен быть меньше requiredThreshold");
 			}
-			withThresholds(action, new JevThresholdOverride(null, required, notRequired, null), this::setAnswerRequiredIfNeeded);
+			withThresholds(action, new JevThresholdOverride(null, required, notRequired), this::setAnswerRequiredIfNeeded);
 		}
 
-		/** Детектор инцидентов: считать сбоем при вероятности не ниже outageThreshold. */
-		public void detectIncident(BigDecimal outageThreshold) {
-			detectIncident(outageThreshold, null);
+		/** Разметка сообщения детектором с порогом уверенности выбора (сервис, симптом, связь с открытым инцидентом). */
+		public void analyzeOutage(BigDecimal analysisThreshold) {
+			withThresholds("jev.analyzeOutage", JevThresholdOverride.of(JevThreshold.INCIDENT_ANALYSIS,
+					ratio("jev.analyzeOutage", "analysisThreshold", analysisThreshold)), this::analyzeOutage);
 		}
 
-		/** Детектор инцидентов: порог «это сбой» и порог разбора (сервис, симптом, проверка пачки). */
-		public void detectIncident(BigDecimal outageThreshold, BigDecimal analysisThreshold) {
-			String action = "jev.detectIncident";
-			Double analysis = ratio(action, "analysisThreshold", analysisThreshold);
-			withThresholds(action, new JevThresholdOverride(
-					analysis == null ? null : Map.of(JevThreshold.INCIDENT_ANALYSIS, analysis),
-					null, null, ratio(action, "outageThreshold", outageThreshold)), this::detectIncident);
+		/** Проверка пачки с порогом уверенности выбора вероятной причины. */
+		public void verifyBatch(BigDecimal analysisThreshold) {
+			withThresholds("jev.verifyBatch", JevThresholdOverride.of(JevThreshold.INCIDENT_ANALYSIS,
+					ratio("jev.verifyBatch", "analysisThreshold", analysisThreshold)), this::verifyBatch);
 		}
 
 		/** Создание заявки с порогом threshold (тип сообщения, совпадение с открытой, повтор закрытой). */
@@ -896,7 +944,7 @@ public class AutomationActionExecutor {
 			Double split = ratio(action, "splitThreshold", splitThreshold);
 			if (create != null) thresholds.put(JevThreshold.CREATE_TASK, create);
 			if (split != null) thresholds.put(JevThreshold.SPLIT_TASKS, split);
-			withThresholds(action, new JevThresholdOverride(thresholds, null, null, null), this::createTaskIfNeeded);
+			withThresholds(action, new JevThresholdOverride(thresholds, null, null), this::createTaskIfNeeded);
 		}
 
 		/** Статья базы знаний с порогом threshold. */
@@ -1028,6 +1076,166 @@ public class AutomationActionExecutor {
 			}
 			MonitoringIncidentService.Result result = monitoringIncidentService.handle(trigger, payload);
 			log.info("incident.fromMonitoring: {} {} — {} (rule: {})", trigger, result.outcome(), result.details(), ruleName());
+		}
+
+		// ---- Детектор массовых инцидентов: шаги над сигналом из jev.analyzeOutage() (var.signalId) ----
+
+		/** {@code incident.countSignals(15)}: окно в минутах, считаются обращения клиентов всех организаций. */
+		public void countSignals(Integer windowMinutes) {
+			countSignals(windowMinutes, null);
+		}
+
+		/**
+		 * Сколько обращений и разных клиентов было о том же сервисе и симптоме за {@code windowMinutes} до текущего.
+		 * {@code scope}: {@code 'all'} (по умолчанию) — клиенты всех организаций, {@code 'organization'} — только
+		 * организации текущего клиента. Пишет {@code var.signalClients}, {@code var.signalMessages},
+		 * {@code var.signalOrganizations}, {@code var.signalIds}, {@code var.signalWindowMinutes}.
+		 */
+		public void countSignals(Integer windowMinutes, String scope) {
+			IncidentSignal signal = currentSignal("incident.countSignals");
+			if (signal == null) {
+				return;
+			}
+			if (windowMinutes == null || windowMinutes < 1) {
+				throw new IllegalArgumentException("incident.countSignals: окно должно быть не меньше 1 минуты");
+			}
+			boolean sameOrganizationOnly;
+			if (scope == null || "all".equalsIgnoreCase(scope.trim())) {
+				sameOrganizationOnly = false;
+			} else if ("organization".equalsIgnoreCase(scope.trim())) {
+				sameOrganizationOnly = true;
+			} else {
+				throw new IllegalArgumentException("incident.countSignals: область '" + scope + "' неизвестна (допустимы 'all', 'organization')");
+			}
+			IncidentDetectorService.WindowCount count = incidentDetectorService.count(signal, windowMinutes, sameOrganizationOnly);
+			setVar(ctx, "signalClients", count.clients().size());
+			setVar(ctx, "signalMessages", count.messages());
+			setVar(ctx, "signalOrganizations", count.organizations().size());
+			setVar(ctx, "signalIds", count.window().stream().map(IncidentSignal::getId).toList());
+			setVar(ctx, "signalWindowMinutes", windowMinutes);
+			log.info("AUTO incident.countSignals(window={} min, scope={}) -> {} client(s), {} message(s), {} organization(s) (rule: {})",
+					windowMinutes, sameOrganizationOnly ? "organization" : "all", count.clients().size(), count.messages(),
+					count.organizations().size(), ruleName());
+		}
+
+		/**
+		 * Было ли за последние {@code minutes} срабатывание по тому же сервису и симптому (0 — пауза выключена).
+		 * С {@code onlyWithIncident = true} считаются только срабатывания, по которым создан инцидент.
+		 * Пишет {@code var.cooldownActive} и {@code var.cooldownIncidentId} (активный инцидент того срабатывания).
+		 */
+		public void checkCooldown(Integer minutes, Boolean onlyWithIncident) {
+			IncidentSignal signal = currentSignal("incident.checkCooldown");
+			if (signal == null) {
+				return;
+			}
+			IncidentDetectorService.Cooldown cooldown = incidentDetectorService.cooldown(
+					signal, minutes == null ? 0 : minutes, Boolean.TRUE.equals(onlyWithIncident));
+			setVar(ctx, "cooldownActive", cooldown.active());
+			setVar(ctx, "cooldownIncidentId", cooldown.incidentId());
+		}
+
+		/** Записывает решение по сигналу: IGNORED, COUNTED, MATCHED_INCIDENT, TRIGGERED, BATCH_REJECTED, COOLDOWN. */
+		public void markSignal(String decision) {
+			markSignal(decision, null);
+		}
+
+		/** То же, плюс инцидент, к которому относится сигнал (без привязки заявки). */
+		public void markSignal(String decision, Long incidentId) {
+			IncidentSignal signal = currentSignal("incident.markSignal");
+			if (signal == null) {
+				return;
+			}
+			IncidentSignalDecision parsed;
+			try {
+				parsed = IncidentSignalDecision.valueOf(Objects.toString(decision, "").trim().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				throw new IllegalArgumentException("incident.markSignal: неизвестное решение '" + decision + "' (допустимы "
+						+ Arrays.toString(IncidentSignalDecision.values()) + ")");
+			}
+			incidentDetectorService.mark(signal, parsed, incidentId);
+			log.info("AUTO incident.markSignal({}, incidentId={}) (rule: {})", parsed, incidentId, ruleName());
+		}
+
+		/**
+		 * Относит сообщение к открытому инциденту: привязывает заявку клиента и пишет запись в таймлайн.
+		 * Заявка ищется по сообщению, иначе — последняя открытая заявка клиента за {@code lookbackMinutes}.
+		 */
+		public void attachSignal(Long incidentId, Integer lookbackMinutes) {
+			IncidentSignal signal = currentSignal("incident.attachSignal");
+			if (signal == null) {
+				return;
+			}
+			if (incidentId == null) {
+				log.warn("incident.attachSignal skipped: incidentId is null (rule: {})", ruleName());
+				return;
+			}
+			incidentDetectorService.attach("signal=" + signal.getId(), signal, incidentId, lookbackMinutes == null ? 0 : lookbackMinutes);
+		}
+
+		/** {@code incident.createDraftFromSignals('P2')}: интервал обновлений инцидента — по умолчанию. */
+		public void createDraftFromSignals(String severity) {
+			createDraftFromSignals(severity, null, null, null, null);
+		}
+
+		/**
+		 * Создаёт черновик инцидента по пачке (текущий сигнал и {@code var.signalIds}) с заданной серьёзностью
+		 * ({@code 'P1'}…{@code 'P4'}), привязывает заявки и отмечает сигналы как TRIGGERED. Нужны результаты
+		 * {@code incident.countSignals} и {@code jev.verifyBatch}. {@code pNInterval} — интервал обновлений инцидента
+		 * в минутах для соответствующей серьёзности. Пишет {@code var.draftIncidentId}, {@code var.draftIncidentNumber}.
+		 */
+		public void createDraftFromSignals(String severity, Integer p1Interval, Integer p2Interval, Integer p3Interval, Integer p4Interval) {
+			IncidentSignal signal = currentSignal("incident.createDraftFromSignals");
+			if (signal == null) {
+				return;
+			}
+			Long windowMinutes = varLong(ctx, "signalWindowMinutes");
+			Double sameProblem = varDouble(ctx, "batchSameProblem");
+			String jevSeverity = varString(ctx, "batchSeverity");
+			if (windowMinutes == null || sameProblem == null || jevSeverity == null) {
+				log.warn("incident.createDraftFromSignals skipped: call incident.countSignals() and jev.verifyBatch() first (rule: {})", ruleName());
+				return;
+			}
+			Double severityScore = varDouble(ctx, "batchSeverityScore");
+			JevService.BatchVerdict verdict = new JevService.BatchVerdict(sameProblem, IncidentDetectorService.severityOf(jevSeverity),
+					severityScore == null ? 0 : severityScore, Objects.toString(varString(ctx, "batchCause"), "неизвестно"));
+			Map<IncidentSeverity, Integer> intervals = new EnumMap<>(IncidentSeverity.class);
+			if (p1Interval != null) intervals.put(IncidentSeverity.P1, p1Interval);
+			if (p2Interval != null) intervals.put(IncidentSeverity.P2, p2Interval);
+			if (p3Interval != null) intervals.put(IncidentSeverity.P3, p3Interval);
+			if (p4Interval != null) intervals.put(IncidentSeverity.P4, p4Interval);
+			SupportIncident incident = incidentDetectorService.createDraft("signal=" + signal.getId(), signal,
+					incidentDetectorService.findSignals(varLongs(ctx, "signalIds")), verdict,
+					IncidentDetectorService.severityOf(Objects.toString(severity, "")), windowMinutes.intValue(), intervals);
+			setVar(ctx, "draftIncidentId", incident.getId());
+			setVar(ctx, "draftIncidentNumber", incident.getIncidentNumber());
+			log.info("AUTO incident.createDraftFromSignals({}) -> {} (rule: {})", severity, incident.getIncidentNumber(), ruleName());
+		}
+
+		/**
+		 * Уведомляет ответственных за сервис (владелец и исполнители сервиса, ответственный и участники линии;
+		 * если таких нет — администраторы) через стандартные уведомления.
+		 */
+		public void notifyResponsible(String text) {
+			IncidentSignal signal = currentSignal("incident.notifyResponsible");
+			if (signal == null) {
+				return;
+			}
+			if (text == null || text.isBlank()) {
+				log.warn("incident.notifyResponsible skipped: text is blank (rule: {})", ruleName());
+				return;
+			}
+			Long windowMinutes = varLong(ctx, "signalWindowMinutes");
+			incidentDetectorService.notifyResponsible("signal=" + signal.getId(), signal,
+					incidentDetectorService.findSignals(varLongs(ctx, "signalIds")),
+					windowMinutes == null ? 0 : windowMinutes.intValue(), text);
+		}
+
+		private IncidentSignal currentSignal(String action) {
+			Optional<IncidentSignal> signal = incidentDetectorService.findSignal(varLong(ctx, "signalId"));
+			if (signal.isEmpty()) {
+				log.warn("{} skipped: no signal in the workflow, call jev.analyzeOutage() first (rule: {})", action, ruleName());
+			}
+			return signal.orElse(null);
 		}
 
 		private String ruleName() {
@@ -1422,6 +1630,50 @@ public class AutomationActionExecutor {
 			return null;
 		}
 		return readLong(e.getPayload(), "message.id");
+	}
+
+	// ---- переменные автоматизации var.*: шаги пишут результат, следующие ноды читают его в условиях и скриптах ----
+
+	private void setVar(AutomationExecutionContext ctx, String name, Object value) {
+		workflowValueService.setVariable(ctx.getEvent().getPayload(), name, value);
+	}
+
+	private Object varValue(AutomationExecutionContext ctx, String name) {
+		return workflowValueService.getVariable(ctx.getEvent().getPayload(), name);
+	}
+
+	private Long varLong(AutomationExecutionContext ctx, String name) {
+		Object value = varValue(ctx, name);
+		if (value instanceof Number number) {
+			return number.longValue();
+		}
+		if (value instanceof String text) {
+			try {
+				return Long.parseLong(text.trim());
+			} catch (NumberFormatException ignored) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	private Double varDouble(AutomationExecutionContext ctx, String name) {
+		Object value = varValue(ctx, name);
+		return value instanceof Number number ? number.doubleValue() : null;
+	}
+
+	private String varString(AutomationExecutionContext ctx, String name) {
+		Object value = varValue(ctx, name);
+		return value == null ? null : String.valueOf(value);
+	}
+
+	private List<Long> varLongs(AutomationExecutionContext ctx, String name) {
+		if (!(varValue(ctx, name) instanceof JsonNode node) || !node.isArray()) {
+			return List.of();
+		}
+		List<Long> result = new ArrayList<>();
+		node.forEach(item -> result.add(item.asLong()));
+		return result;
 	}
 
 	private Long resolveTaskId(AutomationExecutionContext ctx) {

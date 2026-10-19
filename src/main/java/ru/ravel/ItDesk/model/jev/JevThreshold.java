@@ -31,7 +31,7 @@ public enum JevThreshold {
 	DUPLICATE("findDuplicate", "Дубли заявок",
 			"jev.findDuplicate(): новая заявка о той же проблеме, что и открытая", 0.6),
 	INCIDENT_ANALYSIS("detectIncident", "Детектор инцидентов: разбор",
-			"jev.detectIncident(): сервис, симптом, связь с открытым инцидентом, одна ли проблема в пачке, причина", 0.6);
+			"jev.analyzeOutage(), jev.verifyBatch(): выбор сервиса, симптома, открытого инцидента и вероятной причины (пороги «это сбой» и «одна проблема» задаются в правиле)", 0.6);
 
 	private final String key;
 	private final String label;

@@ -6,6 +6,8 @@ import java.util.List;
 /**
  * Настройки Jev для UI. enabled и apiKeyConfigured только для отображения:
  * подключение задаётся в конфиге (JEV_*), сам ключ наружу не отдаётся.
+ * Параметры детектора массовых инцидентов здесь больше не хранятся: окно, пороги, пауза и режим задаются
+ * нодами правила автоматизации «Детектор массовых инцидентов (Jev)».
  */
 public record JevSettingsDto(
 		boolean enabled,
@@ -13,13 +15,7 @@ public record JevSettingsDto(
 		List<Threshold> thresholds,
 		double replyRequiredThreshold,
 		double replyNotRequiredThreshold,
-		List<String> priorityExcluded,
-		int incidentWindowMinutes,
-		int incidentMinClients,
-		double incidentOutageThreshold,
-		int incidentCooldownMinutes,
-		String incidentMode,
-		int incidentP1MinClients
+		List<String> priorityExcluded
 ) {
 
 	/**

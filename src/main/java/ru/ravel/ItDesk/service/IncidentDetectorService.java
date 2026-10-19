@@ -19,17 +19,16 @@ import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.UserNotification;
 import ru.ravel.ItDesk.model.UserNotificationEvent;
-import ru.ravel.ItDesk.model.incident.IncidentDetectorMode;
 import ru.ravel.ItDesk.model.incident.IncidentSeverity;
 import ru.ravel.ItDesk.model.incident.IncidentSignal;
 import ru.ravel.ItDesk.model.incident.IncidentSignalDecision;
 import ru.ravel.ItDesk.model.incident.IncidentStatus;
 import ru.ravel.ItDesk.model.incident.SupportIncident;
-import ru.ravel.ItDesk.model.jev.JevThreshold;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.IncidentRepository;
 import ru.ravel.ItDesk.repository.IncidentSignalRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
+import ru.ravel.ItDesk.repository.ServiceRepository;
 import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
@@ -42,20 +41,20 @@ import java.util.stream.Collectors;
 
 
 /**
- * Детектор массовых инцидентов: Jev размечает каждое входящее сообщение (сбой ли это, какой сервис и симптом,
- * относится ли к открытому инциденту), а решение о массовости принимается здесь — по числу разных клиентов
- * с одинаковым сервисом и симптомом в скользящем окне. При достижении порога Jev проверяет пачку целиком.
- * <p>
- * Режимы (Настройки → Jev):
+ * Кирпичики детектора массовых инцидентов Jev. Само решение («сколько обращений, за какое окно, для какой
+ * организации, какой порог, что делать при срабатывании») принимает правило автоматизации «Детектор массовых
+ * инцидентов (Jev)» из condition/action-нод; здесь только отдельные шаги, которые оно вызывает:
  * <ul>
- *     <li>NOTIFY_ONLY — при срабатывании ответственные получают уведомление, данные не меняются;</li>
- *     <li>CREATE_DRAFT — создаётся инцидент в статусе DRAFT с заполненными полями, к нему привязываются
- *     заявки клиентов и следующие похожие обращения; ответственные получают уведомление о черновике.</li>
+ *     <li>{@code jev.analyzeOutage()} — {@link #analyze}: Jev размечает сообщение, сигнал сохраняется;</li>
+ *     <li>{@code incident.countSignals(окно[, область])} — {@link #count}: сколько разных клиентов в окне;</li>
+ *     <li>{@code incident.checkCooldown(минуты, толькоСИнцидентом)} — {@link #cooldown}: пауза после срабатывания;</li>
+ *     <li>{@code jev.verifyBatch()} — {@link #verifyBatch}: Jev проверяет пачку целиком;</li>
+ *     <li>{@code incident.markSignal / attachSignal / createDraftFromSignals / notifyResponsible} —
+ *     {@link #mark}, {@link #attach}, {@link #createDraft}, {@link #notifyResponsible}.</li>
  * </ul>
  * Получатели уведомлений: владелец и исполнители сервиса, ответственный и участники линии;
- * если таких нет — администраторы. Подробности решений дополнительно пишутся в логгер JEV.
- * Jev не генерирует текст: серьёзность и вероятную причину он выбирает из списков, остальные поля
- * заполняются по данным (сервис, клиенты, заявки, время) и шаблонам.
+ * если таких нет — администраторы. Jev не генерирует текст: серьёзность и вероятную причину он выбирает
+ * из списков, остальные поля черновика заполняются по данным (сервис, клиенты, заявки, время) и шаблонам.
  */
 @Service
 @RequiredArgsConstructor
@@ -63,32 +62,18 @@ public class IncidentDetectorService {
 
 	private static final Logger log = LoggerFactory.getLogger("JEV");
 
-	/** Сколько открытых инцидентов предлагать Jev для сопоставления. */
+	/** Сколько открытых инцидентов предлагать Jev для сопоставления (предел размера запроса к модели). */
 	private static final int MAX_ACTIVE_INCIDENTS = 50;
-	/** Сколько последних сообщений отправлять на проверку пачки и сколько символов из каждого. */
+	/** Сколько последних сообщений отправлять на проверку пачки и сколько символов из каждого (предел размера запроса). */
 	private static final int MAX_BATCH_MESSAGES = 20;
 	private static final int MAX_BATCH_MESSAGE_CHARS = 500;
 	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+	/** Решения, при которых сигнал считается обращением о сбое в окне. */
 	private static final Set<IncidentSignalDecision> OUTAGE_DECISIONS = EnumSet.of(
 			IncidentSignalDecision.COUNTED,
 			IncidentSignalDecision.TRIGGERED,
 			IncidentSignalDecision.BATCH_REJECTED,
 			IncidentSignalDecision.COOLDOWN
-	);
-	/**
-	 * Тревога мониторинга по самому сервису. UNAVAILABLE и UNKNOWN — недоступность Zabbix или интеграции,
-	 * а не сервиса, поэтому порог разных клиентов не снижают.
-	 */
-	private static final Set<ServiceMonitoringStatus> MONITORING_ALERTS = EnumSet.of(
-			ServiceMonitoringStatus.WARNING,
-			ServiceMonitoringStatus.CRITICAL
-	);
-	/** Интервал обновлений инцидента по серьёзности, минут. */
-	private static final Map<IncidentSeverity, Integer> UPDATE_INTERVALS = Map.of(
-			IncidentSeverity.P1, 15,
-			IncidentSeverity.P2, 30,
-			IncidentSeverity.P3, 60,
-			IncidentSeverity.P4, 120
 	);
 	private static final List<String> IMPACT_LABELS = List.of(
 			"отдельные пользователи",
@@ -97,12 +82,12 @@ public class IncidentDetectorService {
 	);
 
 	private final JevService jevService;
-	private final JevSettingsService settingsService;
 	private final IncidentSignalRepository signalRepository;
 	private final IncidentRepository incidentRepository;
 	private final ClientRepository clientRepository;
 	private final MessageRepository messageRepository;
 	private final TaskRepository taskRepository;
+	private final ServiceRepository serviceRepository;
 	private final IncidentService incidentService;
 	private final AppSettingsService appSettingsService;
 	private final UserNotificationService userNotificationService;
@@ -111,7 +96,16 @@ public class IncidentDetectorService {
 	private final JevDecisionRecorder decisionRecorder;
 
 
-	public Optional<IncidentSignal> handleIncomingMessage(String context, Long clientId, Long messageId, String text) {
+	// ======================================================================
+	// 1. Разметка сообщения
+	// ======================================================================
+
+	/** Сигнал по сообщению: решение по нему пока {@link IncidentSignalDecision#IGNORED}, пока правило не отметит иначе. */
+	public record Analysis(IncidentSignal signal, JevService.OutageSignal outage) {
+	}
+
+
+	public Optional<Analysis> analyze(String context, Long clientId, Long messageId, String text) {
 		Client client = clientRepository.findById(clientId).orElse(null);
 		if (client == null) {
 			log.warn("[{}] incident detector: client not found", context);
@@ -130,7 +124,7 @@ public class IncidentDetectorService {
 			return Optional.empty();
 		}
 		JevService.OutageSignal outage = analyzed.get();
-		IncidentSignal signal = IncidentSignal.builder()
+		IncidentSignal signal = signalRepository.save(IncidentSignal.builder()
 				.messageId(messageId)
 				.clientId(clientId)
 				.organizationId(organization == null ? null : organization.getId())
@@ -138,41 +132,58 @@ public class IncidentDetectorService {
 				.symptom(outage.symptom())
 				.outageProbability(outage.outageProbability())
 				.impactScore(outage.impactScore())
+				.decision(IncidentSignalDecision.IGNORED)
 				.createdAt(ZonedDateTime.now())
-				.build();
-		signal.setDecision(decide(context, signal, outage, text));
-		return Optional.of(signalRepository.save(signal));
+				.build());
+		// порог «это сбой» задаёт правило, поэтому в журнале решений — только оценка модели
+		decisionRecorder.record(context, "is_outage", "оценка вероятности сбоя", outage.outageProbability(), null,
+				JevDecisionRecorder.Outcome.UNDECIDED);
+		return Optional.of(new Analysis(signal, outage));
 	}
 
 
-	private IncidentSignalDecision decide(String context, IncidentSignal signal, JevService.OutageSignal outage, String text) {
-		JevSettingsService.IncidentDetectorConfig config = settingsService.incidentDetector();
-		boolean createDrafts = config.mode() == IncidentDetectorMode.CREATE_DRAFT;
+	public Optional<IncidentSignal> findSignal(Long id) {
+		return id == null ? Optional.empty() : signalRepository.findById(id);
+	}
 
-		SupportIncident matched = outage.matchedIncident();
-		if (matched != null) {
-			attachToIncident(context, signal, matched, createDrafts, "Jev matched an open incident");
-			return IncidentSignalDecision.MATCHED_INCIDENT;
-		}
 
-		boolean isOutage = outage.outageProbability() >= config.outageThreshold();
-		decisionRecorder.record(context, "is_outage", isOutage ? "сбой" : "не сбой", outage.outageProbability(),
-				config.outageThreshold(), isOutage ? JevDecisionRecorder.Outcome.ACCEPTED : JevDecisionRecorder.Outcome.REJECTED);
-		if (outage.outageProbability() < config.outageThreshold()) {
-			log.info("[{}] incident detector: not an outage (p={} < {})", context,
-					format(outage.outageProbability()), format(config.outageThreshold()));
-			return IncidentSignalDecision.IGNORED;
+	public List<IncidentSignal> findSignals(Collection<Long> ids) {
+		if (ids == null || ids.isEmpty()) {
+			return List.of();
 		}
-		if (outage.service() == null) {
-			log.info("[{}] incident detector: outage, but service is unclear — not counted", context);
-			return IncidentSignalDecision.IGNORED;
-		}
+		return signalRepository.findAllById(ids).stream()
+				.sorted(Comparator.comparing(IncidentSignal::getCreatedAt))
+				.toList();
+	}
 
-		String key = "service «%s», symptom «%s»".formatted(outage.service().getName(), outage.symptom());
-		ZonedDateTime now = signal.getCreatedAt();
-		ZonedDateTime windowStart = now.minusMinutes(config.windowMinutes());
+
+	// ======================================================================
+	// 2. Подсчёт обращений в окне
+	// ======================================================================
+
+	public record WindowCount(
+			List<IncidentSignal> window,
+			Set<Long> clients,
+			Set<Long> organizations,
+			ZonedDateTime windowStart
+	) {
+		/** Обращений в окне вместе с текущим. */
+		public int messages() {
+			return window.size() + 1;
+		}
+	}
+
+
+	/**
+	 * Обращения о том же сервисе и симптоме за {@code windowMinutes} до текущего. С {@code sameOrganizationOnly}
+	 * считаются только обращения клиентов той же организации, что и у текущего.
+	 */
+	public WindowCount count(IncidentSignal signal, int windowMinutes, boolean sameOrganizationOnly) {
+		ZonedDateTime windowStart = signal.getCreatedAt().minusMinutes(windowMinutes);
 		List<IncidentSignal> window = signalRepository.findWindow(
-				signal.getServiceId(), signal.getSymptom(), windowStart, OUTAGE_DECISIONS);
+						signal.getServiceId(), signal.getSymptom(), windowStart, OUTAGE_DECISIONS).stream()
+				.filter(item -> !sameOrganizationOnly || Objects.equals(item.getOrganizationId(), signal.getOrganizationId()))
+				.toList();
 		Set<Long> clients = window.stream().map(IncidentSignal::getClientId).collect(Collectors.toCollection(LinkedHashSet::new));
 		clients.add(signal.getClientId());
 		Set<Long> organizations = window.stream().map(IncidentSignal::getOrganizationId).filter(Objects::nonNull)
@@ -180,121 +191,98 @@ public class IncidentDetectorService {
 		if (signal.getOrganizationId() != null) {
 			organizations.add(signal.getOrganizationId());
 		}
+		return new WindowCount(window, clients, organizations, windowStart);
+	}
 
-		ServiceMonitoringStatus monitoring = outage.service().getMonitoringStatus();
-		boolean monitoringAlert = MONITORING_ALERTS.contains(monitoring);
-		int required = monitoringAlert ? Math.max(2, config.minClients() - 1) : config.minClients();
-		String progress = "%d/%d clients in %d min%s".formatted(clients.size(), required, config.windowMinutes(),
-				monitoringAlert ? " (monitoring: " + monitoring + ")" : "");
-		if (clients.size() < required) {
-			log.info("[{}] incident detector: counted {}, p={} -> {}", context, key,
-					format(outage.outageProbability()), progress);
-			return IncidentSignalDecision.COUNTED;
-		}
 
-		if (config.cooldownMinutes() > 0) {
-			ZonedDateTime cooldownStart = now.minusMinutes(config.cooldownMinutes());
-			Optional<SupportIncident> recentIncident = signalRepository
-					.findFirstByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
-							signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, cooldownStart)
-					.flatMap(triggered -> incidentRepository.findById(triggered.getMatchedIncidentId()))
-					.filter(incident -> incident.getStatus().isActive());
-			if (recentIncident.isPresent()) {
-				// Jev не сопоставил сообщение с инцидентом, но сервис и симптом совпадают с недавним срабатыванием
-				attachToIncident(context, signal, recentIncident.get(), createDrafts, "same service and symptom as the trigger");
-				return IncidentSignalDecision.MATCHED_INCIDENT;
-			}
-			// В режиме черновиков паузу включают только срабатывания, по которым создан инцидент:
-			// срабатывания из режима логирования не должны блокировать создание после переключения режима
-			boolean recentlyTriggered = createDrafts
-					? signalRepository.existsByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfter(
-							signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, cooldownStart)
-					: signalRepository.existsByServiceIdAndSymptomAndDecisionAndCreatedAtAfter(
-							signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, cooldownStart);
-			if (recentlyTriggered) {
-				log.info("[{}] incident detector: {} -> {}, but already triggered within {} min (cooldown)",
-						context, key, progress, config.cooldownMinutes());
-				return IncidentSignalDecision.COOLDOWN;
-			}
-		}
+	// ======================================================================
+	// 3. Пауза после срабатывания
+	// ======================================================================
 
-		List<String> texts = batchTexts(window, text);
-		Optional<JevService.BatchVerdict> verdict = jevService.verifyBatch(context, texts);
-		if (verdict.isEmpty()) {
-			log.info("[{}] incident detector: {} -> {}, batch verification unavailable — counted only", context, key, progress);
-			return IncidentSignalDecision.COUNTED;
-		}
-		double minConfidence = settingsService.effective().threshold(JevThreshold.INCIDENT_ANALYSIS);
-		boolean sameProblem = verdict.get().sameProblemProbability() >= minConfidence;
-		decisionRecorder.record(context, "same_problem", sameProblem ? "одна проблема" : "разные проблемы",
-				verdict.get().sameProblemProbability(), minConfidence,
-				sameProblem ? JevDecisionRecorder.Outcome.ACCEPTED : JevDecisionRecorder.Outcome.REJECTED);
-		if (verdict.get().sameProblemProbability() < minConfidence) {
-			log.info("[{}] incident detector: {} -> {}, but messages describe different problems (p={} < {})",
-					context, key, progress, format(verdict.get().sameProblemProbability()), format(minConfidence));
-			return IncidentSignalDecision.BATCH_REJECTED;
-		}
-
-		List<IncidentSignal> batch = new ArrayList<>(window);
-		batch.add(signal);
-		IncidentSeverity severity = limitSeverity(verdict.get().severity(), clients.size(), config.p1MinClients());
-		SystemDraft draft = buildDraft(outage, verdict.get(), severity, batch, clients, organizations, monitoring,
-				config, windowStart);
-
-		String summary = "%s: %d клиент(ов) за %d мин, серьёзность %s, вероятная причина — %s".formatted(
-				draft.draft().title(), clients.size(), config.windowMinutes(), severity, verdict.get().probableCause());
-		if (!createDrafts) {
-			notifyRecipients(context, draft.recipientIds(),
-					"Обнаружен массовый сбой. " + summary + ". Инцидент не создан (режим «Только уведомлять»).");
-			log.warn("[{}] incident detector TRIGGERED: {} -> {}, organizations={}, severity={}{}, cause={} -> "
-							+ "[notify-only] notified {} user(s); draft «{}» would have {} task(s), leader={}, line={}, messages {}",
-					context, key, progress, organizations.size(), severity, severityNote(verdict.get().severity(), severity),
-					verdict.get().probableCause(), draft.recipientIds().size(), draft.draft().title(),
-					draft.draft().taskIds().size(), draft.leaderName(), draft.lineName(), draft.messageIds());
-			return IncidentSignalDecision.TRIGGERED;
-		}
-
-		SupportIncident incident = incidentService.createDraftForSystem(draft.draft());
-		signal.setMatchedIncidentId(incident.getId());
-		for (IncidentSignal previous : window) {
-			if (previous.getMatchedIncidentId() == null) {
-				previous.setMatchedIncidentId(incident.getId());
-				signalRepository.save(previous);
-			}
-		}
-		notifyRecipients(context, draft.recipientIds(), "Создан черновик инцидента %s. %s. Проверьте и объявите инцидент."
-				.formatted(incident.getIncidentNumber(), summary));
-		log.warn("[{}] incident detector TRIGGERED: {} -> {}, severity={}{}, cause={} -> created draft {} «{}», "
-						+ "tasks linked: {}, leader={}, line={}, messages {}, notified {} user(s)",
-				context, key, progress, severity, severityNote(verdict.get().severity(), severity),
-				verdict.get().probableCause(), incident.getIncidentNumber(), incident.getTitle(),
-				draft.draft().taskIds(), draft.leaderName(), draft.lineName(), draft.messageIds(),
-				draft.recipientIds().size());
-		return IncidentSignalDecision.TRIGGERED;
+	/**
+	 * @param incidentId активный инцидент, созданный недавним срабатыванием по тому же сервису и симптому
+	 * @param active     недавнее срабатывание было
+	 */
+	public record Cooldown(Long incidentId, boolean active) {
 	}
 
 
 	/**
-	 * Относит сообщение к открытому инциденту: в режиме CREATE_DRAFT привязывает заявку клиента
-	 * и пишет запись в таймлайн.
+	 * Было ли за последние {@code minutes} срабатывание по сервису и симптому сигнала. С {@code onlyWithIncident}
+	 * считаются только срабатывания, по которым создан инцидент: срабатывания «только уведомить» не должны
+	 * блокировать создание после смены схемы правила.
 	 */
-	private void attachToIncident(String context, IncidentSignal signal, SupportIncident incident, boolean apply, String reason) {
-		signal.setMatchedIncidentId(incident.getId());
-		Optional<Task> task = findTask(signal.getClientId(), signal.getMessageId(),
-				signal.getCreatedAt().minusMinutes(settingsService.incidentDetector().windowMinutes()));
-		if (!apply) {
-			log.info("[{}] incident detector: matches {} «{}» ({}) -> [notify-only] task {} not linked",
-					context, incident.getIncidentNumber(), incident.getTitle(), reason,
-					task.map(t -> "#" + t.getId()).orElse("(no task yet)"));
+	public Cooldown cooldown(IncidentSignal signal, int minutes, boolean onlyWithIncident) {
+		if (minutes <= 0) {
+			return new Cooldown(null, false);
+		}
+		ZonedDateTime since = signal.getCreatedAt().minusMinutes(minutes);
+		Long incidentId = signalRepository
+				.findFirstByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
+						signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, since)
+				.flatMap(triggered -> incidentRepository.findById(triggered.getMatchedIncidentId()))
+				.filter(incident -> incident.getStatus().isActive())
+				.map(SupportIncident::getId)
+				.orElse(null);
+		boolean active = onlyWithIncident
+				? signalRepository.existsByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfter(
+				signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, since)
+				: signalRepository.existsByServiceIdAndSymptomAndDecisionAndCreatedAtAfter(
+				signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, since);
+		return new Cooldown(incidentId, active);
+	}
+
+
+	// ======================================================================
+	// 4. Проверка пачки
+	// ======================================================================
+
+	/** Jev проверяет, что сообщения окна и текущее — одна проблема; тексты берутся из message по message_id. */
+	public Optional<JevService.BatchVerdict> verifyBatch(String context, List<Long> windowSignalIds, String currentText) {
+		List<IncidentSignal> window = signalRepository.findAllById(windowSignalIds).stream()
+				.sorted(Comparator.comparing(IncidentSignal::getCreatedAt))
+				.toList();
+		Optional<JevService.BatchVerdict> verdict = jevService.verifyBatch(context, batchTexts(window, currentText));
+		verdict.ifPresent(item -> decisionRecorder.record(context, "same_problem", "оценка «одна проблема»",
+				item.sameProblemProbability(), null, JevDecisionRecorder.Outcome.UNDECIDED));
+		return verdict;
+	}
+
+
+	// ======================================================================
+	// 5. Действия по сигналу
+	// ======================================================================
+
+	/** Записывает решение по сигналу; с {@code incidentId} — ещё и инцидент, к которому он относится. */
+	public void mark(IncidentSignal signal, IncidentSignalDecision decision, Long incidentId) {
+		signal.setDecision(decision);
+		if (incidentId != null) {
+			signal.setMatchedIncidentId(incidentId);
+		}
+		signalRepository.save(signal);
+	}
+
+
+	/**
+	 * Относит сообщение к открытому инциденту: привязывает заявку клиента и пишет запись в таймлайн.
+	 * Заявка ищется по сообщению, иначе — последняя открытая заявка клиента за {@code lookbackMinutes}.
+	 */
+	public void attach(String context, IncidentSignal signal, Long incidentId, int lookbackMinutes) {
+		SupportIncident incident = incidentRepository.findById(incidentId).orElse(null);
+		if (incident == null) {
+			log.warn("[{}] incident detector: incident #{} not found, signal not attached", context, incidentId);
 			return;
 		}
+		mark(signal, IncidentSignalDecision.MATCHED_INCIDENT, incident.getId());
+		Optional<Task> task = findTask(signal.getClientId(), signal.getMessageId(),
+				signal.getCreatedAt().minusMinutes(lookbackMinutes));
 		List<Long> linked = task.map(t -> incidentService.linkTasksForSystem(incident.getId(), List.of(t.getId())))
 				.orElse(List.of());
 		incidentService.addSystemNote(incident.getId(), "Ещё одно похожее обращение: клиент #%d, сообщение #%d%s".formatted(
 				signal.getClientId(), signal.getMessageId(),
 				linked.isEmpty() ? "" : ", заявка #" + linked.getFirst()));
-		log.info("[{}] incident detector: matches {} «{}» ({}) -> {}", context, incident.getIncidentNumber(),
-				incident.getTitle(), reason,
+		log.info("[{}] incident detector: matches {} «{}» -> {}", context, incident.getIncidentNumber(),
+				incident.getTitle(),
 				linked.isEmpty()
 						? task.map(t -> "task #" + t.getId() + " already linked to an incident").orElse("no task to link yet")
 						: "linked task #" + linked.getFirst());
@@ -302,18 +290,70 @@ public class IncidentDetectorService {
 
 
 	/**
-	 * P1 только при большом числе клиентов: иначе не выше P2.
+	 * Создаёт черновик инцидента по пачке сигналов и привязывает к нему заявки. {@code updateIntervals} —
+	 * интервал обновлений инцидента по серьёзности, минут (нет значения — по умолчанию в IncidentService).
 	 */
-	static IncidentSeverity limitSeverity(IncidentSeverity jevSeverity, int clients, int p1MinClients) {
-		if (jevSeverity == IncidentSeverity.P1 && clients < p1MinClients) {
-			return IncidentSeverity.P2;
+	public SupportIncident createDraft(
+			String context,
+			IncidentSignal signal,
+			List<IncidentSignal> window,
+			JevService.BatchVerdict verdict,
+			IncidentSeverity severity,
+			int windowMinutes,
+			Map<IncidentSeverity, Integer> updateIntervals
+	) {
+		SystemDraft draft = buildDraft(signal, window, verdict, severity, windowMinutes, updateIntervals);
+		SupportIncident incident = incidentService.createDraftForSystem(draft.draft());
+		mark(signal, IncidentSignalDecision.TRIGGERED, incident.getId());
+		for (IncidentSignal previous : window) {
+			if (previous.getMatchedIncidentId() == null) {
+				previous.setMatchedIncidentId(incident.getId());
+				signalRepository.save(previous);
+			}
 		}
-		return jevSeverity;
+		log.warn("[{}] incident detector TRIGGERED: severity={}{}, cause={} -> created draft {} «{}», "
+						+ "tasks linked: {}, leader={}, line={}, messages {}",
+				context, severity, severityNote(verdict.severity(), severity), verdict.probableCause(),
+				incident.getIncidentNumber(), incident.getTitle(), draft.draft().taskIds(), draft.leaderName(),
+				draft.lineName(), draft.messageIds());
+		return incident;
+	}
+
+
+	/**
+	 * Уведомление через стандартный механизм (колокольчик и история уведомлений) владельцу и исполнителям сервиса,
+	 * ответственному и участникам линии; если таких нет — администраторам.
+	 * Отправляется после коммита, чтобы сбой доставки не откатывал созданный инцидент.
+	 */
+	public void notifyResponsible(String context, IncidentSignal signal, List<IncidentSignal> window, int lookbackMinutes,
+	                              String message) {
+		ru.ravel.ItDesk.model.Service service = serviceRepository.findById(signal.getServiceId()).orElse(null);
+		if (service == null) {
+			log.warn("[{}] incident detector: service #{} not found, nobody notified", context, signal.getServiceId());
+			return;
+		}
+		List<IncidentSignal> batch = batchOf(signal, window);
+		ZonedDateTime windowStart = signal.getCreatedAt().minusMinutes(lookbackMinutes);
+		List<Task> tasks = tasksOf(batch, windowStart);
+		List<Long> recipients = recipients(service, supportLine(service, tasks));
+		notifyRecipients(context, recipients, message);
+		log.warn("[{}] incident detector: notified {} user(s)", context, recipients.size());
+	}
+
+
+	// ======================================================================
+
+	static IncidentSeverity severityOf(String value) {
+		try {
+			return IncidentSeverity.valueOf(value.trim().toUpperCase(Locale.ROOT));
+		} catch (RuntimeException e) {
+			throw new IllegalArgumentException("Неизвестная серьёзность инцидента: " + value + " (допустимы P1, P2, P3, P4)");
+		}
 	}
 
 
 	private String severityNote(IncidentSeverity jevSeverity, IncidentSeverity applied) {
-		return jevSeverity == applied ? "" : " (Jev: " + jevSeverity + ", limited by clients count)";
+		return jevSeverity == applied ? "" : " (Jev: " + jevSeverity + ", изменена правилом)";
 	}
 
 
@@ -321,16 +361,11 @@ public class IncidentDetectorService {
 			IncidentService.SystemIncidentDraft draft,
 			List<Long> messageIds,
 			String leaderName,
-			String lineName,
-			List<Long> recipientIds
+			String lineName
 	) {
 	}
 
 
-	/**
-	 * Уведомление через стандартный механизм (колокольчик и история уведомлений).
-	 * Отправляется после коммита, чтобы сбой доставки не откатывал созданный инцидент.
-	 */
 	private void notifyRecipients(String context, List<Long> recipientIds, String message) {
 		// После коммита исходной транзакции запись истории уведомлений нужна в отдельной транзакции
 		TransactionTemplate newTransaction = new TransactionTemplate(transactionManager);
@@ -388,42 +423,63 @@ public class IncidentDetectorService {
 	}
 
 
+	private List<IncidentSignal> batchOf(IncidentSignal signal, List<IncidentSignal> window) {
+		List<IncidentSignal> batch = new ArrayList<>(window);
+		batch.add(signal);
+		return batch;
+	}
+
+
+	private List<Task> tasksOf(List<IncidentSignal> batch, ZonedDateTime since) {
+		return batch.stream()
+				.map(item -> findTask(item.getClientId(), item.getMessageId(), since))
+				.flatMap(Optional::stream)
+				.collect(Collectors.toMap(Task::getId, Function.identity(), (left, right) -> left, LinkedHashMap::new))
+				.values().stream().toList();
+	}
+
+
+	/** Линия по умолчанию у сервиса; иначе самая частая линия среди заявок пачки. */
+	private SupportLine supportLine(ru.ravel.ItDesk.model.Service service, List<Task> tasks) {
+		SupportLine line = service.getDefaultSupportLine();
+		if (line != null) {
+			return line;
+		}
+		return tasks.stream()
+				.map(Task::getSupportLine)
+				.filter(Objects::nonNull)
+				.collect(Collectors.groupingBy(SupportLine::getId, LinkedHashMap::new, Collectors.toList()))
+				.values().stream()
+				.max(Comparator.comparingInt(List::size))
+				.map(List::getFirst)
+				.orElse(null);
+	}
+
+
 	private SystemDraft buildDraft(
-			JevService.OutageSignal outage,
+			IncidentSignal signal,
+			List<IncidentSignal> window,
 			JevService.BatchVerdict verdict,
 			IncidentSeverity severity,
-			List<IncidentSignal> batch,
-			Set<Long> clients,
-			Set<Long> organizations,
-			ServiceMonitoringStatus monitoring,
-			JevSettingsService.IncidentDetectorConfig config,
-			ZonedDateTime windowStart
+			int windowMinutes,
+			Map<IncidentSeverity, Integer> updateIntervals
 	) {
-		ru.ravel.ItDesk.model.Service service = outage.service();
-		String symptom = outage.symptom();
+		ru.ravel.ItDesk.model.Service service = serviceRepository.findById(signal.getServiceId())
+				.orElseThrow(() -> new IllegalStateException("Сервис сигнала не найден: " + signal.getServiceId()));
+		List<IncidentSignal> batch = batchOf(signal, window);
+		Set<Long> clients = batch.stream().map(IncidentSignal::getClientId).collect(Collectors.toCollection(LinkedHashSet::new));
+		Set<Long> organizations = batch.stream().map(IncidentSignal::getOrganizationId).filter(Objects::nonNull)
+				.collect(Collectors.toCollection(LinkedHashSet::new));
+		ServiceMonitoringStatus monitoring = service.getMonitoringStatus();
+		ZonedDateTime windowStart = signal.getCreatedAt().minusMinutes(windowMinutes);
+		String symptom = signal.getSymptom();
 		String symptomDescription = JevService.SYMPTOMS.getOrDefault(symptom, symptom);
 		String cause = verdict.probableCause();
 		List<Long> messageIds = batch.stream().map(IncidentSignal::getMessageId).toList();
 		ZonedDateTime startedAt = batch.stream().map(IncidentSignal::getCreatedAt).min(Comparator.naturalOrder()).orElse(windowStart);
 
-		List<Task> tasks = batch.stream()
-				.map(item -> findTask(item.getClientId(), item.getMessageId(), windowStart))
-				.flatMap(Optional::stream)
-				.collect(Collectors.toMap(Task::getId, Function.identity(), (left, right) -> left, LinkedHashMap::new))
-				.values().stream().toList();
-
-		SupportLine line = service.getDefaultSupportLine();
-		if (line == null) {
-			// у сервиса нет линии по умолчанию — берём самую частую линию среди заявок пачки
-			line = tasks.stream()
-					.map(Task::getSupportLine)
-					.filter(Objects::nonNull)
-					.collect(Collectors.groupingBy(SupportLine::getId, LinkedHashMap::new, Collectors.toList()))
-					.values().stream()
-					.max(Comparator.comparingInt(List::size))
-					.map(List::getFirst)
-					.orElse(null);
-		}
+		List<Task> tasks = tasksOf(batch, windowStart);
+		SupportLine line = supportLine(service, tasks);
 		User owner = service.getOwner();
 		List<Long> participants = service.getExecutors() == null ? List.of() : service.getExecutors().stream()
 				.map(User::getId)
@@ -450,14 +506,13 @@ public class IncidentDetectorService {
 				.append(" (").append(symptomDescription.toLowerCase(Locale.ROOT)).append(").\n")
 				.append("Обращений: ").append(batch.size()).append(" от ").append(clients.size()).append(" клиентов")
 				.append(organizations.isEmpty() ? "" : ", организаций: " + organizations.size())
-				.append(" за ").append(config.windowMinutes()).append(" мин; первое — ")
+				.append(" за ").append(windowMinutes).append(" мин; первое — ")
 				.append(TIME.format(startedAt.withZoneSameInstant(zone))).append(".\n")
 				.append("Проверка пачки: одна проблема с вероятностью ").append(format(verdict.sameProblemProbability()))
 				.append(", серьёзность по оценке Jev — ").append(verdict.severity())
 				.append(" (оценка ").append(format(verdict.severityScore())).append(" из 3)");
 		if (verdict.severity() != severity) {
-			description.append(", снижена до ").append(severity)
-					.append(": клиентов меньше ").append(config.p1MinClients());
+			description.append(", снижена до ").append(severity).append(" правилом детектора");
 		}
 		description.append(".\n")
 				.append("Вероятная причина (оценка Jev): ").append(cause).append(" — ")
@@ -491,14 +546,13 @@ public class IncidentDetectorService {
 				clients,
 				tasks.stream().map(Task::getId).toList(),
 				startedAt,
-				UPDATE_INTERVALS.get(severity)
+				updateIntervals == null ? null : updateIntervals.get(severity)
 		);
 		return new SystemDraft(
 				draft,
 				messageIds,
 				owner == null ? "-" : Objects.toString(owner.getUsername(), "#" + owner.getId()),
-				line == null ? "-" : line.getName(),
-				recipients(service, line)
+				line == null ? "-" : line.getName()
 		);
 	}
 

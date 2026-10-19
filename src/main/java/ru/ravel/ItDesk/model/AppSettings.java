@@ -108,40 +108,6 @@ public class AppSettings {
 	@Builder.Default
 	private String jevPriorityExcluded = "Приостановленно";
 
-	/* Детектор массовых инцидентов Jev: окно, порог разных клиентов, порог «это сбой», пауза после срабатывания */
-	@JsonIgnore
-	@Column(name = "jev_incident_window_minutes", nullable = false)
-	@Builder.Default
-	private Integer jevIncidentWindowMinutes = 15;
-
-	@JsonIgnore
-	@Column(name = "jev_incident_min_clients", nullable = false)
-	@Builder.Default
-	private Integer jevIncidentMinClients = 3;
-
-	@JsonIgnore
-	@Column(name = "jev_incident_outage_threshold", nullable = false)
-	@Builder.Default
-	private Double jevIncidentOutageThreshold = 0.7;
-
-	@JsonIgnore
-	@Column(name = "jev_incident_cooldown_minutes", nullable = false)
-	@Builder.Default
-	private Integer jevIncidentCooldownMinutes = 60;
-
-	@JsonIgnore
-	@Enumerated(EnumType.STRING)
-	@Column(name = "jev_incident_mode", nullable = false, length = 16)
-	@Builder.Default
-	private ru.ravel.ItDesk.model.incident.IncidentDetectorMode jevIncidentMode =
-			ru.ravel.ItDesk.model.incident.IncidentDetectorMode.NOTIFY_ONLY;
-
-	/** P1 ставится только если разных клиентов не меньше этого числа, иначе максимум P2 */
-	@JsonIgnore
-	@Column(name = "jev_incident_p1_min_clients", nullable = false)
-	@Builder.Default
-	private Integer jevIncidentP1MinClients = 10;
-
 	/** Обязательна ли двухфакторная аутентификация для администраторов. */
 	@Column(name = "mfa_required_for_admins", nullable = false, columnDefinition = "boolean default true")
 	@Builder.Default

@@ -14,8 +14,7 @@ import java.util.Map;
 public record JevThresholdOverride(
 		Map<JevThreshold, Double> thresholds,
 		Double replyRequired,
-		Double replyNotRequired,
-		Double incidentOutage
+		Double replyNotRequired
 ) {
 
 	private static final ThreadLocal<JevThresholdOverride> CURRENT = new ThreadLocal<>();
@@ -33,7 +32,7 @@ public record JevThresholdOverride(
 		if (value != null) {
 			thresholds.put(automation, value);
 		}
-		return new JevThresholdOverride(thresholds, null, null, null);
+		return new JevThresholdOverride(thresholds, null, null);
 	}
 
 
@@ -43,7 +42,7 @@ public record JevThresholdOverride(
 
 
 	public boolean isEmpty() {
-		return thresholds.isEmpty() && replyRequired == null && replyNotRequired == null && incidentOutage == null;
+		return thresholds.isEmpty() && replyRequired == null && replyNotRequired == null;
 	}
 
 

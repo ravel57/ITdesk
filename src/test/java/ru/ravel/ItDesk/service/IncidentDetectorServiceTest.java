@@ -1,52 +1,81 @@
 package ru.ravel.ItDesk.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import db.migration.V62__jev_incident_detector_rule;
+import db.migration.V62__jev_incident_detector_rule.Params;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.PlatformTransactionManager;
+import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.model.AppSettings;
+import ru.ravel.ItDesk.model.AutomationTrigger;
 import ru.ravel.ItDesk.model.Client;
+import ru.ravel.ItDesk.model.Event;
+import ru.ravel.ItDesk.model.Organization;
+import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.ServiceMonitoringStatus;
 import ru.ravel.ItDesk.model.SupportLine;
 import ru.ravel.ItDesk.model.Task;
-import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.UserNotification;
 import ru.ravel.ItDesk.model.UserNotificationEvent;
-import org.springframework.transaction.PlatformTransactionManager;
-import ru.ravel.ItDesk.model.incident.*;
+import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.model.incident.IncidentSeverity;
+import ru.ravel.ItDesk.model.incident.IncidentSignal;
+import ru.ravel.ItDesk.model.incident.IncidentSignalDecision;
+import ru.ravel.ItDesk.model.incident.IncidentStatus;
+import ru.ravel.ItDesk.model.incident.SupportIncident;
 import ru.ravel.ItDesk.repository.*;
 
+import java.lang.reflect.Constructor;
+import java.time.ZonedDateTime;
 import java.util.*;
+import java.util.function.UnaryOperator;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * Правило «Детектор массовых инцидентов (Jev)» прогоняется целиком: его граф из {@link V62__jev_incident_detector_rule}
+ * проходится так же, как движок автоматизаций (CONDITION — {@link AutomationScriptRuntime#evaluateExpression},
+ * ACTION — {@link AutomationScriptRuntime#executeActions}, SET_VARIABLE), а шаги — настоящие
+ * {@link AutomationActionExecutor} и {@link IncidentDetectorService} поверх замоканных репозиториев и Jev.
+ * Так проверяется и логика шагов, и то, что решение действительно живёт в нодах правила (числа и условия
+ * можно менять, не трогая код).
+ */
 class IncidentDetectorServiceTest {
 
+	private final ObjectMapper mapper = new ObjectMapper();
 	private JevService jevService;
-	private JevSettingsService settingsService;
 	private IncidentSignalRepository signalRepository;
 	private IncidentRepository incidentRepository;
 	private TaskRepository taskRepository;
 	private IncidentService incidentService;
 	private UserNotificationService userNotificationService;
-	private IncidentDetectorService detector;
+	private AutomationScriptRuntime runtime;
+	private AutomationWorkflowValueService values;
 	private final List<IncidentSignal> stored = new ArrayList<>();
 	private final Map<Long, SupportIncident> incidents = new HashMap<>();
+	private final Map<Long, Long> organizationOfClient = new HashMap<>();
 	private final ru.ravel.ItDesk.model.Service vpn = ru.ravel.ItDesk.model.Service.builder()
 			.id(1L).code("vpn").name("VPN").build();
+	private Params params = Params.defaults();
+	private UnaryOperator<String> ruleEdit = UnaryOperator.identity();
 
 	@BeforeEach
-	void setUp() {
+	void setUp() throws Exception {
 		jevService = mock(JevService.class);
-		settingsService = mock(JevSettingsService.class);
 		signalRepository = mock(IncidentSignalRepository.class);
 		incidentRepository = mock(IncidentRepository.class);
 		taskRepository = mock(TaskRepository.class);
 		incidentService = mock(IncidentService.class);
 		ClientRepository clientRepository = mock(ClientRepository.class);
 		MessageRepository messageRepository = mock(MessageRepository.class);
+		ServiceRepository serviceRepository = mock(ServiceRepository.class);
 		AppSettingsService appSettingsService = mock(AppSettingsService.class);
 		userNotificationService = mock(UserNotificationService.class);
 		UserRepository userRepository = mock(UserRepository.class);
@@ -54,12 +83,27 @@ class IncidentDetectorServiceTest {
 		when(userRepository.findAll()).thenReturn(List.of(
 				User.builder().id(1L).username("admin").authorities(List.of(Role.ADMIN)).build(),
 				User.builder().id(2L).username("operator").authorities(List.of(Role.OPERATOR)).build()));
-		detector = new IncidentDetectorService(jevService, settingsService, signalRepository, incidentRepository,
-				clientRepository, messageRepository, taskRepository, incidentService, appSettingsService,
-				userNotificationService, userRepository, mock(PlatformTransactionManager.class), mock(JevDecisionRecorder.class));
+		IncidentDetectorService detector = new IncidentDetectorService(jevService, signalRepository, incidentRepository,
+				clientRepository, messageRepository, taskRepository, serviceRepository, incidentService,
+				appSettingsService, userNotificationService, userRepository, mock(PlatformTransactionManager.class),
+				mock(JevDecisionRecorder.class));
+		values = new AutomationWorkflowValueService(mapper);
+		AutomationActionExecutor executor = executor(Map.of(
+				JevService.class, jevService,
+				IncidentDetectorService.class, detector,
+				AutomationWorkflowValueService.class, values));
+		runtime = new AutomationScriptRuntime(mapper, executor, appSettingsService);
 
+		when(jevService.isEnabled()).thenReturn(true);
 		when(appSettingsService.getGeneralSettings()).thenReturn(new AppSettings());
-		when(clientRepository.findById(anyLong())).thenAnswer(inv -> Optional.of(Client.builder().id(inv.getArgument(0)).build()));
+		when(serviceRepository.findById(1L)).thenReturn(Optional.of(vpn));
+		when(clientRepository.findById(anyLong())).thenAnswer(inv -> {
+			Long id = inv.getArgument(0);
+			Long organizationId = organizationOfClient.get(id);
+			return Optional.of(Client.builder().id(id)
+					.organization(organizationId == null ? null : Organization.builder().id(organizationId).name("Орг " + organizationId).build())
+					.build());
+		});
 		when(clientRepository.findAllById(any())).thenReturn(List.of());
 		when(incidentRepository.findAllByStatusNotIn(any())).thenReturn(List.of());
 		when(incidentRepository.findById(anyLong())).thenAnswer(inv -> Optional.ofNullable(incidents.get(inv.<Long>getArgument(0))));
@@ -77,22 +121,26 @@ class IncidentDetectorServiceTest {
 			incidents.put(77L, incident);
 			return incident;
 		});
-		mode(IncidentDetectorMode.NOTIFY_ONLY, 10);
-		when(settingsService.effective()).thenReturn(new JevSettingsService.JevConfig(
-				true, "https://api.typesafe.ai/v1/systemone", "key", "jev-latest",
-				ru.ravel.ItDesk.model.jev.JevThreshold.uniform(0.6), 0.6, 0.25, List.of(), 10000));
 		when(signalRepository.save(any())).thenAnswer(inv -> {
 			IncidentSignal signal = inv.getArgument(0);
-			// equals у сущности сравнивает id, а в тесте id пустые — сравниваем по ссылке
-			if (stored.stream().noneMatch(item -> item == signal)) stored.add(signal);
+			// equals у сущности сравнивает id: сигналу без id выдаём его при первом сохранении
+			if (signal.getId() == null) {
+				signal.setId(stored.size() + 1L);
+				stored.add(signal);
+			}
 			return signal;
+		});
+		when(signalRepository.findById(anyLong())).thenAnswer(inv -> stored.stream()
+				.filter(s -> s.getId().equals(inv.getArgument(0))).findFirst());
+		when(signalRepository.findAllById(any())).thenAnswer(inv -> {
+			Collection<Long> ids = inv.getArgument(0);
+			return stored.stream().filter(s -> ids.contains(s.getId())).toList();
 		});
 		// окно: всё, что уже сохранено как сбой по тому же сервису и симптому
 		when(signalRepository.findWindow(any(), any(), any(), any())).thenAnswer(inv -> stored.stream()
 				.filter(s -> s.getServiceId() != null && s.getServiceId().equals(inv.getArgument(0)))
 				.filter(s -> s.getSymptom().equals(inv.getArgument(1)))
-				.filter(s -> s.getDecision() != IncidentSignalDecision.IGNORED
-						&& s.getDecision() != IncidentSignalDecision.MATCHED_INCIDENT)
+				.filter(s -> inv.<Collection<IncidentSignalDecision>>getArgument(3).contains(s.getDecision()))
 				.toList());
 		when(signalRepository.existsByServiceIdAndSymptomAndDecisionAndCreatedAtAfter(any(), any(), any(), any()))
 				.thenAnswer(inv -> stored.stream().anyMatch(s -> s.getDecision() == IncidentSignalDecision.TRIGGERED));
@@ -108,19 +156,19 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void notAnOutageIsIgnored() {
+	void notAnOutageIsIgnored() throws Exception {
 		outage(0.3, vpn, null);
 		assertEquals(IncidentSignalDecision.IGNORED, handle(1L, 10L));
 	}
 
 	@Test
-	void outageWithoutServiceIsIgnored() {
+	void outageWithoutServiceIsIgnored() throws Exception {
 		outage(0.95, null, null);
 		assertEquals(IncidentSignalDecision.IGNORED, handle(1L, 10L));
 	}
 
 	@Test
-	void notifyOnlyTriggersOnThirdDistinctClientThenCooldown() {
+	void notifyOnlyTriggersOnThirdDistinctClientThenCooldown() throws Exception {
 		outage(0.9, vpn, null);
 		assertEquals(IncidentSignalDecision.COUNTED, handle(1L, 10L));
 		assertEquals(IncidentSignalDecision.COUNTED, handle(1L, 11L)); // тот же клиент повторно — всё ещё 1 клиент
@@ -140,7 +188,7 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void batchRejectedWhenMessagesDiffer() {
+	void batchRejectedWhenMessagesDiffer() throws Exception {
 		outage(0.9, vpn, null);
 		verdict(0.3, IncidentSeverity.P3);
 		handle(1L, 10L);
@@ -149,7 +197,17 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void monitoringAlertLowersThreshold() {
+	void unavailableBatchVerificationOnlyCounts() throws Exception {
+		outage(0.9, vpn, null);
+		when(jevService.verifyBatch(anyString(), anyList())).thenReturn(Optional.empty());
+		handle(1L, 10L);
+		handle(2L, 11L);
+		assertEquals(IncidentSignalDecision.COUNTED, handle(3L, 12L));
+		verifyNoInteractions(userNotificationService);
+	}
+
+	@Test
+	void monitoringAlertLowersThreshold() throws Exception {
 		vpn.setMonitoringStatus(ServiceMonitoringStatus.CRITICAL);
 		outage(0.9, vpn, null);
 		assertEquals(IncidentSignalDecision.COUNTED, handle(1L, 10L));
@@ -157,7 +215,7 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void unavailableMonitoringDoesNotLowerThreshold() {
+	void unavailableMonitoringDoesNotLowerThreshold() throws Exception {
 		// UNAVAILABLE — недоступен сам Zabbix или интеграция, а не сервис: порог прежний
 		vpn.setMonitoringStatus(ServiceMonitoringStatus.UNAVAILABLE);
 		outage(0.9, vpn, null);
@@ -167,7 +225,7 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void notifyOnlyMatchedIncidentDoesNotLink() {
+	void notifyOnlyMatchedIncidentDoesNotLink() throws Exception {
 		SupportIncident incident = SupportIncident.builder().id(7L).incidentNumber("INC-000007").title("VPN недоступен").build();
 		outage(0.9, vpn, incident);
 		assertEquals(IncidentSignalDecision.MATCHED_INCIDENT, handle(1L, 10L));
@@ -176,8 +234,8 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void createDraftFillsFieldsAndLinksTasks() {
-		mode(IncidentDetectorMode.CREATE_DRAFT, 10);
+	void createDraftFillsFieldsAndLinksTasks() throws Exception {
+		params = new Params(15, 3, 0.7, 60, true, 10, 0.6);
 		User owner = User.builder().id(5L).username("vpn-owner").build();
 		User executor = User.builder().id(6L).username("engineer").build();
 		vpn.setOwner(owner);
@@ -206,7 +264,7 @@ class IncidentDetectorServiceTest {
 		assertEquals(List.of(6L), List.copyOf(draft.participantIds()));
 		assertEquals(Set.of(1L, 2L, 3L), Set.copyOf(draft.clientIds()));
 		assertEquals(List.of(101L, 102L, 103L), draft.taskIds());
-		assertEquals(30, draft.updateIntervalMinutes());
+		assertEquals(30, draft.updateIntervalMinutes(), "интервал по серьёзности задан в правиле");
 		assertTrue(stored.stream().allMatch(s -> Long.valueOf(77L).equals(s.getMatchedIncidentId())));
 
 		ArgumentCaptor<UserNotification> notifications = ArgumentCaptor.forClass(UserNotification.class);
@@ -217,8 +275,8 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void createDraftKeepsP1WithManyClients() {
-		mode(IncidentDetectorMode.CREATE_DRAFT, 3);
+	void createDraftKeepsP1WithManyClients() throws Exception {
+		params = new Params(15, 3, 0.7, 60, true, 3, 0.6);
 		outage(0.9, vpn, null);
 		verdict(0.95, IncidentSeverity.P1);
 		handle(1L, 10L);
@@ -231,8 +289,8 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void nextSimilarMessageIsLinkedToCreatedDraft() {
-		mode(IncidentDetectorMode.CREATE_DRAFT, 10);
+	void nextSimilarMessageIsLinkedToCreatedDraft() throws Exception {
+		params = new Params(15, 3, 0.7, 60, true, 10, 0.6);
 		outage(0.9, vpn, null);
 		handle(1L, 10L);
 		handle(2L, 11L);
@@ -246,38 +304,96 @@ class IncidentDetectorServiceTest {
 	}
 
 	@Test
-	void jevMatchedIncidentLinksTaskInDraftMode() {
-		mode(IncidentDetectorMode.CREATE_DRAFT, 10);
+	void jevMatchedIncidentLinksTaskInDraftMode() throws Exception {
+		params = new Params(15, 3, 0.7, 60, true, 10, 0.6);
 		SupportIncident incident = SupportIncident.builder().id(7L).incidentNumber("INC-000007").title("VPN недоступен")
 				.status(IncidentStatus.DIAGNOSIS).build();
+		incidents.put(7L, incident);
 		outage(0.9, vpn, incident);
 		assertEquals(IncidentSignalDecision.MATCHED_INCIDENT, handle(1L, 10L));
 		verify(incidentService).linkTasksForSystem(7L, List.of(101L));
 	}
 
 	@Test
-	void notifyOnlyTriggerDoesNotBlockDraftAfterModeSwitch() {
+	void notifyOnlyTriggerDoesNotBlockDraftAfterSchemeSwitch() throws Exception {
 		outage(0.9, vpn, null);
 		handle(1L, 10L);
 		handle(2L, 11L);
-		assertEquals(IncidentSignalDecision.TRIGGERED, handle(3L, 12L)); // режим «только уведомлять"
+		assertEquals(IncidentSignalDecision.TRIGGERED, handle(3L, 12L)); // схема «только уведомлять»
 		verifyNoInteractions(incidentService);
 
-		mode(IncidentDetectorMode.CREATE_DRAFT, 10);
+		params = new Params(15, 3, 0.7, 60, true, 10, 0.6);
 		assertEquals(IncidentSignalDecision.TRIGGERED, handle(4L, 13L));
 		verify(incidentService).createDraftForSystem(any());
 	}
 
 	@Test
-	void severityLimit() {
-		assertEquals(IncidentSeverity.P2, IncidentDetectorService.limitSeverity(IncidentSeverity.P1, 9, 10));
-		assertEquals(IncidentSeverity.P1, IncidentDetectorService.limitSeverity(IncidentSeverity.P1, 10, 10));
-		assertEquals(IncidentSeverity.P3, IncidentDetectorService.limitSeverity(IncidentSeverity.P3, 1, 10));
+	void numbersComeFromTheRuleNotFromCode() throws Exception {
+		// «Хватит двух клиентов» — просто другое число в правиле
+		params = new Params(15, 2, 0.7, 60, false, 10, 0.6);
+		outage(0.9, vpn, null);
+		assertEquals(IncidentSignalDecision.COUNTED, handle(1L, 10L));
+		assertEquals(IncidentSignalDecision.TRIGGERED, handle(2L, 11L));
 	}
 
-	private void mode(IncidentDetectorMode mode, int p1MinClients) {
-		when(settingsService.incidentDetector()).thenReturn(
-				new JevSettingsService.IncidentDetectorConfig(15, 3, 0.7, 60, mode, p1MinClients));
+	@Test
+	void windowFromTheRuleIsUsedForCounting() throws Exception {
+		params = new Params(45, 3, 0.7, 60, false, 10, 0.6);
+		outage(0.9, vpn, null);
+		handle(1L, 10L);
+		ArgumentCaptor<ZonedDateTime> since = ArgumentCaptor.forClass(ZonedDateTime.class);
+		verify(signalRepository).findWindow(eq(1L), eq("недоступен"), since.capture(), any());
+		IncidentSignal signal = stored.getFirst();
+		assertEquals(45, java.time.Duration.between(since.getValue(), signal.getCreatedAt()).toMinutes());
+	}
+
+	@Test
+	void userCanLimitCountingToOneOrganizationByEditingTheRule() throws Exception {
+		organizationOfClient.put(1L, 10L);
+		organizationOfClient.put(2L, 10L);
+		organizationOfClient.put(3L, 20L);
+		outage(0.9, vpn, null);
+
+		// как есть: клиенты любых организаций складываются
+		handle(1L, 10L);
+		handle(2L, 11L);
+		assertEquals(IncidentSignalDecision.TRIGGERED, handle(3L, 12L));
+
+		// после правки ноды подсчёта: «считать только обращения той же организации»
+		stored.clear();
+		ruleEdit = rule -> rule.replace("incident.countSignals(15)", "incident.countSignals(15, 'organization')");
+		handle(1L, 20L);
+		handle(2L, 21L);
+		assertEquals(IncidentSignalDecision.COUNTED, handle(3L, 22L), "клиент другой организации не набирает порог");
+	}
+
+	@Test
+	void seededRuleIsAValidWorkflowGraph() throws Exception {
+		for (boolean draft : new boolean[]{false, true}) {
+			JsonNode rule = mapper.readTree(V62__jev_incident_detector_rule.workflow(new Params(15, 3, 0.7, 60, draft, 10, 0.6)));
+			Set<String> ids = new HashSet<>();
+			rule.path("nodes").forEach(node -> assertTrue(ids.add(node.path("id").asText()), "duplicate node id"));
+			assertTrue(ids.contains(rule.path("entryNodeId").asText()));
+			Map<String, Set<String>> handles = new HashMap<>();
+			for (JsonNode edge : rule.path("edges")) {
+				assertTrue(ids.contains(edge.path("source").asText()) && ids.contains(edge.path("target").asText()), edge.toString());
+				handles.computeIfAbsent(edge.path("source").asText(), key -> new HashSet<>()).add(edge.path("sourceHandle").asText());
+			}
+			for (JsonNode node : rule.path("nodes")) {
+				Set<String> actual = handles.getOrDefault(node.path("id").asText(), Set.of());
+				switch (node.path("type").asText()) {
+					case "END" -> assertTrue(actual.isEmpty(), node.path("id").asText());
+					case "CONDITION" -> assertEquals(Set.of("true", "false"), actual, node.path("id").asText());
+					default -> assertEquals(Set.of("next"), actual, node.path("id").asText());
+				}
+			}
+		}
+	}
+
+	@Test
+	void severityParsing() {
+		assertEquals(IncidentSeverity.P2, IncidentDetectorService.severityOf(" p2 "));
+		assertThrows(IllegalArgumentException.class, () -> IncidentDetectorService.severityOf("P9"));
 	}
 
 	private void verdict(double sameProblem, IncidentSeverity severity) {
@@ -290,9 +406,56 @@ class IncidentDetectorServiceTest {
 				.thenReturn(Optional.of(new JevService.OutageSignal(probability, service, "недоступен", matched, 1.0)));
 	}
 
-	private IncidentSignalDecision handle(Long clientId, Long messageId) {
-		return detector.handleIncomingMessage("test", clientId, messageId, "VPN не работает")
-				.orElseThrow()
-				.getDecision();
+	/** Приходит сообщение клиента; возвращает решение по нему после прохода правила. */
+	private IncidentSignalDecision handle(Long clientId, Long messageId) throws Exception {
+		int before = stored.size();
+		runRule(clientId, messageId);
+		assertEquals(before + 1, stored.size(), "rule must create exactly one signal");
+		return stored.getLast().getDecision();
+	}
+
+	private void runRule(Long clientId, Long messageId) throws Exception {
+		JsonNode rule = mapper.readTree(ruleEdit.apply(V62__jev_incident_detector_rule.workflow(params)));
+		Map<String, JsonNode> nodes = new HashMap<>();
+		rule.path("nodes").forEach(node -> nodes.put(node.path("id").asText(), node));
+		Map<String, String> edges = new HashMap<>();
+		rule.path("edges").forEach(edge -> edges.put(edge.path("source").asText() + "/" + edge.path("sourceHandle").asText(),
+				edge.path("target").asText()));
+
+		ObjectNode payload = mapper.createObjectNode();
+		payload.putObject("message").put("id", messageId).put("text", "VPN не работает");
+		payload.putObject("client").put("id", clientId);
+		Event event = Event.builder().triggerType(TriggerType.MESSAGE_INCOMING).payload(payload).build();
+		AutomationExecutionContext ctx = new AutomationExecutionContext(
+				AutomationTrigger.builder().id(1L).name(V62__jev_incident_detector_rule.RULE_NAME).build(), event);
+
+		String id = rule.path("entryNodeId").asText();
+		for (int step = 0; id != null && step < 200; step++) {
+			JsonNode node = nodes.get(id);
+			JsonNode config = node.path("config");
+			switch (node.path("type").asText()) {
+				case "ACTION" -> {
+					runtime.executeActions(config.path("actionScript").asText(), ctx);
+					id = edges.get(id + "/next");
+				}
+				case "CONDITION" -> id = edges.get(id + "/" + runtime.evaluateExpression(config.path("expression").asText(), payload));
+				case "SET_VARIABLE" -> {
+					values.setVariable(payload, config.path("name").asText(), values.resolve(payload, config.path("expression").asText()));
+					id = edges.get(id + "/next");
+				}
+				case "END" -> id = null;
+				default -> id = edges.get(id + "/next");
+			}
+		}
+		assertNull(id, "rule did not finish");
+	}
+
+	/** Исполнитель действий с настоящими перечисленными зависимостями, остальные — заглушки. */
+	private static AutomationActionExecutor executor(Map<Class<?>, Object> real) throws Exception {
+		Constructor<?> constructor = AutomationActionExecutor.class.getDeclaredConstructors()[0];
+		Object[] args = Arrays.stream(constructor.getParameterTypes())
+				.map(type -> real.containsKey(type) ? real.get(type) : mock(type))
+				.toArray();
+		return (AutomationActionExecutor) constructor.newInstance(args);
 	}
 }

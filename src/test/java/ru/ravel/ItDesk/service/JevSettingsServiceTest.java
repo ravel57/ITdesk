@@ -78,18 +78,16 @@ class JevSettingsServiceTest {
 	@Test
 	void ruleThresholdsOverrideSettingsOnlyInsideAction() {
 		JevThresholdOverride override = new JevThresholdOverride(
-				Map.of(JevThreshold.SPLIT_TASKS, 0.9), 0.8, null, 0.95);
-		double[] inside = new double[4];
+				Map.of(JevThreshold.SPLIT_TASKS, 0.9), 0.8, null);
+		double[] inside = new double[3];
 		override.apply(() -> {
 			inside[0] = service.effective().threshold(JevThreshold.SPLIT_TASKS);
 			inside[1] = service.effective().threshold(JevThreshold.ESCALATION);
 			inside[2] = service.effective().replyRequiredThreshold();
-			inside[3] = service.incidentDetector().outageThreshold();
 		});
-		assertArrayEquals(new double[]{0.9, 0.6, 0.8, 0.95}, inside);
+		assertArrayEquals(new double[]{0.9, 0.6, 0.8}, inside);
 		assertEquals(0.75, service.effective().threshold(JevThreshold.SPLIT_TASKS));
 		assertEquals(0.6, service.effective().replyRequiredThreshold());
-		assertEquals(0.7, service.incidentDetector().outageThreshold());
 		assertEquals(0.25, service.effective().replyNotRequiredThreshold());
 	}
 

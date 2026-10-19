@@ -681,12 +681,14 @@ public class AutomationScriptRuntime {
 			}
 
 			// operator: && || >= <= > < = ! in
+			// && и || — один оператор, а не два подряд: иначе второй символ разбирался как пустой операнд
+			// и «a && b» всегда давало false, а «a || b» — просто a
 			if (startsWith("&")) {
-				i++;
+				i += startsWith("&&") ? 2 : 1;
 				return new Tok(TokType.OP, "and");
 			}
 			if (startsWith("|")) {
-				i++;
+				i += startsWith("||") ? 2 : 1;
 				return new Tok(TokType.OP, "or");
 			}
 			if (startsWithWord("and")) {
@@ -1042,16 +1044,30 @@ public class AutomationScriptRuntime {
 
 	// ------------------------- EVAL HELPERS -------------------------
 
+	/**
+	 * {@code var.*} — переменные автоматизации ({@link AutomationWorkflowValueService#setVariable}),
+	 * хранятся в {@code payload._automation.variables}. Тот же редирект, что и в
+	 * {@link AutomationWorkflowValueService#readPath} — пути вне условий и скриптов (шаблоны {{ }},
+	 * HTTP-запрос, SWITCH) уже умели их читать, а CONDITION и аргументы ACTION-скрипта — нет.
+	 */
 	private static Object resolvePath(JsonNode root, List<?> segsRaw) {
 		@SuppressWarnings("unchecked")
 		List<Parser.PathSeg> segs = (List<Parser.PathSeg>) segsRaw;
 
 		JsonNode cur = root;
+		boolean first = true;
 		for (Parser.PathSeg s : segs) {
 			if (s.isSize()) {
 				// size() над текущим значением
 				return sizeOf(cur);
 			}
+
+			if (first && "var".equals(s.key()) && segs.size() > 1) {
+				cur = cur == null ? null : cur.path("_automation").path("variables");
+				first = false;
+				continue;
+			}
+			first = false;
 
 			if (cur == null || cur.isNull()) {
 				return null;

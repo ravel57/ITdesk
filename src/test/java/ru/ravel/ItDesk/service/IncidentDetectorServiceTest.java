@@ -3,17 +3,12 @@ package ru.ravel.ItDesk.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import db.migration.V62__jev_incident_detector_rule;
-import db.migration.V62__jev_incident_detector_rule.Params;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.PlatformTransactionManager;
-import ru.ravel.ItDesk.dto.AutomationExecutionContext;
 import ru.ravel.ItDesk.model.AppSettings;
-import ru.ravel.ItDesk.model.AutomationTrigger;
 import ru.ravel.ItDesk.model.Client;
-import ru.ravel.ItDesk.model.Event;
 import ru.ravel.ItDesk.model.Organization;
 import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.ServiceMonitoringStatus;
@@ -30,7 +25,6 @@ import ru.ravel.ItDesk.model.incident.IncidentStatus;
 import ru.ravel.ItDesk.model.incident.SupportIncident;
 import ru.ravel.ItDesk.repository.*;
 
-import java.lang.reflect.Constructor;
 import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.function.UnaryOperator;
@@ -40,12 +34,11 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Правило «Детектор массовых инцидентов (Jev)» прогоняется целиком: его граф из {@link V62__jev_incident_detector_rule}
- * проходится так же, как движок автоматизаций (CONDITION — {@link AutomationScriptRuntime#evaluateExpression},
- * ACTION — {@link AutomationScriptRuntime#executeActions}, SET_VARIABLE), а шаги — настоящие
+ * Правило «Детектор массовых инцидентов (Jev)» прогоняется целиком: его граф берётся из SQL-миграции V63 и
+ * проходится так же, как движок автоматизаций ({@link WorkflowRuleRunner}), а шаги — настоящие
  * {@link AutomationActionExecutor} и {@link IncidentDetectorService} поверх замоканных репозиториев и Jev.
- * Так проверяется и логика шагов, и то, что решение действительно живёт в нодах правила (числа и условия
- * можно менять, не трогая код).
+ * Так проверяется и логика шагов, и то, что решение живёт в нодах правила: числа и условия правятся
+ * заменой текста в графе (как это делает пользователь в редакторе), код не трогается.
  */
 class IncidentDetectorServiceTest {
 
@@ -65,6 +58,17 @@ class IncidentDetectorServiceTest {
 			.id(1L).code("vpn").name("VPN").build();
 	private Params params = Params.defaults();
 	private UnaryOperator<String> ruleEdit = UnaryOperator.identity();
+	private WorkflowRuleRunner runner;
+
+	private static final String MIGRATION = "V63__jev_incident_detector_rule_explicit_variables.sql";
+
+	/** Что в правиле можно менять: числа и схема срабатывания (значения по умолчанию — как в миграции). */
+	private record Params(int windowMinutes, int minClients, double outageThreshold, int cooldownMinutes,
+	                      boolean createDraft, int p1MinClients, double sameProblemThreshold) {
+		static Params defaults() {
+			return new Params(15, 3, 0.7, 60, false, 10, 0.6);
+		}
+	}
 
 	@BeforeEach
 	void setUp() throws Exception {
@@ -88,11 +92,12 @@ class IncidentDetectorServiceTest {
 				appSettingsService, userNotificationService, userRepository, mock(PlatformTransactionManager.class),
 				mock(JevDecisionRecorder.class));
 		values = new AutomationWorkflowValueService(mapper);
-		AutomationActionExecutor executor = executor(Map.of(
+		AutomationActionExecutor executor = WorkflowRuleRunner.executor(Map.of(
 				JevService.class, jevService,
 				IncidentDetectorService.class, detector,
 				AutomationWorkflowValueService.class, values));
-		runtime = new AutomationScriptRuntime(mapper, executor, appSettingsService);
+		runtime = new AutomationScriptRuntime(mapper, executor, appSettingsService, values);
+		runner = new WorkflowRuleRunner(runtime, values);
 
 		when(jevService.isEnabled()).thenReturn(true);
 		when(appSettingsService.getGeneralSettings()).thenReturn(new AppSettings());
@@ -361,7 +366,7 @@ class IncidentDetectorServiceTest {
 
 		// после правки ноды подсчёта: «считать только обращения той же организации»
 		stored.clear();
-		ruleEdit = rule -> rule.replace("incident.countSignals(15)", "incident.countSignals(15, 'organization')");
+		ruleEdit = rule -> rule.replace("incident.countSignals(var.outage.signalId, 15)", "incident.countSignals(var.outage.signalId, 15, 'organization')");
 		handle(1L, 20L);
 		handle(2L, 21L);
 		assertEquals(IncidentSignalDecision.COUNTED, handle(3L, 22L), "клиент другой организации не набирает порог");
@@ -369,25 +374,52 @@ class IncidentDetectorServiceTest {
 
 	@Test
 	void seededRuleIsAValidWorkflowGraph() throws Exception {
-		for (boolean draft : new boolean[]{false, true}) {
-			JsonNode rule = mapper.readTree(V62__jev_incident_detector_rule.workflow(new Params(15, 3, 0.7, 60, draft, 10, 0.6)));
-			Set<String> ids = new HashSet<>();
-			rule.path("nodes").forEach(node -> assertTrue(ids.add(node.path("id").asText()), "duplicate node id"));
-			assertTrue(ids.contains(rule.path("entryNodeId").asText()));
-			Map<String, Set<String>> handles = new HashMap<>();
-			for (JsonNode edge : rule.path("edges")) {
-				assertTrue(ids.contains(edge.path("source").asText()) && ids.contains(edge.path("target").asText()), edge.toString());
-				handles.computeIfAbsent(edge.path("source").asText(), key -> new HashSet<>()).add(edge.path("sourceHandle").asText());
+		JsonNode rule = mapper.readTree(WorkflowRuleRunner.workflowOf(MIGRATION));
+		Set<String> ids = new HashSet<>();
+		rule.path("nodes").forEach(node -> assertTrue(ids.add(node.path("id").asText()), "duplicate node id"));
+		assertTrue(ids.contains(rule.path("entryNodeId").asText()));
+		Map<String, Set<String>> handles = new HashMap<>();
+		for (JsonNode edge : rule.path("edges")) {
+			assertTrue(ids.contains(edge.path("source").asText()) && ids.contains(edge.path("target").asText()), edge.toString());
+			handles.computeIfAbsent(edge.path("source").asText(), key -> new HashSet<>()).add(edge.path("sourceHandle").asText());
+		}
+		for (JsonNode node : rule.path("nodes")) {
+			Set<String> actual = handles.getOrDefault(node.path("id").asText(), Set.of());
+			switch (node.path("type").asText()) {
+				case "END" -> assertTrue(actual.isEmpty(), node.path("id").asText());
+				case "CONDITION" -> assertEquals(Set.of("true", "false"), actual, node.path("id").asText());
+				default -> assertEquals(Set.of("next"), actual, node.path("id").asText());
 			}
-			for (JsonNode node : rule.path("nodes")) {
-				Set<String> actual = handles.getOrDefault(node.path("id").asText(), Set.of());
-				switch (node.path("type").asText()) {
-					case "END" -> assertTrue(actual.isEmpty(), node.path("id").asText());
-					case "CONDITION" -> assertEquals(Set.of("true", "false"), actual, node.path("id").asText());
-					default -> assertEquals(Set.of("next"), actual, node.path("id").asText());
+		}
+	}
+
+	@Test
+	void everyVariableIsAssignedInTheRuleBeforeItIsUsed() throws Exception {
+		// переменные появляются только записью var.имя = … (ACTION) или нодой SET_VARIABLE; всё остальное — чтение
+		JsonNode rule = mapper.readTree(WorkflowRuleRunner.workflowOf(MIGRATION));
+		Set<String> assigned = new HashSet<>();
+		for (JsonNode node : rule.path("nodes")) {
+			JsonNode config = node.path("config");
+			java.util.regex.Matcher assignment = java.util.regex.Pattern.compile("var\\.(\\w+)\\s*=(?!=)")
+					.matcher(config.path("actionScript").asText());
+			while (assignment.find()) assigned.add(assignment.group(1));
+			if ("SET_VARIABLE".equals(node.path("type").asText())) assigned.add(config.path("name").asText());
+		}
+		java.util.regex.Pattern read = java.util.regex.Pattern.compile("var\\.(\\w+)");
+		for (JsonNode node : rule.path("nodes")) {
+			for (String text : List.of(node.path("config").path("actionScript").asText(), node.path("config").path("expression").asText())) {
+				java.util.regex.Matcher matcher = read.matcher(text);
+				while (matcher.find()) {
+					assertTrue(assigned.contains(matcher.group(1)), "var." + matcher.group(1) + " is never assigned in the rule");
 				}
 			}
 		}
+	}
+
+	@Test
+	void migrationDescriptionFitsTheColumn() {
+		// automation_trigger.description — varchar(255); миграция с более длинным текстом падает на живой БД
+		assertTrue(WorkflowRuleRunner.descriptionOf(MIGRATION).length() <= 255);
 	}
 
 	@Test
@@ -414,48 +446,48 @@ class IncidentDetectorServiceTest {
 		return stored.getLast().getDecision();
 	}
 
-	private void runRule(Long clientId, Long messageId) throws Exception {
-		JsonNode rule = mapper.readTree(ruleEdit.apply(V62__jev_incident_detector_rule.workflow(params)));
-		Map<String, JsonNode> nodes = new HashMap<>();
-		rule.path("nodes").forEach(node -> nodes.put(node.path("id").asText(), node));
-		Map<String, String> edges = new HashMap<>();
-		rule.path("edges").forEach(edge -> edges.put(edge.path("source").asText() + "/" + edge.path("sourceHandle").asText(),
-				edge.path("target").asText()));
+	/** Правило из миграции с правками пользователя: числа и схема из {@link #params}, затем {@link #ruleEdit}. */
+	private String rule() {
+		String rule = WorkflowRuleRunner.workflowOf(MIGRATION);
+		Params defaults = Params.defaults();
+		rule = WorkflowRuleRunner.edit(rule, "incident.countSignals(var.outage.signalId, " + defaults.windowMinutes() + ")",
+				"incident.countSignals(var.outage.signalId, " + params.windowMinutes() + ")");
+		rule = WorkflowRuleRunner.edit(rule, "var.window.clients >= " + defaults.minClients() + " ||",
+				"var.window.clients >= " + params.minClients() + " ||");
+		rule = WorkflowRuleRunner.edit(rule, "var.window.clients >= " + Math.max(2, defaults.minClients() - 1) + ")",
+				"var.window.clients >= " + Math.max(2, params.minClients() - 1) + ")");
+		rule = WorkflowRuleRunner.edit(rule, "var.outage.probability >= " + defaults.outageThreshold(),
+				"var.outage.probability >= " + params.outageThreshold());
+		rule = WorkflowRuleRunner.edit(rule, "incident.checkCooldown(var.outage.signalId, 60, false)",
+				"incident.checkCooldown(var.outage.signalId, " + params.cooldownMinutes() + ", " + params.createDraft() + ")");
+		rule = WorkflowRuleRunner.edit(rule, "var.verdict.sameProblem >= " + defaults.sameProblemThreshold(),
+				"var.verdict.sameProblem >= " + params.sameProblemThreshold());
+		rule = WorkflowRuleRunner.edit(rule, "var.window.clients < " + defaults.p1MinClients(),
+				"var.window.clients < " + params.p1MinClients());
+		if (params.createDraft()) {
+			// схема «создать черновик» — замена скриптов в нодах, как описано в комментарии миграции
+			rule = WorkflowRuleRunner.edit(rule, "incident.markSignal(var.outage.signalId, 'MATCHED_INCIDENT', var.outage.matchedIncidentId)",
+					"incident.attachSignal(var.outage.signalId, var.outage.matchedIncidentId, " + params.windowMinutes() + ")");
+			rule = WorkflowRuleRunner.edit(rule, "incident.markSignal(var.outage.signalId, 'MATCHED_INCIDENT', var.cooldown.incidentId)",
+					"incident.attachSignal(var.outage.signalId, var.cooldown.incidentId, " + params.windowMinutes() + ")");
+			int from = rule.indexOf("incident.markSignal(var.outage.signalId, 'TRIGGERED');");
+			int to = rule.indexOf("\"", from);
+			String summary = "'Массовые обращения: ' + var.outage.serviceName + ' — ' + var.outage.symptom + ': ' + var.window.clients"
+					+ " + ' клиент(ов) за ' + var.window.windowMinutes + ' мин, серьёзность ' + var.severity"
+					+ " + ', вероятная причина — ' + var.verdict.cause";
+			rule = rule.substring(0, from)
+					+ "var.draft = incident.createDraftFromSignals(var.outage.signalId, var.window, var.verdict, var.severity, 15, 30, 60, 120); "
+					+ "incident.notifyResponsible(var.outage.signalId, var.window, 'Создан черновик инцидента ' + var.draft.number + '. ' + "
+					+ summary + " + '. Проверьте и объявите инцидент.')"
+					+ rule.substring(to);
+		}
+		return ruleEdit.apply(rule);
+	}
 
+	private void runRule(Long clientId, Long messageId) throws Exception {
 		ObjectNode payload = mapper.createObjectNode();
 		payload.putObject("message").put("id", messageId).put("text", "VPN не работает");
 		payload.putObject("client").put("id", clientId);
-		Event event = Event.builder().triggerType(TriggerType.MESSAGE_INCOMING).payload(payload).build();
-		AutomationExecutionContext ctx = new AutomationExecutionContext(
-				AutomationTrigger.builder().id(1L).name(V62__jev_incident_detector_rule.RULE_NAME).build(), event);
-
-		String id = rule.path("entryNodeId").asText();
-		for (int step = 0; id != null && step < 200; step++) {
-			JsonNode node = nodes.get(id);
-			JsonNode config = node.path("config");
-			switch (node.path("type").asText()) {
-				case "ACTION" -> {
-					runtime.executeActions(config.path("actionScript").asText(), ctx);
-					id = edges.get(id + "/next");
-				}
-				case "CONDITION" -> id = edges.get(id + "/" + runtime.evaluateExpression(config.path("expression").asText(), payload));
-				case "SET_VARIABLE" -> {
-					values.setVariable(payload, config.path("name").asText(), values.resolve(payload, config.path("expression").asText()));
-					id = edges.get(id + "/next");
-				}
-				case "END" -> id = null;
-				default -> id = edges.get(id + "/next");
-			}
-		}
-		assertNull(id, "rule did not finish");
-	}
-
-	/** Исполнитель действий с настоящими перечисленными зависимостями, остальные — заглушки. */
-	private static AutomationActionExecutor executor(Map<Class<?>, Object> real) throws Exception {
-		Constructor<?> constructor = AutomationActionExecutor.class.getDeclaredConstructors()[0];
-		Object[] args = Arrays.stream(constructor.getParameterTypes())
-				.map(type -> real.containsKey(type) ? real.get(type) : mock(type))
-				.toArray();
-		return (AutomationActionExecutor) constructor.newInstance(args);
+		runner.run(rule(), TriggerType.MESSAGE_INCOMING, "Детектор массовых инцидентов (Jev)", payload);
 	}
 }

@@ -37,6 +37,7 @@ public class UserNotificationService {
 	private final TaskRepository taskRepository;
 	private final SlaPauseRepository slaPauseRepository;
 	private final UserNotificationHistoryRepository notificationHistoryRepository;
+	private final AnswerWaitingTimeService answerWaitingTimeService;
 
 	private final Set<String> sentNotificationKeys = ConcurrentHashMap.newKeySet();
 
@@ -230,7 +231,11 @@ public class UserNotificationService {
 
 	@Transactional
 	public void checkUnansweredChatNotifications() {
-		ZonedDateTime now = ZonedDateTime.now();
+		checkUnansweredChatNotifications(ZonedDateTime.now());
+	}
+
+
+	void checkUnansweredChatNotifications(ZonedDateTime now) {
 		List<User> notificationUsers = userRepository.findAll().stream()
 				.filter(this::isAdminOrOperator)
 				.filter(user -> user.getId() != null)
@@ -244,9 +249,11 @@ public class UserNotificationService {
 			if (firstUnansweredDate == null) {
 				continue;
 			}
+			// Ожидание считается один раз на чат: календарное или только рабочее время — по общей настройке
+			long waitedSeconds = answerWaitingTimeService.waitedSeconds(firstUnansweredDate, now);
 			for (User user : notificationUsers) {
 				long minutes = getChatUnansweredTooLongMinutes(user);
-				if (firstUnansweredDate.plusMinutes(minutes).isAfter(now)) {
+				if (waitedSeconds < minutes * 60) {
 					continue;
 				}
 				String key = "CHAT_UNANSWERED_TOO_LONG:%d:%d:%s".formatted(

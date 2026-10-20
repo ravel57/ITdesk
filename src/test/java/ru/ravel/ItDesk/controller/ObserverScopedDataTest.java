@@ -115,7 +115,7 @@ class ObserverScopedDataTest {
 		OrganizationService organizationService = mock(OrganizationService.class);
 		when(organizationService.getSlaByPriority()).thenReturn(sla);
 		SlaController controller = new SlaController(organizationService, mock(SlaService.class), mock(TaskService.class),
-				mock(AppSettingsRepository.class), mock(ClientRepository.class), userService);
+				mock(ClientRepository.class), userService, mock(SlaInfoService.class));
 
 		loginAs(user(Role.OBSERVER, own));
 		assertEquals(Set.of("Своя", "Стандартный SLA"), controller.getSlaByPriority().getBody().keySet());

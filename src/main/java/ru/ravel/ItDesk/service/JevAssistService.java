@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.component.AfterCommitExecutor;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.incident.IncidentStatus;
 import ru.ravel.ItDesk.model.incident.IncidentTaskLink;
@@ -35,20 +36,32 @@ public class JevAssistService {
 	private static final Logger log = LoggerFactory.getLogger("JEV");
 
 	private static final String NONE = "__none__";
-	/** Недавно закрытые заявки клиента, по которым возможна повторная проблема. */
+	/**
+	 * Недавно закрытые заявки клиента, по которым возможна повторная проблема.
+	 */
 	private static final Duration RECENTLY_CLOSED = Duration.ofDays(7);
-	/** Окно поиска дублей среди открытых заявок. */
+	/**
+	 * Окно поиска дублей среди открытых заявок.
+	 */
 	private static final Duration DUPLICATE_WINDOW = Duration.ofHours(72);
-	/** Не эскалировать повторно, пока заявка меньше этого времени на текущей линии. */
+	/**
+	 * Не эскалировать повторно, пока заявка меньше этого времени на текущей линии.
+	 */
 	private static final Duration MIN_TIME_ON_LINE = Duration.ofMinutes(10);
 	private static final int MAX_OPTIONS = 30;
 	private static final int MAX_ARTICLES = 100;
 	private static final int CONVERSATION_MESSAGES = 8;
-	/** Реплик разговора, которые Jev видит при решении о новой заявке. */
+	/**
+	 * Реплик разговора, которые Jev видит при решении о новой заявке.
+	 */
 	private static final int DIALOG_MESSAGES = 6;
-	/** Оператор писал клиенту не раньше этого — идёт разговор. */
+	/**
+	 * Оператор писал клиенту не раньше этого — идёт разговор.
+	 */
 	private static final Duration ACTIVE_DIALOG = Duration.ofMinutes(30);
-	/** Короткая реплика в активном разговоре по умолчанию считается его продолжением, а не новой проблемой. */
+	/**
+	 * Короткая реплика в активном разговоре по умолчанию считается его продолжением, а не новой проблемой.
+	 */
 	private static final int SHORT_REPLY_LENGTH = 60;
 	private static final int TEXT_LIMIT = 300;
 	private static final int TASK_NAME_LIMIT = 80;
@@ -72,7 +85,7 @@ public class JevAssistService {
 	private final TaskRoutingService taskRoutingService;
 	private final LlmService llmService;
 	private final JevDecisionRecorder decisionRecorder;
-	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
+	private final AfterCommitExecutor afterCommitExecutor;
 
 
 	// ======================================================================
@@ -128,31 +141,31 @@ public class JevAssistService {
 				: raw;
 		if (analysis == null) {
 			if (shortReplyInDialog) {
-				log.info("[{}] jev.createTaskIfNeeded: no confident decision, short reply in active dialog -> no new task", context);
+				log.debug("[{}] jev.createTaskIfNeeded: no confident decision, short reply in active dialog -> no new task", context);
 				return List.of();
 			}
 			if (open.isEmpty() && !isBlank(text)) {
-				log.info("[{}] jev.createTaskIfNeeded: no confident decision, no open tasks -> create (fallback)", context);
+				log.debug("[{}] jev.createTaskIfNeeded: no confident decision, no open tasks -> create (fallback)", context);
 				return List.of(createTask(clientId, messageId, taskName(text), "", null, context));
 			}
-			log.info("[{}] jev.createTaskIfNeeded: no confident decision, client has {} open task(s) -> skip (fallback)",
+			log.debug("[{}] jev.createTaskIfNeeded: no confident decision, client has {} open task(s) -> skip (fallback)",
 					context, open.size());
 			return List.of();
 		}
 		if (analysis.kind() == MessageKind.NO_ACTION) {
-			log.info("[{}] jev.createTaskIfNeeded: no request in message -> no new task", context);
+			log.debug("[{}] jev.createTaskIfNeeded: no request in message -> no new task", context);
 			return List.of();
 		}
 		// Тип ниже порога, но лучшая догадка Jev — «заявка не нужна» или «продолжение открытой»: заявку не заводим,
 		// даже если Jev отметил проблемы по сервисам (обычно это проблемы из уже открытых заявок)
 		if (analysis.kind() == null
 				&& (analysis.kindGuess() == MessageKind.NO_ACTION || analysis.kindGuess() == MessageKind.EXISTING_TASK)) {
-			log.info("[{}] jev.createTaskIfNeeded: kind uncertain, best guess {} -> no new task", context, analysis.kindGuess());
+			log.debug("[{}] jev.createTaskIfNeeded: kind uncertain, best guess {} -> no new task", context, analysis.kindGuess());
 			return List.of();
 		}
 		boolean confidentlyNew = analysis.kind() == MessageKind.NEW_REQUEST || analysis.kind() == MessageKind.REOPEN;
 		if (shortReplyInDialog && !confidentlyNew) {
-			log.info("[{}] jev.createTaskIfNeeded: short reply in active dialog, kind {} -> continuation, no new task",
+			log.debug("[{}] jev.createTaskIfNeeded: short reply in active dialog, kind {} -> continuation, no new task",
 					context, analysis.kind() == null ? "uncertain" : analysis.kind());
 			return List.of();
 		}
@@ -193,7 +206,7 @@ public class JevAssistService {
 		for (Problem problem : problems) {
 			boolean covered = problem.service() == null ? otherCovered : coveredServices.contains(problem.serviceId());
 			if (covered) {
-				log.info("[{}] jev.createTaskIfNeeded: problem «{}» is covered by an open task", context, problem.label());
+				log.debug("[{}] jev.createTaskIfNeeded: problem «{}» is covered by an open task", context, problem.label());
 				continue;
 			}
 			// Страховка: по сервису уже есть открытая заявка — новая только если Jev уверен, что это новый вопрос
@@ -205,7 +218,7 @@ public class JevAssistService {
 			boolean provenDifferent = confidentlyNew && sameService.stream()
 					.allMatch(id -> analysis.openProbability().getOrDefault(id, 1.0) <= 1 - minConfidence);
 			if (!sameService.isEmpty() && !provenDifferent) {
-				log.info("[{}] jev.createTaskIfNeeded: problem «{}» — client already has open task(s) {} -> no new task",
+				log.debug("[{}] jev.createTaskIfNeeded: problem «{}» — client already has open task(s) {} -> no new task",
 						context, problem.label(), sameService);
 				continue;
 			}
@@ -221,16 +234,18 @@ public class JevAssistService {
 			created.add(createTask(clientId, created.isEmpty() ? messageId : null, name, description, problem.service(), context));
 		}
 		if (created.isEmpty()) {
-			log.info("[{}] jev.createTaskIfNeeded: all problems are covered by open tasks -> no new task", context);
+			log.debug("[{}] jev.createTaskIfNeeded: all problems are covered by open tasks -> no new task", context);
 		} else if (created.size() > 1) {
-			log.info("[{}] jev.createTaskIfNeeded: message with {} problems -> {} tasks {}", context, problems.size(),
+			log.debug("[{}] jev.createTaskIfNeeded: message with {} problems -> {} tasks {}", context, problems.size(),
 					created.size(), created);
 		}
 		return created;
 	}
 
 
-	/** Проблема из сообщения: сервис каталога или «вне каталога» (service = null). */
+	/**
+	 * Проблема из сообщения: сервис каталога или «вне каталога» (service = null).
+	 */
 	private record Problem(ru.ravel.ItDesk.model.Service service, String label) {
 		static final Problem OTHER = new Problem(null, "Другое");
 
@@ -393,7 +408,7 @@ public class JevAssistService {
 				.status(statusRepository.findByDefaultSelectionTrue().orElseThrow())
 				.linkedMessageId(messageId)
 				.build());
-		log.info("[{}] jev.createTaskIfNeeded: created task #{} «{}»", context, task.getId(), name);
+		log.debug("[{}] jev.createTaskIfNeeded: created task #{} «{}»", context, task.getId(), name);
 		return task.getId();
 	}
 
@@ -415,7 +430,7 @@ public class JevAssistService {
 				.limit(MAX_ARTICLES)
 				.toList();
 		if (articles.isEmpty()) {
-			log.info("[{}] jev.suggestKnowledgeArticle: knowledge base is empty", context);
+			log.debug("[{}] jev.suggestKnowledgeArticle: knowledge base is empty", context);
 			return Optional.empty();
 		}
 		Map<String, Knowledge> byKey = new LinkedHashMap<>();
@@ -437,18 +452,22 @@ public class JevAssistService {
 		Knowledge article = byKey.get(key);
 		String marker = "статья базы знаний «%s»".formatted(article.getTitle());
 		if (alreadyCommented(clientId, marker)) {
-			log.info("[{}] jev.suggestKnowledgeArticle: «{}» was already suggested to this client", context, article.getTitle());
+			log.debug("[{}] jev.suggestKnowledgeArticle: «{}» was already suggested to this client", context, article.getTitle());
 			return Optional.of(article);
 		}
-		// Выжимку готовит ИИ («Спросить ИИ»); запрос к LLM может быть долгим — после коммита, вне транзакции правила
+		// Сначала сообщаем, что статья найдена и подсказка готовится, затем (может быть долго — запрос к LLM,
+		// «Спросить ИИ») отдельным сообщением саму подсказку. Всё — после коммита, вне транзакции правила.
 		String articleText = article.getTexts() == null ? "" : String.join("\n", article.getTexts());
 		afterCommitExecutor.run(() -> {
+			addComment(clientId, "Jev: нашлась %s. Готовлю подсказку…".formatted(marker));
 			String summary = summarizeArticle(context, text, article.getTitle(), articleText);
-			addComment(clientId, summary == null
-					? "Jev: может помочь %s.".formatted(marker)
-					: "Jev: %s.\n%s".formatted(capitalize(marker), summary));
+			addComment(
+					clientId, summary == null
+							? "Jev: не получилось коротко сформулировать подсказку — откройте статью в базе знаний."
+							: summary
+			);
 		});
-		log.info("[{}] jev.suggestKnowledgeArticle: suggested #{} «{}»", context, article.getId(), article.getTitle());
+		log.debug("[{}] jev.suggestKnowledgeArticle: suggested #{} «{}»", context, article.getId(), article.getTitle());
 		return Optional.of(article);
 	}
 
@@ -468,11 +487,6 @@ public class JevAssistService {
 			log.warn("[{}] jev.suggestKnowledgeArticle: AI summary unavailable, link only: {}", context, e.getMessage());
 			return null;
 		}
-	}
-
-
-	private String capitalize(String value) {
-		return value.isEmpty() ? value : Character.toUpperCase(value.charAt(0)) + value.substring(1);
 	}
 
 
@@ -534,16 +548,16 @@ public class JevAssistService {
 			case CONFIRMED -> {
 				boolean changed = incidentService.setRecoveryConfirmationForSystem(incident.getId(), taskId, true,
 						"Jev: " + source);
-				log.info("[{}] jev.checkIncidentRecovery: {} — client confirms recovery{}", context,
+				log.debug("[{}] jev.checkIncidentRecovery: {} — client confirms recovery{}", context,
 						incident.getIncidentNumber(), changed ? ", task #" + taskId + " marked confirmed" : " (already confirmed)");
 			}
 			case STILL_BROKEN -> {
 				incidentService.setRecoveryConfirmationForSystem(incident.getId(), taskId, false, "Jev: " + source);
 				incidentService.reportRecoveryProblemForSystem(incident.getId(), taskId, source);
-				log.warn("[{}] jev.checkIncidentRecovery: {} — client says the problem persists, responsible users notified",
+				log.debug("[{}] jev.checkIncidentRecovery: {} — client says the problem persists, responsible users notified",
 						context, incident.getIncidentNumber());
 			}
-			case UNRELATED -> log.info("[{}] jev.checkIncidentRecovery: {} — message is not about the incident",
+			case UNRELATED -> log.debug("[{}] jev.checkIncidentRecovery: {} — message is not about the incident",
 					context, incident.getIncidentNumber());
 		}
 		return Optional.of(report);
@@ -565,7 +579,7 @@ public class JevAssistService {
 		}
 		List<SupportLine> lines = activeLines();
 		if (lines.size() < 2) {
-			log.info("[{}] jev.selectSupportLine: less than 2 active lines", context);
+			log.debug("[{}] jev.selectSupportLine: less than 2 active lines", context);
 			return Optional.empty();
 		}
 		Map<String, SupportLine> byKey = new LinkedHashMap<>();
@@ -598,7 +612,7 @@ public class JevAssistService {
 		}
 		ZonedDateTime enteredLine = task.getEnteredCurrentLineAt();
 		if (enteredLine != null && enteredLine.isAfter(ZonedDateTime.now().minus(MIN_TIME_ON_LINE))) {
-			log.info("[{}] jev.escalateIfNeeded: task is on line «{}» for less than {} min", context,
+			log.debug("[{}] jev.escalateIfNeeded: task is on line «{}» for less than {} min", context,
 					current.getName(), MIN_TIME_ON_LINE.toMinutes());
 			return Optional.empty();
 		}
@@ -607,7 +621,7 @@ public class JevAssistService {
 				.filter(line -> Objects.requireNonNullElse(line.getLevel(), 1) > currentLevel)
 				.toList();
 		if (higher.isEmpty()) {
-			log.info("[{}] jev.escalateIfNeeded: «{}» is the highest line", context, current.getName());
+			log.debug("[{}] jev.escalateIfNeeded: «{}» is the highest line", context, current.getName());
 			return Optional.empty();
 		}
 		int nextLevel = higher.stream().mapToInt(line -> Objects.requireNonNullElse(line.getLevel(), 1)).min().orElseThrow();
@@ -645,7 +659,7 @@ public class JevAssistService {
 		}
 		double probability = answers.get().path("needs_escalation").path("noul").asDouble(0);
 		double threshold = threshold(JevThreshold.ESCALATION);
-		log.info("[{}] jev.escalateIfNeeded: needs_escalation p={} (threshold {})", context, format(probability), format(threshold));
+		log.debug("[{}] jev.escalateIfNeeded: needs_escalation p={} (threshold {})", context, format(probability), format(threshold));
 		decisionRecorder.record(context, "needs_escalation", probability >= threshold ? "эскалировать" : "оставить",
 				probability, threshold, probability >= threshold ? JevDecisionRecorder.Outcome.ACCEPTED : JevDecisionRecorder.Outcome.REJECTED);
 		if (probability < threshold) {
@@ -663,7 +677,7 @@ public class JevAssistService {
 		String from = task.getSupportLine() == null ? "-" : task.getSupportLine().getName();
 		taskRoutingService.routeExistingTask(task.getId(), target.getId(), false, reason);
 		addComment(clientId, "Jev: заявка #%d переведена с линии «%s» на «%s»".formatted(task.getId(), from, target.getName()));
-		log.info("[{}] jev: task #{} moved from «{}» to «{}» ({})", context, task.getId(), from, target.getName(), reason);
+		log.debug("[{}] jev: task #{} moved from «{}» to «{}» ({})", context, task.getId(), from, target.getName(), reason);
 	}
 
 
@@ -671,14 +685,15 @@ public class JevAssistService {
 	// 5. Дубли заявок в контексте инцидентов
 	// ======================================================================
 
-	public record DuplicateMatch(Long duplicateOfTaskId, SupportIncident incident) {
+	public record DuplicateMatch(Long duplicateOfTaskId, SupportIncident incident, boolean sameClient) {
 	}
 
 
 	/**
 	 * Ищет, не дублирует ли заявка уже открытую: сначала среди заявок активных инцидентов,
-	 * затем среди открытых заявок за последние {@link #DUPLICATE_WINDOW}. Дубль заявки из инцидента
-	 * привязывается к этому инциденту; про остальные дубли оператор получает комментарий в чате.
+	 * затем среди открытых заявок за последние {@link #DUPLICATE_WINDOW}. Это только решение — результат
+	 * правило кладёт в переменную само ({@code var.duplicate = jev.findDuplicate()}); что делать с найденным
+	 * дублем (привязать к инциденту, написать оператору) решает правило через condition/action-ноды.
 	 */
 	public Optional<DuplicateMatch> findDuplicate(String context, Long taskId) {
 		Task task = taskRepository.findById(taskId).orElse(null);
@@ -686,7 +701,7 @@ public class JevAssistService {
 			return Optional.empty();
 		}
 		if (incidentTaskLinkRepository.findFirstByTaskIdAndActiveTrue(taskId).isPresent()) {
-			log.info("[{}] jev.findDuplicate: task is already linked to an incident", context);
+			log.debug("[{}] jev.findDuplicate: task is already linked to an incident", context);
 			return Optional.empty();
 		}
 		Map<Long, SupportIncident> incidentByTask = new LinkedHashMap<>();
@@ -701,7 +716,7 @@ public class JevAssistService {
 				.forEach(candidate -> candidates.putIfAbsent(candidate.getId(), candidate));
 		candidates.remove(taskId);
 		if (candidates.isEmpty()) {
-			log.info("[{}] jev.findDuplicate: no candidate tasks", context);
+			log.debug("[{}] jev.findDuplicate: no candidate tasks", context);
 			return Optional.empty();
 		}
 		Map<String, Long> byKey = new LinkedHashMap<>();
@@ -722,29 +737,11 @@ public class JevAssistService {
 		Long duplicateOf = byKey.get(key);
 		SupportIncident incident = incidentByTask.get(duplicateOf);
 		Long clientId = clientRepository.findByTaskId(taskId).map(Client::getId).orElse(null);
-		if (incident != null) {
-			List<Long> linked = incidentService.linkTasksForSystem(incident.getId(), List.of(taskId));
-			incidentService.addSystemNote(incident.getId(),
-					"Заявка #%d — дубль заявки #%d (Jev)".formatted(taskId, duplicateOf));
-			if (clientId != null) {
-				addComment(clientId, "Jev: заявка #%d — дубль заявки #%d%s".formatted(taskId, duplicateOf,
-						linked.isEmpty() ? "" : ", привязана к инциденту " + incident.getIncidentNumber()));
-			}
-			log.info("[{}] jev.findDuplicate: duplicate of #{} -> linked to {}", context, duplicateOf, incident.getIncidentNumber());
-		} else {
-			Long otherClientId = clientRepository.findByTaskId(duplicateOf).map(Client::getId).orElse(null);
-			boolean sameClient = clientId != null && clientId.equals(otherClientId);
-			if (clientId != null) {
-				addComment(clientId, sameClient
-						? "Jev: заявка #%d похожа на открытую заявку #%d этого же клиента — возможно, это одна проблема и заявки стоит объединить."
-						.formatted(taskId, duplicateOf)
-						: ("Jev: заявка #%d похожа на открытую заявку #%d другого клиента. Если у нескольких клиентов одна проблема, "
-						+ "возможно, это инцидент.").formatted(taskId, duplicateOf));
-			}
-			log.info("[{}] jev.findDuplicate: possible duplicate of open task #{} ({} client, no incident)", context, duplicateOf,
-					sameClient ? "same" : "another");
-		}
-		return Optional.of(new DuplicateMatch(duplicateOf, incident));
+		Long otherClientId = clientRepository.findByTaskId(duplicateOf).map(Client::getId).orElse(null);
+		boolean sameClient = clientId != null && clientId.equals(otherClientId);
+		log.debug("[{}] jev.findDuplicate: possible duplicate of #{}{}", context, duplicateOf,
+				incident == null ? "" : ", incident " + incident.getIncidentNumber());
+		return Optional.of(new DuplicateMatch(duplicateOf, incident, sameClient));
 	}
 
 
@@ -774,8 +771,8 @@ public class JevAssistService {
 		}
 		double probability = answer.get("noul").asDouble(0);
 		boolean result = probability >= threshold;
-		log.info("[{}] {} («{}»): p={} -> {}", context, key, label, format(probability), result ? "yes" : "no");
-		decisionRecorder.record(context, key.startsWith("svc_") ? "service_problem" : key.startsWith("open_") ? "open_task_match" : key,
+		log.debug("[{}] {} («{}»): p={} -> {}", context, key, label, format(probability), result ? "yes" : "no");
+		decisionRecorder.record(context, key,
 				result ? "да: " + label : "нет: " + label, probability, threshold,
 				result ? JevDecisionRecorder.Outcome.ACCEPTED : JevDecisionRecorder.Outcome.REJECTED);
 		return result;
@@ -823,7 +820,7 @@ public class JevAssistService {
 			result = choice;
 			recorded = JevDecisionRecorder.Outcome.ACCEPTED;
 		}
-		log.info("[{}] {}: choice=«{}», confidence={} -> {}", context, key, choice, format(confidence), outcome);
+		log.debug("[{}] {}: choice=«{}», confidence={} -> {}", context, key, choice, format(confidence), outcome);
 		decisionRecorder.record(context, key, NONE.equals(choice) ? "ни один" : choice, confidence, threshold, recorded);
 		return result;
 	}

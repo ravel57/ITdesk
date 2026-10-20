@@ -17,6 +17,8 @@ public class UserSessionService {
 
 	private static final String CLIENT_SESSION_MARKER_ATTRIBUTE = UserSessionService.class.getName() + ".clientSessionMarker";
 	private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+	/** Никогда не совпадает с реальным id HTTP-сессии — гарантирует, что принудительно завершённая сессия не пройдёт {@link #isCurrentSession}. */
+	private static final String FORCED_LOGOUT_SESSION_MARKER = "__forced_logout__";
 
 	private final WebSocketService webSocketService;
 	private final UserService userService;
@@ -24,6 +26,8 @@ public class UserSessionService {
 	private final Map<String, String> activeSessionsByUsername = new ConcurrentHashMap<>();
 	private final Map<String, String> usernameByHttpSessionId = new ConcurrentHashMap<>();
 	private final Map<String, Set<String>> webSocketSessionsByUsername = new ConcurrentHashMap<>();
+	/** Причина завершения сессии (см. {@link ru.ravel.ItDesk.config.SingleSessionFilter}), отдаётся один раз следующему 401-ответу. */
+	private final Map<String, String> pendingLogoutReasonByUsername = new ConcurrentHashMap<>();
 
 
 	public void registerLogin(String username, HttpSession session) {
@@ -38,8 +42,37 @@ public class UserSessionService {
 		if (oldSessionId != null && !oldSessionId.equals(newSessionId)) {
 			usernameByHttpSessionId.remove(oldSessionId);
 			webSocketSessionsByUsername.remove(username);
+			pendingLogoutReasonByUsername.put(username, "LOGGED_IN_ELSEWHERE");
 			webSocketService.forceLogout(username, newSessionMarker);
 		}
+	}
+
+
+	/**
+	 * Принудительно завершает активную сессию пользователя (смена пароля/роли администратором,
+	 * блокировка учётной записи) и помечает, какой причиной объяснить следующий 401 на фронте.
+	 */
+	public void forceLogout(String username, String reason) {
+		if (username == null || username.isBlank()) {
+			return;
+		}
+		pendingLogoutReasonByUsername.put(username, reason);
+		String oldSessionId = activeSessionsByUsername.put(username, FORCED_LOGOUT_SESSION_MARKER);
+		if (oldSessionId != null) {
+			usernameByHttpSessionId.remove(oldSessionId);
+		}
+		webSocketSessionsByUsername.remove(username);
+		userService.userOffline(username);
+		webSocketService.forceLogout(username, FORCED_LOGOUT_SESSION_MARKER);
+	}
+
+
+	/** Одноразовое чтение причины для {@link ru.ravel.ItDesk.config.SingleSessionFilter}: после отдачи 401 причина забывается. */
+	public String consumePendingLogoutReason(String username) {
+		if (username == null) {
+			return null;
+		}
+		return pendingLogoutReasonByUsername.remove(username);
 	}
 
 

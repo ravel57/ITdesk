@@ -3,6 +3,8 @@ package ru.ravel.ItDesk.model.incident;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 
@@ -28,6 +30,7 @@ public class IncidentTaskLink {
 
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "task_id", nullable = false)
+	@OnDelete(action = OnDeleteAction.CASCADE)
 	private Task task;
 
 	@ManyToOne(fetch = FetchType.LAZY)

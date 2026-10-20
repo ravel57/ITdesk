@@ -13,7 +13,6 @@ import ru.ravel.ItDesk.component.LicenseStarter;
 import ru.ravel.ItDesk.dto.*;
 import ru.ravel.ItDesk.model.*;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
-import ru.ravel.ItDesk.repository.AppSettingsRepository;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.service.*;
 
@@ -35,9 +34,9 @@ public class SlaController {
 	private final OrganizationService organizationService;
 	private final SlaService slaService;
 	private final TaskService taskService;
-	private final AppSettingsRepository appSettingsRepository;
 	private final ClientRepository clientRepository;
 	private final UserService userService;
+	private final SlaInfoService slaInfoService;
 
 
 	@Operation(summary = "Получить матрицу SLA", description = "Получить матрицу SLA. Endpoint GET /api/v1/sla; действующие проверки ролей, валидация и бизнес-логика сохранены.")
@@ -131,48 +130,25 @@ public class SlaController {
 		} catch (NoSuchElementException | IllegalArgumentException e) {
 			return ResponseEntity.notFound().build();
 		}
-		Sla sla = task.getSla();
-		if (sla == null) {
-			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L, 0.0, 0L));
+		return ResponseEntity.ok(buildInfo(task.getSla()));
+	}
+
+
+	@Operation(summary = "Получить SLA пачки заявок", description = "Получить SLA пачки заявок одним запросом. Endpoint POST /api/v1/tasks/sla/info; тело {taskIds:[...]}, максимум 200 id. Возвращает карту taskId -> тот же объект, что отдаёт GET /api/v1/task/{taskId}/sla/info. Неизвестные и недоступные пользователю заявки в ответ не попадают.")
+	@PostMapping("/tasks/sla/info")
+	@PreAuthorize("@access.can('TASK_VIEW')")
+	public ResponseEntity<Object> getTasksSlaInfo(@RequestBody(required = false) SlaInfoBatchRequest request) {
+		List<Long> taskIds = request == null ? null : request.getTaskIds();
+		try {
+			return ResponseEntity.ok(slaInfoService.getInfoForCurrentUser(taskIds));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.badRequest().body(e.getMessage());
 		}
-		return ResponseEntity.ok(buildInfo(sla));
 	}
 
 
 	private SlaInfoDto buildInfo(Sla sla) {
-		boolean paused = slaService.isPaused(sla);
-		ZonedDateTime deadline = slaService.deadline(sla);
-		long pausedSeconds = slaService.getPausedDuration(sla).getSeconds();
-		long remainingSeconds = slaService.remaining(sla).getSeconds();
-		long workdaySeconds = getWorkdaySeconds();
-		double slaWorkingDays = getSlaWorkingDays(sla, workdaySeconds);
-		return new SlaInfoDto(
-				paused,
-				deadline,
-				remainingSeconds,
-				pausedSeconds,
-				slaWorkingDays,
-				workdaySeconds
-		);
-	}
-
-
-	private long getWorkdaySeconds() {
-		return appSettingsRepository.findAll().stream()
-				.findFirst()
-				.map(AppSettings::getWorkdayDuration)
-				.map(Duration::getSeconds)
-				.filter(seconds -> seconds > 0)
-				.orElse(Duration.ofHours(24).getSeconds());
-	}
-
-
-	private double getSlaWorkingDays(Sla sla, long workdaySeconds) {
-		if (sla == null || sla.getDuration() == null || workdaySeconds <= 0) {
-			return 0.0;
-		}
-		double workingDays = (double) sla.getDuration().getSeconds() / (double) workdaySeconds;
-		return Math.round(workingDays * 100.0) / 100.0;
+		return slaInfoService.buildInfo(sla);
 	}
 
 
@@ -244,9 +220,6 @@ public class SlaController {
 		Client client = clientRepository.findByTaskId(taskId).orElse(null);
 		if (client == null || !Objects.equals(client.getId(), clientId)) {
 			return ResponseEntity.notFound().build();
-		}
-		if (task.getSla() == null) {
-			return ResponseEntity.ok(new SlaInfoDto(false, null, 0L, 0L, 0.0, 0L));
 		}
 		return ResponseEntity.ok(buildInfo(task.getSla()));
 	}

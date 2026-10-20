@@ -126,8 +126,19 @@ public class SlaService {
 		if (sla == null || sla.getId() == null) {
 			return Duration.ZERO;
 		}
-		ZonedDateTime now = ZonedDateTime.now();
-		long seconds = slaPauseRepository.findAllBySlaId(sla.getId()).stream()
+		return pausedDuration(slaPauseRepository.findAllBySlaId(sla.getId()), ZonedDateTime.now());
+	}
+
+
+	/**
+	 * Суммарная длительность пауз: открытая пауза считается до {@code now}.
+	 * Общий код одиночного и батчевого расчёта SLA.
+	 */
+	public Duration pausedDuration(Collection<SlaPause> pauses, ZonedDateTime now) {
+		if (pauses == null) {
+			return Duration.ZERO;
+		}
+		long seconds = pauses.stream()
 				.mapToLong(pause -> {
 					ZonedDateTime end = pause.getEndedAt() == null ? now : pause.getEndedAt();
 					return Math.max(0, Duration.between(pause.getStartedAt(), end).getSeconds());
@@ -137,14 +148,27 @@ public class SlaService {
 	}
 
 
+	public boolean hasOpenPause(Collection<SlaPause> pauses) {
+		return pauses != null && pauses.stream().anyMatch(pause -> pause.getEndedAt() == null);
+	}
+
+
 	@Transactional(readOnly = true)
 	public ZonedDateTime deadline(Sla sla) {
 		if (sla == null || sla.getStartDate() == null || sla.getDuration() == null) {
 			return null;
 		}
+		return deadline(sla, getPausedDuration(sla));
+	}
+
+
+	public ZonedDateTime deadline(Sla sla, Duration pausedDuration) {
+		if (sla == null || sla.getStartDate() == null || sla.getDuration() == null) {
+			return null;
+		}
 		return sla.getStartDate()
 				.plus(sla.getDuration())
-				.plus(getPausedDuration(sla));
+				.plus(pausedDuration);
 	}
 
 

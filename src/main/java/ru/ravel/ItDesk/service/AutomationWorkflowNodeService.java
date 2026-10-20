@@ -253,10 +253,11 @@ public class AutomationWorkflowNodeService {
 
 	@Transactional
 	public Long createTask(AutomationWorkflowDefinition.Node node, Event event, boolean dryRun) {
+		node = resolveLegacyValues(node, event, Set.of("title", "description", "typeId", "serviceId", "priorityName", "supportLineId"));
 		Long clientId = valueService.resolveLong(event.getPayload(), "client.id");
 		if (clientId == null) throw new IllegalStateException("В событии отсутствует client.id");
-		String title = valueService.renderTemplate(event.getPayload(), configString(node, "title", "Связанная заявка"));
-		String description = valueService.renderTemplate(event.getPayload(), configString(node, "description", ""));
+		String title = configString(node, "title", "Связанная заявка");
+		String description = configString(node, "description", "");
 		String variable = configString(node, "resultVariable", "createdTaskId");
 		if (dryRun) {
 			valueService.setVariable(event.getPayload(), variable, -1L);
@@ -280,38 +281,48 @@ public class AutomationWorkflowNodeService {
 
 
 	public void escalate(AutomationTrigger trigger, AutomationWorkflowDefinition.Node node, Event event, boolean dryRun) {
-		List<String> actions = new ArrayList<>();
+		node = resolveLegacyValues(node, event, Set.of("supportLineId", "priorityName", "clearAssignee", "notifyUserId", "reason"));
 		Long lineId = configNullableLong(node, "supportLineId");
 		if (lineId == null) throw new IllegalArgumentException("Не выбрана линия эскалации");
-		actions.add("task.assignToGroup(" + lineId + ")");
-		if (configBoolean(node, "clearAssignee", true)) actions.add("task.clearAssignee()");
+		if (dryRun) return;
+		AutomationExecutionContext context = new AutomationExecutionContext(trigger, event);
+		scriptRuntime.executeResolvedAction("task.assignToGroup", List.of(lineId), context);
+		if (configBoolean(node, "clearAssignee", true)) scriptRuntime.executeResolvedAction("task.clearAssignee", List.of(), context);
 		String priority = configString(node, "priorityName", null);
-		if (priority != null && !priority.isBlank()) actions.add("task.setPriority('" + escape(priority) + "')");
+		if (priority != null && !priority.isBlank()) scriptRuntime.executeResolvedAction("task.setPriority", List.of(priority), context);
 		Long userId = configNullableLong(node, "notifyUserId");
-		String reason = valueService.renderTemplate(event.getPayload(), configString(node, "reason", "Заявка эскалирована"));
-		if (userId != null && reason != null && !reason.isBlank()) actions.add("notify.user(" + userId + ", '" + escape(reason) + "')");
-		if (!dryRun) scriptRuntime.executeActions(String.join("; ", actions), new AutomationExecutionContext(trigger, event));
+		String reason = configString(node, "reason", "Заявка эскалирована");
+		if (userId != null && reason != null && !reason.isBlank()) scriptRuntime.executeResolvedAction("notify.user", List.of(userId,reason), context);
 	}
 
 
 	public void notify(AutomationTrigger trigger, AutomationWorkflowDefinition.Node node, Event event, boolean dryRun) {
+		node = resolveLegacyValues(node, event, Set.of("channel", "userId", "text"));
 		String channel = configString(node, "channel", "CLIENT").toUpperCase(Locale.ROOT);
-		String text = valueService.renderTemplate(event.getPayload(), configString(node, "text", ""));
+		String text = configString(node, "text", "");
 		if (text == null || text.isBlank()) throw new IllegalArgumentException("Текст уведомления пуст");
-		String action = switch (channel) {
-			case "USER" -> {
-				Long userId = configNullableLong(node, "userId");
-				if (userId == null) throw new IllegalArgumentException("Не выбран пользователь");
-				yield "notify.user(" + userId + ", '" + escape(text) + "')";
-			}
-			case "LOG" -> null;
-			default -> "client.sendMessage('" + escape(text) + "')";
-		};
+		Long userId = configNullableLong(node, "userId");
+		if ("USER".equals(channel) && userId == null) throw new IllegalArgumentException("Не выбран пользователь");
 		if ("LOG".equals(channel)) {
 			log.info("AUTOMATION NOTIFY triggerId={}, text={}", trigger == null ? null : trigger.getId(), text);
 		} else if (!dryRun) {
-			scriptRuntime.executeActions(action, new AutomationExecutionContext(trigger, event));
+			scriptRuntime.executeResolvedAction("USER".equals(channel) ? "notify.user" : "client.sendMessage",
+					"USER".equals(channel) ? List.of(userId,text) : List.of(text), new AutomationExecutionContext(trigger,event));
 		}
+	}
+
+
+	private AutomationWorkflowDefinition.Node resolveLegacyValues(AutomationWorkflowDefinition.Node node, Event event, Set<String> fields) {
+		Map<String, Object> config = new LinkedHashMap<>(node.getConfig());
+		for (String field : fields) {
+			Object value = config.get(field);
+			if (value instanceof String text) {
+				config.put(field, text.startsWith("=") ? scriptRuntime.evaluateValue(text.substring(1), event.getPayload())
+						: valueService.renderTemplate(event.getPayload(), text));
+			}
+		}
+		return AutomationWorkflowDefinition.Node.builder().id(node.getId()).type(node.getType()).label(node.getLabel())
+				.x(node.getX()).y(node.getY()).config(config).build();
 	}
 
 
@@ -465,9 +476,6 @@ public class AutomationWorkflowNodeService {
 	}
 
 
-	private String escape(String value) {
-		return value == null ? "" : value.replace("\\", "\\\\").replace("'", "\\'");
-	}
 
 
 	public enum BusinessPeriod { WORKING, AFTER_HOURS, WEEKEND }

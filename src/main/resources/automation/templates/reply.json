@@ -1,0 +1,288 @@
+{
+  "version": 3,
+  "entryNodeId": "reply-1",
+  "nodes": [
+    {
+      "id": "reply-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MESSAGE_INCOMING"
+      }
+    },
+    {
+      "id": "reply-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "required",
+            "label": "Ответ нужен при вероятности от",
+            "value": 0.6,
+            "help": "",
+            "type": "number",
+            "migrationSetting": "replyRequired",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "notRequired",
+            "label": "Ответ не нужен при вероятности до",
+            "value": 0.25,
+            "help": "",
+            "type": "number",
+            "migrationSetting": "replyNotRequired",
+            "min": 0,
+            "max": 1
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "reply-5",
+      "type": "OPERATION",
+      "label": "Определить, ждёт ли клиент ответа",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Оценка сообщения",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": "=message.text",
+          "question": "Нужен ли ответ оператора поддержки на последнее сообщение клиента? Вопрос, проблема и ожидание действий — ДА. Благодарность, подтверждение, прощание и эмодзи без вопроса — НЕТ.",
+          "kind": "noul",
+          "options": {},
+          "yes": "Да",
+          "no": "Нет"
+        },
+        "resultVariable": "decision"
+      }
+    },
+    {
+      "id": "reply-6",
+      "type": "CONDITION",
+      "label": "Jev вернул оценку?",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Оценка сообщения",
+        "expression": "var.decision.available",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.decision.available",
+          "operator": "true"
+        }
+      }
+    },
+    {
+      "id": "reply-7",
+      "type": "CONDITION",
+      "label": "Вероятность выше порога «нужен ответ»?",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Оценка сообщения",
+        "expression": "var.decision.probability >= var.settings.required",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.decision.probability",
+          "operator": ">=",
+          "right": "=var.settings.required"
+        }
+      }
+    },
+    {
+      "id": "reply-8",
+      "type": "OPERATION",
+      "label": "Пометить: нужен ответ",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Метка ответа",
+        "operation": "client.replyFlag",
+        "arguments": {
+          "clientId": "=client.id",
+          "messageId": "=message.id",
+          "required": true
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "reply-9",
+      "type": "CONDITION",
+      "label": "Вероятность ниже порога «ответ не нужен»?",
+      "x": 80,
+      "y": 1540,
+      "config": {
+        "section": "3. Метка ответа",
+        "expression": "var.decision.probability <= var.settings.notRequired",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.decision.probability",
+          "operator": "<=",
+          "right": "=var.settings.notRequired"
+        }
+      }
+    },
+    {
+      "id": "reply-10",
+      "type": "OPERATION",
+      "label": "Пометить: ответ не нужен",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Метка ответа",
+        "operation": "client.replyFlag",
+        "arguments": {
+          "clientId": "=client.id",
+          "messageId": "=message.id",
+          "required": false
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "reply-11",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 500,
+      "y": 820,
+      "config": {
+        "section": "2. Оценка сообщения",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "reply-12",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 920,
+      "y": 820,
+      "config": {
+        "section": "2. Оценка сообщения",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "reply-13",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 920,
+      "y": 1290,
+      "config": {
+        "section": "3. Метка ответа",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "reply-14",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 920,
+      "y": 1540,
+      "config": {
+        "section": "3. Метка ответа",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "reply-edge-reply-1-next",
+      "source": "reply-1",
+      "target": "reply-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "reply-edge-reply-2-next",
+      "source": "reply-2",
+      "target": "reply-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "reply-edge-reply-5-success",
+      "source": "reply-5",
+      "target": "reply-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "reply-edge-reply-6-true",
+      "source": "reply-6",
+      "target": "reply-7",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "reply-edge-reply-7-true",
+      "source": "reply-7",
+      "target": "reply-8",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "reply-edge-reply-7-false",
+      "source": "reply-7",
+      "target": "reply-9",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "reply-edge-reply-9-true",
+      "source": "reply-9",
+      "target": "reply-10",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "reply-edge-reply-5-error",
+      "source": "reply-5",
+      "target": "reply-11",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "reply-edge-reply-6-false",
+      "source": "reply-6",
+      "target": "reply-12",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "reply-edge-reply-8-success",
+      "source": "reply-8",
+      "target": "reply-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "reply-edge-reply-8-error",
+      "source": "reply-8",
+      "target": "reply-14",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "reply-edge-reply-9-false",
+      "source": "reply-9",
+      "target": "reply-13",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "reply-edge-reply-10-success",
+      "source": "reply-10",
+      "target": "reply-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "reply-edge-reply-10-error",
+      "source": "reply-10",
+      "target": "reply-14",
+      "sourceHandle": "error"
+    }
+  ]
+}

@@ -1,0 +1,625 @@
+{
+  "version": 3,
+  "entryNodeId": "classification-1",
+  "nodes": [
+    {
+      "id": "classification-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "TASK_CREATED"
+      }
+    },
+    {
+      "id": "classification-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "threshold",
+            "label": "Минимальная уверенность Jev",
+            "value": 0.6,
+            "help": "Ниже порога данные не меняются.",
+            "type": "number",
+            "migrationSetting": "classifyTask",
+            "min": 0,
+            "max": 1
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "classification-5",
+      "type": "OPERATION",
+      "label": "Сервисы организации клиента",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис заявки",
+        "operation": "data.services",
+        "arguments": {
+          "organizationId": "=client.organization.id"
+        },
+        "resultVariable": "services"
+      }
+    },
+    {
+      "id": "classification-6",
+      "type": "OPERATION",
+      "label": "Определить сервис",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис заявки",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "title": "=task.name",
+            "description": "=task.description"
+          },
+          "question": "К какому ИТ-сервису относится обращение? Если неясно, выберите ни один.",
+          "kind": "choice",
+          "options": {
+            "__none__": "Ни один сервис не подходит"
+          },
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.services",
+          "labelExpression": "var.item.name + ': ' + var.item.description.truncate(500)"
+        },
+        "resultVariable": "serviceDecision"
+      }
+    },
+    {
+      "id": "classification-7",
+      "type": "CONDITION",
+      "label": "Ответ получен и уверенности достаточно?",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис заявки",
+        "expression": "var.serviceDecision.available && var.serviceDecision.probability >= var.settings.threshold && var.serviceDecision.value.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.serviceDecision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.serviceDecision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.serviceDecision.value",
+              "operator": "notNull"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "classification-8",
+      "type": "OPERATION",
+      "label": "Установить выбранный сервис",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис заявки",
+        "operation": "task.update",
+        "arguments": {
+          "taskId": "=task.id",
+          "fields": {
+            "serviceId": "=var.serviceDecision.value.id"
+          }
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "classification-9",
+      "type": "OPERATION",
+      "label": "Загрузить типы заявок",
+      "x": 80,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "operation": "data.taskTypes",
+        "arguments": {},
+        "resultVariable": "allTypes"
+      }
+    },
+    {
+      "id": "classification-10",
+      "type": "OPERATION",
+      "label": "Получить ограничения текущего сервиса",
+      "x": 500,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "operation": "data.service",
+        "arguments": {
+          "serviceId": "=task.service.id"
+        },
+        "resultVariable": "currentService"
+      }
+    },
+    {
+      "id": "classification-11",
+      "type": "OPERATION",
+      "label": "Отобрать: types",
+      "x": 1340,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allTypes",
+          "where": "var.currentService.isNull() || var.currentService.allowedTypeIds.isEmpty() || var.item.id in var.currentService.allowedTypeIds",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "types"
+      }
+    },
+    {
+      "id": "classification-12",
+      "type": "OPERATION",
+      "label": "Сервис пока не выбран",
+      "x": 920,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "operation": "value.set",
+        "arguments": {
+          "value": null
+        },
+        "resultVariable": "currentService"
+      }
+    },
+    {
+      "id": "classification-13",
+      "type": "OPERATION",
+      "label": "Определить тип заявки",
+      "x": 1760,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "title": "=task.name",
+            "description": "=task.description"
+          },
+          "question": "Какого типа это обращение в службу поддержки?",
+          "kind": "choice",
+          "options": {
+            "__none__": "Тип неясен"
+          },
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.types",
+          "labelExpression": "var.item.name + ': ' + var.item.description.truncate(500)"
+        },
+        "resultVariable": "typeDecision"
+      }
+    },
+    {
+      "id": "classification-14",
+      "type": "CONDITION",
+      "label": "Ответ получен и уверенности достаточно?",
+      "x": 2180,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "expression": "var.typeDecision.available && var.typeDecision.probability >= var.settings.threshold && var.typeDecision.value.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.typeDecision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.typeDecision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.typeDecision.value",
+              "operator": "notNull"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "classification-15",
+      "type": "OPERATION",
+      "label": "Установить тип заявки",
+      "x": 2600,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "operation": "task.update",
+        "arguments": {
+          "taskId": "=task.id",
+          "fields": {
+            "typeId": "=var.typeDecision.value.id"
+          }
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "classification-16",
+      "type": "OPERATION",
+      "label": "Загрузить линии поддержки",
+      "x": 80,
+      "y": 1510,
+      "config": {
+        "section": "4. Линия поддержки",
+        "operation": "data.lines",
+        "arguments": {},
+        "resultVariable": "allLines"
+      }
+    },
+    {
+      "id": "classification-17",
+      "type": "OPERATION",
+      "label": "Отобрать: lines",
+      "x": 500,
+      "y": 1510,
+      "config": {
+        "section": "4. Линия поддержки",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLines",
+          "where": "var.item.active",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "lines"
+      }
+    },
+    {
+      "id": "classification-18",
+      "type": "OPERATION",
+      "label": "Рекомендовать линию поддержки",
+      "x": 920,
+      "y": 1510,
+      "config": {
+        "section": "4. Линия поддержки",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "title": "=task.name",
+            "description": "=task.description"
+          },
+          "question": "Какая линия поддержки должна обработать обращение?",
+          "kind": "choice",
+          "options": {
+            "__none__": "Линия неясна"
+          },
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.lines",
+          "labelExpression": "var.item.name + ': ' + var.item.description.truncate(500)"
+        },
+        "resultVariable": "lineDecision"
+      }
+    },
+    {
+      "id": "classification-19",
+      "type": "CONDITION",
+      "label": "Ответ получен и уверенности достаточно?",
+      "x": 1340,
+      "y": 1510,
+      "config": {
+        "section": "4. Линия поддержки",
+        "expression": "var.lineDecision.available && var.lineDecision.probability >= var.settings.threshold && var.lineDecision.value.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.lineDecision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.lineDecision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.lineDecision.value",
+              "operator": "notNull"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "classification-20",
+      "type": "OPERATION",
+      "label": "Передать на выбранную линию",
+      "x": 1760,
+      "y": 1510,
+      "config": {
+        "section": "4. Линия поддержки",
+        "operation": "task.update",
+        "arguments": {
+          "taskId": "=task.id",
+          "fields": {
+            "lineId": "=var.lineDecision.value.id"
+          }
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "classification-21",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис заявки",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "classification-22",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 3020,
+      "y": 1040,
+      "config": {
+        "section": "3. Тип заявки",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "classification-23",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 2180,
+      "y": 1510,
+      "config": {
+        "section": "4. Линия поддержки",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "classification-24",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 2180,
+      "y": 1760,
+      "config": {
+        "section": "4. Линия поддержки",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "classification-edge-classification-1-next",
+      "source": "classification-1",
+      "target": "classification-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "classification-edge-classification-2-next",
+      "source": "classification-2",
+      "target": "classification-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "classification-edge-classification-5-success",
+      "source": "classification-5",
+      "target": "classification-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-6-success",
+      "source": "classification-6",
+      "target": "classification-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-7-true",
+      "source": "classification-7",
+      "target": "classification-8",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "classification-edge-classification-8-success",
+      "source": "classification-8",
+      "target": "classification-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-7-false",
+      "source": "classification-7",
+      "target": "classification-9",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "classification-edge-classification-9-success",
+      "source": "classification-9",
+      "target": "classification-10",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-10-success",
+      "source": "classification-10",
+      "target": "classification-11",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-10-error",
+      "source": "classification-10",
+      "target": "classification-12",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-12-success",
+      "source": "classification-12",
+      "target": "classification-11",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-11-success",
+      "source": "classification-11",
+      "target": "classification-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-13-success",
+      "source": "classification-13",
+      "target": "classification-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-14-true",
+      "source": "classification-14",
+      "target": "classification-15",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "classification-edge-classification-15-success",
+      "source": "classification-15",
+      "target": "classification-16",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-14-false",
+      "source": "classification-14",
+      "target": "classification-16",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "classification-edge-classification-16-success",
+      "source": "classification-16",
+      "target": "classification-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-17-success",
+      "source": "classification-17",
+      "target": "classification-18",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-18-success",
+      "source": "classification-18",
+      "target": "classification-19",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-19-true",
+      "source": "classification-19",
+      "target": "classification-20",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "classification-edge-classification-5-error",
+      "source": "classification-5",
+      "target": "classification-21",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-6-error",
+      "source": "classification-6",
+      "target": "classification-21",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-8-error",
+      "source": "classification-8",
+      "target": "classification-21",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-9-error",
+      "source": "classification-9",
+      "target": "classification-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-11-error",
+      "source": "classification-11",
+      "target": "classification-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-12-error",
+      "source": "classification-12",
+      "target": "classification-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-13-error",
+      "source": "classification-13",
+      "target": "classification-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-15-error",
+      "source": "classification-15",
+      "target": "classification-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-16-error",
+      "source": "classification-16",
+      "target": "classification-23",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-17-error",
+      "source": "classification-17",
+      "target": "classification-23",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-18-error",
+      "source": "classification-18",
+      "target": "classification-23",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "classification-edge-classification-19-false",
+      "source": "classification-19",
+      "target": "classification-24",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "classification-edge-classification-20-success",
+      "source": "classification-20",
+      "target": "classification-24",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "classification-edge-classification-20-error",
+      "source": "classification-20",
+      "target": "classification-23",
+      "sourceHandle": "error"
+    }
+  ]
+}

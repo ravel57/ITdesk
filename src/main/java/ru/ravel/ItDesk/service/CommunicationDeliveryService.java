@@ -65,6 +65,11 @@ public class CommunicationDeliveryService {
             throw new IllegalStateException("Message " + messageId + " does not belong to client " + clientId);
         }
 
+        // Portal delivery is the persisted history plus WebSocket updates, with no external adapter.
+        if (channel == MessageFrom.PORTAL) {
+            return;
+        }
+
         CommunicationChannelSender sender = senders.get(channel);
         if (sender == null) {
             throw new IllegalStateException("No communication sender registered for channel " + channel);

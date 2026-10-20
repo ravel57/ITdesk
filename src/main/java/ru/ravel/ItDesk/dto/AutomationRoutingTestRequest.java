@@ -12,6 +12,9 @@ import lombok.NoArgsConstructor;
 @Builder
 public class AutomationRoutingTestRequest {
 	private Long taskId;
+	private java.util.Map<String,Object> eventPayload;
+	private java.util.Map<String,Object> analysisResults;
+	private java.util.Map<String,Object> parameters;
 	private String expression;
 	private String action;
 	private String elseAction;

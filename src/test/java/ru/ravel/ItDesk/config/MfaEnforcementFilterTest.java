@@ -25,7 +25,8 @@ class MfaEnforcementFilterTest {
 		assertEquals(401, run("/api/v1/clients", pending).getStatus());
 		assertEquals(401, run("/ws/info", pending).getStatus());
 		assertEquals(401, run("/files/images/123", pending).getStatus());
-		assertEquals("/login/mfa", run("/chats", pending).getRedirectedUrl());
+		assertEquals("/login/mfa?redirect=%2Fchats", run("/chats", pending).getRedirectedUrl());
+		assertEquals("/chats", pending.getAttribute(LoginRedirects.SESSION_TARGET));
 
 		for (String allowed : new String[]{"/login/mfa", "/api/v1/auth/mfa/verify", "/logout", "/csrf", "/js/app.js", "/"}) {
 			assertPassed(allowed, pending);

@@ -14,6 +14,7 @@ import ru.ravel.ItDesk.model.Role;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.repository.UserRepository;
 import ru.ravel.ItDesk.service.MfaService;
+import ru.ravel.ItDesk.config.LoginRedirects;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -129,7 +130,7 @@ public class MfaController {
 		session.removeAttribute(MfaService.SESSION_STATE);
 		session.removeAttribute(MfaService.SESSION_FAILURES);
 		boolean client = user.getAuthorities() != null && user.getAuthorities().contains(Role.CLIENT);
-		result.put("redirect", client ? "/portal" : "/chats");
+		result.put("redirect", LoginRedirects.consumeAfterMfa(session, client ? "/portal" : "/chats"));
 	}
 
 

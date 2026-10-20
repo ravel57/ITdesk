@@ -13,6 +13,7 @@ import ru.ravel.ItDesk.dto.ClientPortalPage;
 import ru.ravel.ItDesk.dto.ClientPortalProfileDto;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
+import ru.ravel.ItDesk.model.MessageFrom;
 import ru.ravel.ItDesk.model.Organization;
 import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
@@ -96,7 +97,11 @@ public class ClientPortalService {
 		if (!fileUuid.isBlank()) {
 			pendingFileUploadRegistry.assertOwned(fileUuid, user.getUsername());
 		}
+		if (client.getMessageFrom() == null) {
+			client.setMessageFrom(MessageFrom.PORTAL);
+		}
 		Message message = Message.builder()
+				.fromSource("PORTAL")
 				.text(text)
 				.date(ZonedDateTime.now())
 				.user(null)

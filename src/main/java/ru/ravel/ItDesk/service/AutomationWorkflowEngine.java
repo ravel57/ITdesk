@@ -30,14 +30,14 @@ public class AutomationWorkflowEngine {
 
 	private static final int MAX_NODES = 300;
 	private static final int MAX_EDGES = 700;
-	private static final int MAX_EXECUTION_STEPS = 500;
+	private static final int MAX_EXECUTION_STEPS = 5000;
 	private static final int MAX_SUBFLOW_DEPTH = 8;
 
 	private static final Set<String> SUPPORTED_TYPES = Set.of(
 			"EVENT", "CONDITION", "SWITCH", "ACTION", "DELAY", "WAIT_UNTIL", "WAIT_EVENT", "WAIT_TASK",
 			"APPROVAL", "SUBFLOW", "FORK", "JOIN", "HTTP_REQUEST", "SET_VARIABLE", "EXPRESSION", "COUNTER",
 			"ERROR_HANDLER", "RETRY", "ESCALATE", "CREATE_TASK", "NOTIFY", "BUSINESS_HOURS", "THROTTLE",
-			"DEDUPLICATE", "NOTE", "END"
+			"DEDUPLICATE", "NOTE", "END", "OPERATION", "PARAMETERS", "FOR_EACH", "LOOP_END", "LOOP_BREAK"
 	);
 
 	private static final Set<String> ASYNC_NODE_TYPES = Set.of(
@@ -51,6 +51,9 @@ public class AutomationWorkflowEngine {
 	private final AutomationPayloadService payloadService;
 	private final AutomationWorkflowValueService valueService;
 	private final AutomationWorkflowNodeService nodeService;
+	private final AutomationOperationService operations;
+	private final AutomationGraphHistoryService history;
+	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommit;
 
 
 	public AutomationWorkflowEngine(
@@ -60,7 +63,9 @@ public class AutomationWorkflowEngine {
 			AutomationTriggerRepository triggerRepository,
 			AutomationPayloadService payloadService,
 			AutomationWorkflowValueService valueService,
-			AutomationWorkflowNodeService nodeService
+			AutomationWorkflowNodeService nodeService,
+			AutomationOperationService operations, AutomationGraphHistoryService history,
+			ru.ravel.ItDesk.component.AfterCommitExecutor afterCommit
 	) {
 		this.objectMapper = objectMapper;
 		this.scriptRuntime = scriptRuntime;
@@ -69,6 +74,9 @@ public class AutomationWorkflowEngine {
 		this.payloadService = payloadService;
 		this.valueService = valueService;
 		this.nodeService = nodeService;
+		this.operations = operations;
+		this.history = history;
+		this.afterCommit = afterCommit;
 	}
 
 
@@ -188,6 +196,14 @@ public class AutomationWorkflowEngine {
 					errors.add("У узла «" + nodeLabel(node) + "» отсутствует выход «" + handle + "»");
 				}
 			}
+			if ("FOR_EACH".equals(type)) {
+				String end = configString(node, "endNodeId");
+				if (!nodeById.containsKey(end) || !"LOOP_END".equals(normalizeNodeType(nodeById.get(end).getType()))) errors.add("У цикла нужен узел завершения итерации");
+				else {
+					ForkPathValidation path = validateForkPath(target(edges, node.getId(), "body"), end, nodeById, edges, new HashSet<>());
+					if (!path.reachesJoin() || path.asyncNodeLabel() != null) errors.add("Все пути тела цикла должны доходить до завершения итерации без ожиданий");
+				}
+			}
 			if ("FORK".equals(type)) {
 				String joinId = configString(node, "joinNodeId");
 				AutomationWorkflowDefinition.Node join = nodeById.get(joinId);
@@ -214,7 +230,7 @@ public class AutomationWorkflowEngine {
 	@Transactional
 	public ExecutionResult execute(AutomationTrigger trigger, Event event) {
 		AutomationWorkflowDefinition definition = parseAndValidate(trigger.getWorkflowDefinition());
-		return executeFrom(definition, definition.getEntryNodeId(), trigger, event, 0, false, null, 0, true);
+		try { return executeFrom(definition, definition.getEntryNodeId(), trigger, event, 0, false, null, 0, true); } finally { stripDefinitions(event.getPayload()); }
 	}
 
 
@@ -232,7 +248,7 @@ public class AutomationWorkflowEngine {
 				.actorType(run.getActorType())
 				.build();
 		payloadService.enrich(event);
-		return executeFrom(definition, run.getCurrentNodeId(), trigger, event, run.getStepCount() == null ? 0 : run.getStepCount(), false, null, 0, true);
+		try { return executeFrom(definition, run.getCurrentNodeId(), trigger, event, run.getStepCount() == null ? 0 : run.getStepCount(), false, null, 0, true); } finally { stripDefinitions(event.getPayload()); }
 	}
 
 
@@ -249,6 +265,7 @@ public class AutomationWorkflowEngine {
 			result.put("executed", execution.executed());
 			result.put("trace", execution.trace());
 			result.put("stoppedNodeId", execution.stoppedNodeId());
+			stripDefinitions(event.getPayload());
 			result.put("payload", event.getPayload());
 		} catch (Exception e) {
 			result.put("valid", false);
@@ -273,6 +290,12 @@ public class AutomationWorkflowEngine {
 			int subflowDepth,
 			boolean allowAsync
 	) {
+		if (!(event.getPayload() instanceof com.fasterxml.jackson.databind.node.ObjectNode root)) throw new IllegalArgumentException("Событие должно быть объектом");
+		var runtime = root.with("_automation");
+		if (!runtime.hasNonNull("executionId")) runtime.put("executionId", event.getId() == null || trigger == null ? UUID.randomUUID().toString()
+                : UUID.nameUUIDFromBytes((event.getId() + ":" + trigger.getId() + ":" + objectMapper.valueToTree(definition)).getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
+		String definitionKey = trigger == null ? "test" : trigger.getId().toString();
+		if (!runtime.path("definitions").has(definitionKey)) runtime.with("definitions").set(definitionKey, objectMapper.valueToTree(definition));
 		Map<String, AutomationWorkflowDefinition.Node> nodes = nodeMap(definition);
 		List<AutomationWorkflowDefinition.Edge> edges = safeEdges(definition);
 		List<TraceStep> trace = new ArrayList<>();
@@ -290,18 +313,144 @@ public class AutomationWorkflowEngine {
 			String type = normalizeNodeType(node.getType());
 
 			switch (type) {
+				case "PARAMETERS" -> {
+					Map<String, Object> settings = new LinkedHashMap<>();
+					for (Map<String, Object> parameter : configList(node, "parameters")) {
+						String name = Objects.toString(parameter.get("name"), "");
+						Object value = parameter.get("value");
+						JsonNode override = runtime.path("parameterOverrides").path(name);
+						if (!override.isMissingNode()) value = objectMapper.convertValue(override, Object.class);
+						if (value instanceof Number number) {
+							if (parameter.get("min") instanceof Number min && number.doubleValue() < min.doubleValue()
+									|| parameter.get("max") instanceof Number max && number.doubleValue() > max.doubleValue()) {
+								throw new IllegalArgumentException("Значение параметра вне диапазона: " + name);
+							}
+						}
+						settings.put(name, value);
+					}
+					valueService.setVariable(root, configString(node, "resultVariable", "settings"), settings);
+					trace.add(trace(node, "SET", "Настройки сценария"));
+					currentNodeId = target(edges, node.getId(), "next");
+				}
+				case "OPERATION" -> {
+					String operation = configString(node, "operation");
+					String effect = String.valueOf(operations.definition(operation).get("effect"));
+					if (configBoolean(node, "background", false) && !dryRun && !runtime.path("queuedOperations").path(node.getId()).asBoolean()) {
+						if (!allowAsync) throw new IllegalStateException("Фоновую операцию нужно вынести за пределы цикла/встроенного подпроцесса");
+						runtime.with("queuedOperations").put(node.getId(), true);
+						scheduleContinuation(trigger, event, node.getId(), steps - 1, Instant.now());
+						trace.add(trace(node, "QUEUED", "Операция поставлена в очередь; результат продолжит этот граф"));
+						return new ExecutionResult(executed, true, false, node.getId(), List.copyOf(trace), steps);
+					}
+					Map<String, Object> arguments = new LinkedHashMap<>();
+					Object sample = node.getConfig().get("testResult");
+					JsonNode supplied = runtime.path("testResults").path(node.getId());
+					if (!supplied.isMissingNode()) sample = objectMapper.convertValue(supplied, Object.class);
+					if (dryRun && effect.equals("ANALYSIS") && sample == null) {
+						Object inputs = operations.resolveArguments(operation, node.getConfig().getOrDefault("arguments", Map.of()), root);
+                        trace.add(new TraceStep(node.getId(), type, nodeLabel(node), "NEEDS_INPUT", "Для проверки задайте пример ответа анализа в настройках этого шага", objectMapper.valueToTree(inputs), null, runtime.path("variables").deepCopy()));
+						return new ExecutionResult(executed, false, false, node.getId(), List.copyOf(trace), steps);
+					}
+					try {
+						@SuppressWarnings("unchecked") Map<String, Object> resolvedArguments = (Map<String, Object>) operations.resolveArguments(operation, node.getConfig().getOrDefault("arguments", Map.of()), root);
+                        arguments.putAll(resolvedArguments);
+                        String key = runtime.path("executionId").asText() + ":" + node.getId() + ":" + runtime.path("iterationPath").asText("");
+						JevDecisionRecorder.GraphContext journalContext = new JevDecisionRecorder.GraphContext(
+                            trigger == null ? null : trigger.getId(), trigger == null ? null : trigger.getName(), event.getId(), runtime.path("executionId").asText(),
+                            node.getId(), nodeLabel(node), operation, journalContext(event, arguments));
+                        Object analysisSample = sample;
+                        JsonNode output = JevDecisionRecorder.inGraph(journalContext,
+                                () -> operations.execute(operation, arguments, new AutomationExecutionContext(trigger, event), dryRun, key, analysisSample));
+						if (!dryRun && effect.equals("WRITE")) operations.refresh(event);
+						String variable = configString(node, "resultVariable");
+						if (!blank(variable)) valueService.setVariable(root, variable, output);
+                        runtime.with("operationAttempts").remove(node.getId() + ":" + runtime.path("iterationPath").asText(""));
+						TraceStep step = new TraceStep(node.getId(), type, nodeLabel(node), dryRun ? "PREVIEW" : "EXECUTED", operation,
+								objectMapper.valueToTree(arguments), output, runtime.path("variables").deepCopy());
+						trace.add(step);
+						if (!dryRun) history.record(runtime.path("executionId").asText(), trigger.getId(), step);
+						executed = true;
+						currentNodeId = target(edges, node.getId(), "success");
+					} catch (Exception e) {
+						valueService.setVariable(root, "lastError", e.getMessage());
+						TraceStep step = new TraceStep(node.getId(), type, nodeLabel(node), "FAILED", e.getMessage(), objectMapper.valueToTree(arguments), null, runtime.path("variables").deepCopy());
+						trace.add(step);
+						if (!dryRun) history.record(runtime.path("executionId").asText(), trigger.getId(), step);
+                        String attemptKey=node.getId()+":"+runtime.path("iterationPath").asText("");
+                        int attempt=runtime.path("operationAttempts").path(attemptKey).asInt(0)+1;
+                        runtime.with("operationAttempts").put(attemptKey,attempt);
+                        if (attempt < configLong(node,"maxAttempts",1)) {
+                            if (!allowAsync) throw new IllegalStateException("Повторы с задержкой нельзя использовать внутри цикла/встроенного подпроцесса");
+                            long seconds=Math.min(3600,Math.max(1,configLong(node,"retryDelaySeconds",2))*(1L<<Math.min(attempt-1,8)));
+                            if (!dryRun) scheduleContinuation(trigger,event,node.getId(),steps,Instant.now().plusSeconds(seconds));
+                            trace.add(trace(node,dryRun?"WOULD_RETRY":"RETRY_SCHEDULED","Попытка "+attempt+", повтор через "+seconds+" сек."));
+                            return new ExecutionResult(executed,true,false,node.getId(),List.copyOf(trace),steps);
+                        }
+                        currentNodeId = target(edges, node.getId(), "error");
+					}
+				}
+				case "FOR_EACH" -> {
+					if (subflowDepth >= MAX_SUBFLOW_DEPTH) throw new IllegalStateException("Превышена вложенность циклов/подпроцессов");
+					JsonNode items = objectMapper.valueToTree(scriptRuntime.evaluateValue(configString(node, "itemsExpression"), root));
+					if (!dryRun) items = operations.loopSnapshot(runtime.path("executionId").asText() + ":snapshot:" + node.getId() + ":" + runtime.path("iterationPath").asText(""), items);
+					if (!items.isArray()) throw new IllegalArgumentException("Цикл ожидает список: " + nodeLabel(node));
+					long max = configLong(node, "maxItems", 100);
+					if (max < 1 || max > 1000 || items.size() > max) throw new IllegalArgumentException("Размер списка превышает ограничение цикла " + max);
+					String name = configString(node, "itemVariable", "item"), indexName = configString(node, "indexVariable", "index");
+					JsonNode old = runtime.path("variables").path(name).deepCopy(), oldIndex = runtime.path("variables").path(indexName).deepCopy();
+					String previousPath = runtime.path("iterationPath").asText("");
+					List<Object> collected = new ArrayList<>();
+					Map<String, Integer> occurrences = new HashMap<>();
+					try {
+						for (int index = 0; index < items.size(); index++) {
+							valueService.setVariable(root, name, items.get(index)); valueService.setVariable(root, indexName, index);
+							String identity = items.get(index).hasNonNull("id") ? items.get(index).path("id").asText() : UUID.nameUUIDFromBytes(items.get(index).toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString();
+							int occurrence = occurrences.merge(identity, 1, Integer::sum);
+							runtime.put("iterationPath", previousPath + "/" + node.getId() + ":" + identity + ":" + occurrence);
+							ExecutionResult iteration = executeFrom(definition, target(edges, node.getId(), "body"), trigger, event, steps, dryRun,
+									configString(node, "endNodeId"), subflowDepth + 1, false);
+							steps = iteration.stepCount(); trace.addAll(iteration.trace()); executed |= iteration.executed();
+							if (iteration.stoppedNodeId() != null && nodes.containsKey(iteration.stoppedNodeId()) && "LOOP_BREAK".equals(nodes.get(iteration.stoppedNodeId()).getType())) break;
+							if (!Objects.equals(iteration.stoppedNodeId(), configString(node, "endNodeId"))) {
+								if (dryRun && !iteration.completed()) return new ExecutionResult(executed, false, false, iteration.stoppedNodeId(), List.copyOf(trace), steps);
+								throw new IllegalStateException("Ветка цикла должна завершаться узлом завершения итерации");
+							}
+							String collect = configString(node, "collectExpression");
+							if (!blank(collect)) collected.add(scriptRuntime.evaluateValue(collect, root));
+						}
+						String resultVariable = configString(node, "resultVariable");
+						if (!blank(resultVariable)) valueService.setVariable(root, resultVariable, collected);
+					} finally {
+						var vars = runtime.with("variables");
+						if (old.isMissingNode()) vars.remove(name); else vars.set(name, old);
+						if (oldIndex.isMissingNode()) vars.remove(indexName); else vars.set(indexName, oldIndex);
+						runtime.put("iterationPath", previousPath);
+					}
+					trace.add(trace(node, "ITERATED", items.size() + " элементов"));
+					currentNodeId = target(edges, node.getId(), "next");
+				}
+				case "LOOP_BREAK" -> {
+					if (stopAtNodeId == null) throw new IllegalStateException("Остановить цикл можно только внутри его тела");
+					trace.add(trace(node, "BREAK", "Обработка списка остановлена"));
+					return new ExecutionResult(executed, false, true, node.getId(), List.copyOf(trace), steps);
+				}
+				case "LOOP_END" -> throw new IllegalStateException("Завершение итерации вне цикла");
+
 				case "EVENT", "NOTE", "JOIN" -> {
 					trace.add(trace(node, "PASSED", type.equals("EVENT") ? "Событие принято" : type.equals("JOIN") ? "Ветки объединены" : "Комментарий"));
 					currentNodeId = target(edges, node.getId(), "next");
 				}
 				case "CONDITION" -> {
 					String expression = configString(node, "expression");
-					boolean matched = scriptRuntime.evaluateExpression(expression, event.getPayload());
-					trace.add(trace(node, matched ? "TRUE" : "FALSE", expression));
+					boolean matched = node.getConfig().containsKey("rule") ? operations.evaluateRule(node.getConfig().get("rule"), event.getPayload()) : scriptRuntime.evaluateExpression(expression, event.getPayload());
+					TraceStep conditionStep = new TraceStep(node.getId(), type, nodeLabel(node), matched ? "TRUE" : "FALSE", node.getConfig().containsKey("rule") ? "Проверка условий: " + (matched ? "да" : "нет") : expression,
+                            objectMapper.valueToTree(node.getConfig().getOrDefault("rule", expression)), objectMapper.valueToTree(matched), runtime.path("variables").deepCopy());
+                    trace.add(conditionStep);
+                    if (!dryRun) history.record(runtime.path("executionId").asText(), trigger.getId(), conditionStep);
 					currentNodeId = target(edges, node.getId(), matched ? "true" : "false");
 				}
 				case "SWITCH" -> {
-					Object value = valueService.resolve(event.getPayload(), configString(node, "valueExpression"));
+					Object value = scriptRuntime.evaluateValue(configString(node, "valueExpression"), event.getPayload());
 					String handle = "default";
 					for (Map<String, Object> item : configList(node, "cases")) {
 						if (valueService.valuesEqual(value, item.get("value"))) {
@@ -319,7 +468,10 @@ public class AutomationWorkflowEngine {
 						if (!dryRun) {
 							scriptRuntime.executeActions(actionScript, new AutomationExecutionContext(trigger, event));
 							payloadService.enrich(event);
-						}
+						} else {
+                            List<String> missing = scriptRuntime.previewActions(actionScript, new AutomationExecutionContext(trigger,event));
+                            if (!missing.isEmpty()) { trace.add(trace(node,"NEEDS_INPUT","Задайте тестовые результаты переменных: " + String.join(", ", missing))); return new ExecutionResult(executed,false,false,node.getId(),List.copyOf(trace),steps); }
+                        }
 						executed = true;
 						trace.add(trace(node, dryRun ? "WOULD_EXECUTE" : "EXECUTED", actionScript));
 					} catch (Exception e) {
@@ -371,14 +523,40 @@ public class AutomationWorkflowEngine {
 						String mode = configString(node, "mode", "INLINE").toUpperCase(Locale.ROOT);
 						if ("ASYNC".equals(mode)) {
 							if (!allowAsync) throw new IllegalStateException("Асинхронный подпроцесс нельзя использовать внутри FORK или встроенного подпроцесса");
-							if (!dryRun) scheduleSubflow(child, event);
+							if (!dryRun) {
+							Event childEvent = event;
+							if (configBoolean(node, "localVariables", false)) {
+								JsonNode childPayload = event.getPayload().deepCopy();
+								((com.fasterxml.jackson.databind.node.ObjectNode) childPayload).with("_automation").set("variables", objectMapper.createObjectNode());
+								((com.fasterxml.jackson.databind.node.ObjectNode) childPayload).with("_automation").put("iterationPath", runtime.path("iterationPath").asText("") + "/subflow:" + node.getId());
+								Object input = operations.resolve(node.getConfig().getOrDefault("inputs", Map.of()), event.getPayload());
+								if (input instanceof Map<?, ?> map) map.forEach((key, value) -> valueService.setVariable(childPayload, key.toString(), value));
+								childEvent = Event.builder().payload(childPayload).triggerType(event.getTriggerType()).id(event.getId()).actorUserId(event.getActorUserId()).actorUsername(event.getActorUsername()).actorDisplayName(event.getActorDisplayName()).actorType(event.getActorType()).build();
+							}
+							scheduleSubflow(child, childEvent);
+						}
 							trace.add(trace(node, dryRun ? "WOULD_START" : "STARTED", child.getName()));
 						} else {
 							AutomationWorkflowDefinition childDefinition = parseAndValidate(child.getWorkflowDefinition());
-							ExecutionResult childResult = executeFrom(childDefinition, childDefinition.getEntryNodeId(), child, event, steps, dryRun, null, subflowDepth + 1, false);
+							boolean localVariables = configBoolean(node, "localVariables", false);
+							Event childEvent = event;
+							if (localVariables) {
+								JsonNode childPayload = event.getPayload().deepCopy();
+								var childRuntime = ((com.fasterxml.jackson.databind.node.ObjectNode) childPayload).with("_automation");
+								childRuntime.set("variables", objectMapper.createObjectNode());
+								childRuntime.put("iterationPath", runtime.path("iterationPath").asText("") + "/subflow:" + node.getId());
+								Object input = operations.resolve(node.getConfig().getOrDefault("inputs", Map.of()), event.getPayload());
+								if (input instanceof Map<?, ?> map) map.forEach((key, value) -> valueService.setVariable(childPayload, key.toString(), value));
+								childEvent = Event.builder().payload(childPayload).triggerType(event.getTriggerType()).id(event.getId()).actorUserId(event.getActorUserId()).actorUsername(event.getActorUsername()).actorDisplayName(event.getActorDisplayName()).actorType(event.getActorType()).build();
+							}
+							ExecutionResult childResult = executeFrom(childDefinition, childDefinition.getEntryNodeId(), child, childEvent, steps, dryRun, null, subflowDepth + 1, false);
 							trace.addAll(childResult.trace());
-							steps = childResult.stepCount();
-							executed = executed || childResult.executed();
+							steps = childResult.stepCount(); executed = executed || childResult.executed();
+							if (dryRun && !childResult.completed()) return new ExecutionResult(executed, false, false, childResult.stoppedNodeId(), List.copyOf(trace), steps);
+							if (localVariables) {
+								Object output = operations.resolve(node.getConfig().getOrDefault("outputs", Map.of()), childEvent.getPayload());
+								if (output instanceof Map<?, ?> map) map.forEach((key, value) -> valueService.setVariable(event.getPayload(), key.toString(), value));
+							}
 						}
 						currentNodeId = target(edges, node.getId(), "success");
 					} catch (Exception e) {
@@ -408,7 +586,7 @@ public class AutomationWorkflowEngine {
 					currentNodeId = target(edges, node.getId(), result.success() ? "success" : "error");
 				}
 				case "SET_VARIABLE", "EXPRESSION" -> {
-					Object value = valueService.resolve(event.getPayload(), configString(node, "expression"));
+					Object value = scriptRuntime.evaluateValue(configString(node, "expression"), event.getPayload());
 					valueService.setVariable(event.getPayload(), configString(node, "name"), value);
 					trace.add(trace(node, "SET", String.valueOf(value)));
 					currentNodeId = target(edges, node.getId(), "next");
@@ -584,8 +762,9 @@ public class AutomationWorkflowEngine {
 				.triggerId(trigger.getId())
 				.sourceEventId(event.getId())
 				.triggerType(event.getTriggerType() == null ? trigger.getTriggerType() : event.getTriggerType())
-				.eventPayload(event.getPayload().deepCopy())
-				.workflowDefinition(trigger.getWorkflowDefinition())
+				.eventPayload(continuationPayload(event.getPayload()))
+				.workflowDefinition(event.getPayload().path("_automation").path("definitions").has(trigger.getId().toString())
+						? event.getPayload().path("_automation").path("definitions").path(trigger.getId().toString()).toString() : trigger.getWorkflowDefinition())
 				.currentNodeId(nodeId)
 				.stepCount(stepCount)
 				.retries(0)
@@ -595,6 +774,9 @@ public class AutomationWorkflowEngine {
 				.actorType(event.getActorType());
 	}
 
+
+    private JsonNode continuationPayload(JsonNode payload) { JsonNode result=payload.deepCopy();stripDefinitions(result);return result; }
+    private void stripDefinitions(JsonNode payload) { if(payload.path("_automation") instanceof com.fasterxml.jackson.databind.node.ObjectNode runtime) runtime.remove("definitions"); }
 
 	private void ensurePersistedTrigger(AutomationTrigger trigger) {
 		if (trigger == null || trigger.getId() == null) throw new IllegalStateException("Нельзя запланировать продолжение несохранённого сценария");
@@ -617,7 +799,10 @@ public class AutomationWorkflowEngine {
 		}
 		switch (type) {
 			case "EVENT" -> validateTriggerType(node, "triggerType", errors);
-			case "CONDITION" -> require(node, "expression", "У условия не заполнено выражение", errors);
+			case "CONDITION" -> {
+                try { if (node.getConfig().containsKey("rule")) operations.validateRule(node.getConfig().get("rule")); else scriptRuntime.validateValueExpression(configString(node,"expression")); }
+                catch(Exception e) { errors.add(nodeLabel(node) + ": " + e.getMessage()); }
+            }
 			case "SWITCH" -> {
 				require(node, "valueExpression", "У SWITCH не указано значение", errors);
 				if (configList(node, "cases").isEmpty()) errors.add("У SWITCH нет вариантов: " + nodeLabel(node));
@@ -636,6 +821,7 @@ public class AutomationWorkflowEngine {
 			}
 			case "SUBFLOW" -> {
 				if (configNullableLong(node, "triggerId") == null) errors.add("Не выбран подпроцесс: " + nodeLabel(node));
+				if ("ASYNC".equalsIgnoreCase(configString(node, "mode", "INLINE")) && node.getConfig().get("outputs") instanceof Map<?, ?> outputs && !outputs.isEmpty()) errors.add("У асинхронного подпроцесса нет немедленных выходных значений");
 			}
 			case "FORK" -> {
 				if (configList(node, "branches").size() < 2) errors.add("У FORK должно быть минимум две ветки: " + nodeLabel(node));
@@ -655,7 +841,26 @@ public class AutomationWorkflowEngine {
 			case "DEDUPLICATE" -> {
 				if (configLong(node, "windowMinutes", 0L) < 1) errors.add("Период поиска дубля должен быть больше нуля: " + nodeLabel(node));
 			}
-			case "END", "NOTE", "JOIN", "BUSINESS_HOURS" -> {
+			case "OPERATION" -> {
+				require(node, "operation", "Не выбрана операция", errors);
+				try { operations.validateArguments(configString(node, "operation"), node.getConfig().getOrDefault("arguments",Map.of())); } catch (Exception e) { errors.add(e.getMessage()); }
+				if(configLong(node,"maxAttempts",1)<1 || configLong(node,"maxAttempts",1)>5) errors.add("Число попыток операции: от 1 до 5");
+				if ("ai.generate".equals(configString(node, "operation")) && !configBoolean(node, "background", false)) errors.add("Генерация текста должна выполняться в фоне");
+			}
+			case "FOR_EACH" -> {
+				require(node, "itemsExpression", "У цикла не указан список", errors);
+				require(node, "endNodeId", "У цикла не выбрано завершение итерации", errors);
+                if (configLong(node,"maxItems",100)<1 || configLong(node,"maxItems",100)>1000) errors.add("Ограничение цикла: от 1 до 1000 элементов");
+                if (!configString(node,"itemVariable","item").matches("[a-zA-Z_][a-zA-Z0-9_]*")) errors.add("Некорректное имя элемента цикла");
+			}
+			case "PARAMETERS" -> {
+				Set<String> names = new HashSet<>();
+				for (Map<String, Object> parameter : configList(node, "parameters")) {
+					String name = Objects.toString(parameter.get("name"), "");
+					if (!name.matches("[a-zA-Z_][a-zA-Z0-9_]*") || !names.add(name)) errors.add("Некорректное/повторяющееся имя параметра: " + name);
+				}
+			}
+			case "END", "LOOP_END", "LOOP_BREAK", "NOTE", "JOIN", "BUSINESS_HOURS" -> {
 			}
 		}
 	}
@@ -664,7 +869,9 @@ public class AutomationWorkflowEngine {
 	private List<String> requiredHandles(AutomationWorkflowDefinition.Node node) {
 		String type = normalizeNodeType(node.getType());
 		return switch (type) {
-			case "END" -> List.of();
+			case "END", "LOOP_END", "LOOP_BREAK" -> List.of();
+			case "OPERATION" -> List.of("success", "error");
+			case "FOR_EACH" -> List.of("body", "next");
 			case "CONDITION" -> List.of("true", "false");
 			case "SWITCH" -> {
 				List<String> handles = configList(node, "cases").stream().map(item -> "case:" + item.get("id")).collect(Collectors.toCollection(ArrayList::new));
@@ -808,14 +1015,16 @@ public class AutomationWorkflowEngine {
 		AutomationWorkflowDefinition.Node node = nodeById.get(nodeId);
 		if (node == null) return new ForkPathValidation(false, null);
 		String type = normalizeNodeType(node.getType());
-		if (ASYNC_NODE_TYPES.contains(type) || ("SUBFLOW".equals(type) && "ASYNC".equalsIgnoreCase(configString(node, "mode", "INLINE")))) {
+		if (("OPERATION".equals(type) && (configBoolean(node, "background", false) || configLong(node,"maxAttempts",1)>1)) || ASYNC_NODE_TYPES.contains(type) || ("SUBFLOW".equals(type) && "ASYNC".equalsIgnoreCase(configString(node, "mode", "INLINE")))) {
 			return new ForkPathValidation(false, nodeLabel(node));
 		}
+		if ("LOOP_BREAK".equals(type) && nodeById.containsKey(joinId) && "LOOP_END".equals(nodeById.get(joinId).getType())) return new ForkPathValidation(true, null);
 		if ("END".equals(type)) return new ForkPathValidation(false, null);
 
 		List<AutomationWorkflowDefinition.Edge> outgoing = edges.stream()
 				.filter(Objects::nonNull)
 				.filter(edge -> Objects.equals(nodeId, edge.getSource()))
+				.filter(edge -> !"FOR_EACH".equals(type) || "next".equals(normalizeHandle(edge.getSourceHandle())))
 				.toList();
 		if (outgoing.isEmpty()) return new ForkPathValidation(false, null);
 
@@ -835,6 +1044,18 @@ public class AutomationWorkflowEngine {
 		return new ForkPathValidation(allReachJoin, asyncNodeLabel);
 	}
 
+
+    private String journalContext(Event event, Map<String, Object> arguments) {
+        Set<String> references = new LinkedHashSet<>();
+        JsonNode state = objectMapper.valueToTree(arguments.get("state"));
+        for (String type : List.of("client", "message", "task", "incident", "service")) {
+            JsonNode id = event.getPayload().path(type).path("id");
+            if (id.isIntegralNumber() && id.asLong() > 0) references.add(type + "=" + id.asLong());
+            JsonNode target = state == null ? objectMapper.nullNode() : state.path(type).path("id");
+            if (target.isIntegralNumber() && target.asLong() > 0) references.add(type + "=" + target.asLong());
+        }
+        return String.join(", ", references);
+    }
 
 	private boolean containsCycle(List<AutomationWorkflowDefinition.Node> nodes, List<AutomationWorkflowDefinition.Edge> edges) {
 		Map<String, List<String>> adjacency = new HashMap<>();
@@ -963,6 +1184,8 @@ public class AutomationWorkflowEngine {
 
 	private record ForkPathValidation(boolean reachesJoin, String asyncNodeLabel) {}
 	public record ValidationResult(List<String> errors, List<String> warnings) {}
-	public record TraceStep(String nodeId, String nodeType, String label, String status, String detail) {}
+	public record TraceStep(String nodeId, String nodeType, String label, String status, String detail, JsonNode input, JsonNode output, JsonNode variables) {
+		public TraceStep(String nodeId, String nodeType, String label, String status, String detail) { this(nodeId, nodeType, label, status, detail, null, null, null); }
+	}
 	public record ExecutionResult(boolean executed, boolean scheduled, boolean completed, String stoppedNodeId, List<TraceStep> trace, int stepCount) {}
 }

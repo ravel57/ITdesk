@@ -195,6 +195,7 @@ public class EmailService {
 				String emailFrom = ((InternetAddress) emailMessage.getFrom()[0]).getAddress();
 				Client client = clientRepository.findFirstByEmail(emailFrom).orElse(null);
 				ru.ravel.ItDesk.model.Message message = ru.ravel.ItDesk.model.Message.builder()
+						.fromSource("EMAIL")
 						.text(getTextFromMessage(emailMessage))
 						.date(ZonedDateTime.ofInstant(
 								Instant.ofEpochMilli(emailMessage.getReceivedDate().getTime()),

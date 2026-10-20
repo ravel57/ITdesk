@@ -17,6 +17,7 @@ public enum SecurityAuditEventType {
 	PASSWORD_CHANGED_BY_ADMIN("Администратор сменил пароль", true),
 	PASSWORD_RESET_LINK_REQUESTED("Запрошена ссылка смены пароля", false),
 	PASSWORD_CHANGED_BY_RESET_LINK("Пароль изменён по ссылке", false),
+	INVITE_LINK_SENT("Отправлено приглашение", false),
 	USER_CREATED("Создан пользователь", false),
 	USER_UPDATED("Изменён пользователь", false),
 	USER_ROLE_CHANGED("Изменена роль пользователя", true),

@@ -1,0 +1,1208 @@
+{
+  "version": 3,
+  "entryNodeId": "monitoring-start-1",
+  "nodes": [
+    {
+      "id": "monitoring-start-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MONITORING_PROBLEM_STARTED"
+      }
+    },
+    {
+      "id": "monitoring-start-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "createSeverity",
+            "label": "Создавать инцидент при важности Zabbix от",
+            "value": 4,
+            "help": "Порог действует и при создании из обновления.",
+            "type": "number",
+            "min": 0,
+            "max": 5
+          },
+          {
+            "name": "p1Clients",
+            "label": "P1 только при числе затронутых клиентов от",
+            "value": 10,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 1000000
+          },
+          {
+            "name": "p1Interval",
+            "label": "Интервал обновлений P1, минут",
+            "value": 15,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p2Interval",
+            "label": "Интервал обновлений P2, минут",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p3Interval",
+            "label": "Интервал обновлений P3, минут",
+            "value": 60,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p4Interval",
+            "label": "Интервал обновлений P4, минут",
+            "value": 120,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "monitoring-start-5",
+      "type": "CONDITION",
+      "label": "Проблема сопоставлена с сервисом?",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "expression": "service.id.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=service.id",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-6",
+      "type": "OPERATION",
+      "label": "Последовательно обработать события одного сервиса",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "lock.key",
+        "arguments": {
+          "key": "monitoring-service:{{ service.id }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-start-7",
+      "type": "OPERATION",
+      "label": "Загрузить инциденты сервиса",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "data.incidents",
+        "arguments": {
+          "serviceId": "=service.id",
+          "limit": 1000
+        },
+        "resultVariable": "incidents"
+      }
+    },
+    {
+      "id": "monitoring-start-8",
+      "type": "OPERATION",
+      "label": "Отобрать: active",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.incidents",
+          "where": "!(var.item.status in ['CLOSED','CANCELLED'])",
+          "sortBy": "id",
+          "descending": true,
+          "limit": 1
+        },
+        "resultVariable": "active"
+      }
+    },
+    {
+      "id": "monitoring-start-9",
+      "type": "CONDITION",
+      "label": "Активный инцидент уже есть?",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "expression": "var.active.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.active.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-10",
+      "type": "OPERATION",
+      "label": "Добавить заметку о событии мониторинга",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Запись в существующий инцидент",
+        "operation": "incident.note",
+        "arguments": {
+          "incidentId": "=var.active.first().id",
+          "text": "Мониторинг: {{ problem.name }}. Важность {{ problem.severity }}. {{ problem.updateMessage }} {{ problem.updateAction }} {{ problem.updateUser }} {{ problem.url }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-start-11",
+      "type": "CONDITION",
+      "label": "Важности достаточно для нового инцидента?",
+      "x": 80,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity >= var.settings.createSeverity",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.severity",
+          "operator": ">=",
+          "right": "=var.settings.createSeverity"
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-12",
+      "type": "OPERATION",
+      "label": "Получить сервис и ответственных",
+      "x": 500,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "data.service",
+        "arguments": {
+          "serviceId": "=service.id"
+        },
+        "resultVariable": "catalogService"
+      }
+    },
+    {
+      "id": "monitoring-start-13",
+      "type": "OPERATION",
+      "label": "Посчитать затронутых клиентов",
+      "x": 920,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "data.affectedClients",
+        "arguments": {
+          "serviceId": "=service.id"
+        },
+        "resultVariable": "affected"
+      }
+    },
+    {
+      "id": "monitoring-start-14",
+      "type": "OPERATION",
+      "label": "Серьёзность по умолчанию",
+      "x": 1340,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P4"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-start-15",
+      "type": "OPERATION",
+      "label": "Интервал обновлений по умолчанию",
+      "x": 1760,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p4Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-start-16",
+      "type": "CONDITION",
+      "label": "Авария максимальной важности и достаточно клиентов?",
+      "x": 2180,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity >= 5 && var.affected >= var.settings.p1Clients",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=problem.severity",
+              "operator": ">=",
+              "right": 5
+            },
+            {
+              "left": "=var.affected",
+              "operator": ">=",
+              "right": "=var.settings.p1Clients"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-17",
+      "type": "OPERATION",
+      "label": "Установить P1",
+      "x": 2600,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P1"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-start-18",
+      "type": "OPERATION",
+      "label": "Интервал P1",
+      "x": 3020,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p1Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-start-19",
+      "type": "CONDITION",
+      "label": "Высокая важность или P1 ограничен числом клиентов?",
+      "x": 2600,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity >= 4",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.severity",
+          "operator": ">=",
+          "right": 4
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-20",
+      "type": "OPERATION",
+      "label": "Установить P2",
+      "x": 3020,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P2"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-start-21",
+      "type": "OPERATION",
+      "label": "Интервал P2",
+      "x": 3440,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p2Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-start-22",
+      "type": "CONDITION",
+      "label": "Средняя важность?",
+      "x": 3020,
+      "y": 2510,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity = 3",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.severity",
+          "operator": "=",
+          "right": 3
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-23",
+      "type": "OPERATION",
+      "label": "Установить P3",
+      "x": 3440,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P3"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-start-24",
+      "type": "OPERATION",
+      "label": "Интервал P3",
+      "x": 3860,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p3Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-start-25",
+      "type": "OPERATION",
+      "label": "Создать черновик с выбранными параметрами",
+      "x": 4280,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "incident.create",
+        "arguments": {
+          "title": "Мониторинг: {{ service.name }} — {{ problem.name }}",
+          "description": "Создан по событию Zabbix. Сервис: {{ service.name }}. Проблема: {{ problem.name }}. Важность: {{ problem.severity }}. Затронуто клиентов: {{ var.affected }}. Ссылка: {{ problem.url }}. Проверьте данные и объявите инцидент.",
+          "publicDescription": "Наблюдаются проблемы с сервисом «{{ service.name }}». Мы разбираемся и сообщим новости.",
+          "impact": "По данным мониторинга: {{ problem.name }}",
+          "severity": "=var.severity",
+          "serviceId": "=service.id",
+          "lineId": "=var.catalogService.lineId",
+          "ownerId": "=var.catalogService.ownerId",
+          "participantIds": "=var.catalogService.executorIds",
+          "intervalMinutes": "=var.interval",
+          "startedAt": "=problem.startedAt"
+        },
+        "resultVariable": "createdIncident"
+      }
+    },
+    {
+      "id": "monitoring-start-26",
+      "type": "OPERATION",
+      "label": "Данные линии поддержки",
+      "x": 80,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "data.lines",
+        "arguments": {},
+        "resultVariable": "allLines"
+      }
+    },
+    {
+      "id": "monitoring-start-27",
+      "type": "OPERATION",
+      "label": "Отобрать: incidentLines",
+      "x": 500,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLines",
+          "where": "var.item.id = var.catalogService.lineId",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "incidentLines"
+      }
+    },
+    {
+      "id": "monitoring-start-28",
+      "type": "OPERATION",
+      "label": "Список участников линии по умолчанию",
+      "x": 920,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "value.set",
+        "arguments": {
+          "value": []
+        },
+        "resultVariable": "lineMembers"
+      }
+    },
+    {
+      "id": "monitoring-start-29",
+      "type": "CONDITION",
+      "label": "У сервиса есть линия?",
+      "x": 1340,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "expression": "var.incidentLines.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.incidentLines.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-30",
+      "type": "OPERATION",
+      "label": "Участники и ответственный линии",
+      "x": 1760,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.incidentLines.first().memberIds",
+          "second": [
+            "=var.incidentLines.first().responsibleId"
+          ]
+        },
+        "resultVariable": "lineMembers"
+      }
+    },
+    {
+      "id": "monitoring-start-31",
+      "type": "OPERATION",
+      "label": "Ответственные за сервис",
+      "x": 2180,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.catalogService.executorIds",
+          "second": [
+            "=var.catalogService.ownerId"
+          ]
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-start-32",
+      "type": "OPERATION",
+      "label": "Объединить ответственных сервиса и линии",
+      "x": 2600,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.recipientIds",
+          "second": "=var.lineMembers"
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-start-33",
+      "type": "OPERATION",
+      "label": "Отобрать: recipientIds",
+      "x": 3020,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.recipientIds",
+          "where": "var.item.notNull()",
+          "sortBy": "",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-start-34",
+      "type": "CONDITION",
+      "label": "Ответственные найдены?",
+      "x": 3440,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "expression": "var.recipientIds.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.recipientIds.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-start-35",
+      "type": "OPERATION",
+      "label": "Запасной вариант: пользователи системы",
+      "x": 3860,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "data.users",
+        "arguments": {},
+        "resultVariable": "users"
+      }
+    },
+    {
+      "id": "monitoring-start-36",
+      "type": "OPERATION",
+      "label": "Отобрать: admins",
+      "x": 4280,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.users",
+          "where": "var.item.enabled && var.item.admin",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "admins"
+      }
+    },
+    {
+      "id": "monitoring-start-37",
+      "type": "OPERATION",
+      "label": "Уведомить администраторов, если ответственных нет",
+      "x": 4700,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.project",
+        "arguments": {
+          "items": "=var.admins",
+          "expression": "var.item.id"
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-start-38",
+      "type": "FOR_EACH",
+      "label": "Уведомить каждого ответственного",
+      "x": 5120,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "itemsExpression": "var.recipientIds",
+        "itemVariable": "recipientId",
+        "indexVariable": "recipientIdIndex",
+        "maxItems": 100,
+        "endNodeId": "monitoring-start-39"
+      }
+    },
+    {
+      "id": "monitoring-start-39",
+      "type": "LOOP_END",
+      "label": "Следующий элемент: Уведомить каждого ответственного",
+      "x": 5960,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "description": "Завершение одной итерации цикла «Уведомить каждого ответственного»"
+      }
+    },
+    {
+      "id": "monitoring-start-40",
+      "type": "OPERATION",
+      "label": "Отправить уведомление о черновике",
+      "x": 5540,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "notify.user",
+        "arguments": {
+          "userId": "=var.recipientId",
+          "text": "Мониторинг: создан черновик {{ var.createdIncident.number }} «{{ var.createdIncident.title }}»"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-start-41",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 500,
+      "y": 820,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-start-42",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1760,
+      "y": 820,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-start-43",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Запись в существующий инцидент",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-start-44",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 500,
+      "y": 1540,
+      "config": {
+        "section": "3. Запись в существующий инцидент",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-start-45",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 500,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-start-46",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 4700,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-start-47",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 5120,
+      "y": 3230,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-start-48",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 5540,
+      "y": 3230,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "monitoring-start-edge-monitoring-start-1-next",
+      "source": "monitoring-start-1",
+      "target": "monitoring-start-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-2-next",
+      "source": "monitoring-start-2",
+      "target": "monitoring-start-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-5-true",
+      "source": "monitoring-start-5",
+      "target": "monitoring-start-6",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-6-success",
+      "source": "monitoring-start-6",
+      "target": "monitoring-start-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-7-success",
+      "source": "monitoring-start-7",
+      "target": "monitoring-start-8",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-8-success",
+      "source": "monitoring-start-8",
+      "target": "monitoring-start-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-9-true",
+      "source": "monitoring-start-9",
+      "target": "monitoring-start-10",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-9-false",
+      "source": "monitoring-start-9",
+      "target": "monitoring-start-11",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-11-true",
+      "source": "monitoring-start-11",
+      "target": "monitoring-start-12",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-12-success",
+      "source": "monitoring-start-12",
+      "target": "monitoring-start-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-13-success",
+      "source": "monitoring-start-13",
+      "target": "monitoring-start-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-14-success",
+      "source": "monitoring-start-14",
+      "target": "monitoring-start-15",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-15-success",
+      "source": "monitoring-start-15",
+      "target": "monitoring-start-16",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-16-true",
+      "source": "monitoring-start-16",
+      "target": "monitoring-start-17",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-17-success",
+      "source": "monitoring-start-17",
+      "target": "monitoring-start-18",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-16-false",
+      "source": "monitoring-start-16",
+      "target": "monitoring-start-19",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-19-true",
+      "source": "monitoring-start-19",
+      "target": "monitoring-start-20",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-20-success",
+      "source": "monitoring-start-20",
+      "target": "monitoring-start-21",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-19-false",
+      "source": "monitoring-start-19",
+      "target": "monitoring-start-22",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-22-true",
+      "source": "monitoring-start-22",
+      "target": "monitoring-start-23",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-23-success",
+      "source": "monitoring-start-23",
+      "target": "monitoring-start-24",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-18-success",
+      "source": "monitoring-start-18",
+      "target": "monitoring-start-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-21-success",
+      "source": "monitoring-start-21",
+      "target": "monitoring-start-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-24-success",
+      "source": "monitoring-start-24",
+      "target": "monitoring-start-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-22-false",
+      "source": "monitoring-start-22",
+      "target": "monitoring-start-25",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-25-success",
+      "source": "monitoring-start-25",
+      "target": "monitoring-start-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-26-success",
+      "source": "monitoring-start-26",
+      "target": "monitoring-start-27",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-27-success",
+      "source": "monitoring-start-27",
+      "target": "monitoring-start-28",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-28-success",
+      "source": "monitoring-start-28",
+      "target": "monitoring-start-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-29-true",
+      "source": "monitoring-start-29",
+      "target": "monitoring-start-30",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-30-success",
+      "source": "monitoring-start-30",
+      "target": "monitoring-start-31",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-29-false",
+      "source": "monitoring-start-29",
+      "target": "monitoring-start-31",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-31-success",
+      "source": "monitoring-start-31",
+      "target": "monitoring-start-32",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-32-success",
+      "source": "monitoring-start-32",
+      "target": "monitoring-start-33",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-33-success",
+      "source": "monitoring-start-33",
+      "target": "monitoring-start-34",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-34-false",
+      "source": "monitoring-start-34",
+      "target": "monitoring-start-35",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-35-success",
+      "source": "monitoring-start-35",
+      "target": "monitoring-start-36",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-36-success",
+      "source": "monitoring-start-36",
+      "target": "monitoring-start-37",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-34-true",
+      "source": "monitoring-start-34",
+      "target": "monitoring-start-38",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-37-success",
+      "source": "monitoring-start-37",
+      "target": "monitoring-start-38",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-38-body",
+      "source": "monitoring-start-38",
+      "target": "monitoring-start-40",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-40-error",
+      "source": "monitoring-start-40",
+      "target": "monitoring-start-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-40-success",
+      "source": "monitoring-start-40",
+      "target": "monitoring-start-39",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-5-false",
+      "source": "monitoring-start-5",
+      "target": "monitoring-start-41",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-6-error",
+      "source": "monitoring-start-6",
+      "target": "monitoring-start-42",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-7-error",
+      "source": "monitoring-start-7",
+      "target": "monitoring-start-42",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-8-error",
+      "source": "monitoring-start-8",
+      "target": "monitoring-start-42",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-10-success",
+      "source": "monitoring-start-10",
+      "target": "monitoring-start-43",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-10-error",
+      "source": "monitoring-start-10",
+      "target": "monitoring-start-44",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-11-false",
+      "source": "monitoring-start-11",
+      "target": "monitoring-start-45",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-12-error",
+      "source": "monitoring-start-12",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-13-error",
+      "source": "monitoring-start-13",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-14-error",
+      "source": "monitoring-start-14",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-15-error",
+      "source": "monitoring-start-15",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-17-error",
+      "source": "monitoring-start-17",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-18-error",
+      "source": "monitoring-start-18",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-20-error",
+      "source": "monitoring-start-20",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-21-error",
+      "source": "monitoring-start-21",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-23-error",
+      "source": "monitoring-start-23",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-24-error",
+      "source": "monitoring-start-24",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-25-error",
+      "source": "monitoring-start-25",
+      "target": "monitoring-start-46",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-26-error",
+      "source": "monitoring-start-26",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-27-error",
+      "source": "monitoring-start-27",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-28-error",
+      "source": "monitoring-start-28",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-30-error",
+      "source": "monitoring-start-30",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-31-error",
+      "source": "monitoring-start-31",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-32-error",
+      "source": "monitoring-start-32",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-33-error",
+      "source": "monitoring-start-33",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-35-error",
+      "source": "monitoring-start-35",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-36-error",
+      "source": "monitoring-start-36",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-37-error",
+      "source": "monitoring-start-37",
+      "target": "monitoring-start-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-start-edge-monitoring-start-38-next",
+      "source": "monitoring-start-38",
+      "target": "monitoring-start-48",
+      "sourceHandle": "next"
+    }
+  ]
+}

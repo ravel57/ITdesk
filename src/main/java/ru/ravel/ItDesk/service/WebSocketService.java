@@ -32,6 +32,10 @@ public class WebSocketService {
 	private final ClientRepository clientRepository;
 	private final TaskRepository taskRepository;
 
+	public void taskOpened(User user, Long taskId) {
+		simpMessaging.convertAndSendToUser(user.getUsername(), "/topic/task-opened/", Map.of("taskId", taskId));
+	}
+
 
 	/**
 	 * Compatibility entry point. Client collections are always filtered and sent

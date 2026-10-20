@@ -1,0 +1,2007 @@
+{
+  "version": 3,
+  "entryNodeId": "smart-create-1",
+  "nodes": [
+    {
+      "id": "smart-create-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MESSAGE_INCOMING"
+      }
+    },
+    {
+      "id": "smart-create-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "threshold",
+            "label": "Минимальная уверенность Jev",
+            "value": 0.6,
+            "help": "Ниже порога данные не меняются.",
+            "type": "number",
+            "migrationSetting": "createTaskIfNeeded",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "split",
+            "label": "Уверенность отдельной проблемы по сервису",
+            "value": 0.75,
+            "help": "Выше — меньше лишних заявок.",
+            "type": "number",
+            "migrationSetting": "splitTasks",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "closedDays",
+            "label": "История закрытых заявок, дней",
+            "value": 7,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "dialogMinutes",
+            "label": "Активный диалог, минут",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "shortLength",
+            "label": "Короткий ответ, символов",
+            "value": 60,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "openLimit",
+            "label": "Открытых заявок в контексте",
+            "value": 10,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "closedLimit",
+            "label": "Закрытых заявок в контексте",
+            "value": 5,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "dialogLimit",
+            "label": "Сообщений в контексте",
+            "value": 6,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "serviceLimit",
+            "label": "Сервисов в анализе",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "nameLength",
+            "label": "Длина заголовка заявки",
+            "value": 80,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 1000
+          },
+          {
+            "name": "repeatPrefix",
+            "label": "Префикс повторного обращения",
+            "value": "Повторно: ",
+            "help": "",
+            "type": "text"
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "smart-create-5",
+      "type": "OPERATION",
+      "label": "Загрузить заявки клиента",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "data.tasks",
+        "arguments": {
+          "clientId": "=client.id",
+          "limit": 1000
+        },
+        "resultVariable": "allTasks"
+      }
+    },
+    {
+      "id": "smart-create-6",
+      "type": "OPERATION",
+      "label": "Отобрать: open",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allTasks",
+          "where": "!var.item.completed",
+          "sortBy": "createdAt",
+          "descending": true,
+          "limit": "=var.settings.openLimit"
+        },
+        "resultVariable": "open"
+      }
+    },
+    {
+      "id": "smart-create-7",
+      "type": "OPERATION",
+      "label": "Отобрать: closed",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allTasks",
+          "where": "var.item.completed && ((var.item.closedAt.notNull() && var.item.closedAt.minutesSince() < var.settings.closedDays * 1440) || (var.item.closedAt.isNull() && var.item.lastActivity.notNull() && var.item.lastActivity.minutesSince() < var.settings.closedDays * 1440))",
+          "sortBy": "createdAt",
+          "descending": true,
+          "limit": "=var.settings.closedLimit"
+        },
+        "resultVariable": "closed"
+      }
+    },
+    {
+      "id": "smart-create-8",
+      "type": "OPERATION",
+      "label": "Загрузить переписку",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "data.messages",
+        "arguments": {
+          "clientId": "=client.id"
+        },
+        "resultVariable": "messages"
+      }
+    },
+    {
+      "id": "smart-create-9",
+      "type": "OPERATION",
+      "label": "Отобрать: dialog",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.messages",
+          "where": "!var.item.comment && var.item.id < message.id",
+          "sortBy": "date",
+          "descending": true,
+          "limit": "=var.settings.dialogLimit"
+        },
+        "resultVariable": "dialog"
+      }
+    },
+    {
+      "id": "smart-create-10",
+      "type": "OPERATION",
+      "label": "Отобрать: recentReplies",
+      "x": 2180,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.messages",
+          "where": "var.item.sent && !var.item.comment && !var.item.system && var.item.date.minutesSince() < var.settings.dialogMinutes && var.item.id < message.id",
+          "sortBy": "date",
+          "descending": true,
+          "limit": 1
+        },
+        "resultVariable": "recentReplies"
+      }
+    },
+    {
+      "id": "smart-create-11",
+      "type": "OPERATION",
+      "label": "Короткая реплика в активном диалоге",
+      "x": 2600,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=message.text.length() <= var.settings.shortLength && var.recentReplies.size() > 0"
+        },
+        "resultVariable": "shortReply"
+      }
+    },
+    {
+      "id": "smart-create-12",
+      "type": "OPERATION",
+      "label": "Сервисы организации",
+      "x": 3020,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "operation": "data.services",
+        "arguments": {
+          "organizationId": "=client.organization.id",
+          "limit": "=var.settings.serviceLimit"
+        },
+        "resultVariable": "services"
+      }
+    },
+    {
+      "id": "smart-create-13",
+      "type": "OPERATION",
+      "label": "Новая проблема или продолжение разговора?",
+      "x": 80,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "message": "=message.text",
+            "dialog": "=var.dialog",
+            "openTasks": "=var.open",
+            "recentlyClosed": "=var.closed"
+          },
+          "question": "Классифицируй только последнее сообщение клиента. Прошлые реплики и заявки — контекст. Отличай отдельную новую проблему, продолжение открытой заявки, повтор закрытой проблемы и реплику без запроса.",
+          "kind": "choice",
+          "options": {
+            "new_request": "Новый вопрос или проблема",
+            "existing_task": "Продолжение открытой заявки: ответ, уточнение, напоминание",
+            "reopen": "Повтор проблемы из закрытой заявки",
+            "no_action": "Благодарность, подтверждение, приветствие без сути, короткая реплика без нового вопроса, автоответ или спам"
+          },
+          "yes": "Да",
+          "no": "Нет"
+        },
+        "resultVariable": "kind"
+      }
+    },
+    {
+      "id": "smart-create-14",
+      "type": "CONDITION",
+      "label": "Jev ответил?",
+      "x": 500,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "expression": "var.kind.available",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.kind.available",
+          "operator": "true"
+        }
+      }
+    },
+    {
+      "id": "smart-create-15",
+      "type": "CONDITION",
+      "label": "Сообщение содержит запрос?",
+      "x": 920,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "expression": "var.kind.choice != 'no_action'",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.kind.choice",
+          "operator": "!=",
+          "right": "no_action"
+        }
+      }
+    },
+    {
+      "id": "smart-create-16",
+      "type": "CONDITION",
+      "label": "Неуверенное продолжение не требует новой заявки?",
+      "x": 1340,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "expression": "var.kind.probability >= var.settings.threshold || var.kind.choice != 'existing_task'",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "any": [
+            {
+              "left": "=var.kind.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.kind.choice",
+              "operator": "!=",
+              "right": "existing_task"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-17",
+      "type": "OPERATION",
+      "label": "Уверенно новый запрос или повтор",
+      "x": 1760,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.kind.probability >= var.settings.threshold && (var.kind.choice = 'new_request' || var.kind.choice = 'reopen')"
+        },
+        "resultVariable": "confidentNew"
+      }
+    },
+    {
+      "id": "smart-create-18",
+      "type": "CONDITION",
+      "label": "Короткая реплика — действительно новый вопрос?",
+      "x": 2180,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "expression": "!var.shortReply || var.confidentNew",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "any": [
+            {
+              "not": {
+                "left": "=var.shortReply",
+                "operator": "true"
+              }
+            },
+            {
+              "left": "=var.confidentNew",
+              "operator": "true"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-19",
+      "type": "FOR_EACH",
+      "label": "Проверить каждую открытую заявку",
+      "x": 80,
+      "y": 1760,
+      "config": {
+        "section": "4. Сопоставить с открытыми заявками",
+        "itemsExpression": "var.open",
+        "itemVariable": "openTask",
+        "indexVariable": "openTaskIndex",
+        "maxItems": 100,
+        "endNodeId": "smart-create-20",
+        "collectExpression": "var.assessment",
+        "resultVariable": "matches"
+      }
+    },
+    {
+      "id": "smart-create-20",
+      "type": "LOOP_END",
+      "label": "Следующий элемент: Проверить каждую открытую заявку",
+      "x": 1340,
+      "y": 1760,
+      "config": {
+        "section": "4. Сопоставить с открытыми заявками",
+        "description": "Завершение одной итерации цикла «Проверить каждую открытую заявку»"
+      }
+    },
+    {
+      "id": "smart-create-21",
+      "type": "OPERATION",
+      "label": "Это та же проблема, что в открытой заявке?",
+      "x": 500,
+      "y": 1760,
+      "config": {
+        "section": "4. Сопоставить с открытыми заявками",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "message": "=message.text",
+            "task": "=var.openTask",
+            "dialog": "=var.dialog"
+          },
+          "question": "Последнее сообщение относится к той же проблеме, что эта открытая заявка? Продолжение разговора, ответ оператору или уточнение — ДА. Отдельная новая проблема — НЕТ.",
+          "kind": "noul",
+          "options": {},
+          "yes": "Да",
+          "no": "Нет"
+        },
+        "resultVariable": "match"
+      }
+    },
+    {
+      "id": "smart-create-22",
+      "type": "OPERATION",
+      "label": "Запомнить оценку совпадения",
+      "x": 920,
+      "y": 1760,
+      "config": {
+        "section": "4. Сопоставить с открытыми заявками",
+        "operation": "value.set",
+        "arguments": {
+          "value": {
+            "task": "=var.openTask",
+            "available": "=var.match.available",
+            "probability": "=var.match.probability"
+          }
+        },
+        "resultVariable": "assessment"
+      }
+    },
+    {
+      "id": "smart-create-23",
+      "type": "OPERATION",
+      "label": "Отобрать: matched",
+      "x": 500,
+      "y": 2010,
+      "config": {
+        "section": "4. Сопоставить с открытыми заявками",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.matches",
+          "where": "var.item.available && var.item.probability >= var.settings.threshold",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "matched"
+      }
+    },
+    {
+      "id": "smart-create-24",
+      "type": "OPERATION",
+      "label": "Вариант для проблемы вне каталога",
+      "x": 80,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "value.set",
+        "arguments": {
+          "value": [
+            {
+              "id": null,
+              "name": "Прочая проблема"
+            }
+          ]
+        },
+        "resultVariable": "other"
+      }
+    },
+    {
+      "id": "smart-create-25",
+      "type": "OPERATION",
+      "label": "Сервисы и проблема вне каталога",
+      "x": 500,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.services",
+          "second": "=var.other"
+        },
+        "resultVariable": "problemOptions"
+      }
+    },
+    {
+      "id": "smart-create-26",
+      "type": "FOR_EACH",
+      "label": "Проверить каждую возможную проблему",
+      "x": 920,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "itemsExpression": "var.problemOptions",
+        "itemVariable": "candidateService",
+        "indexVariable": "candidateServiceIndex",
+        "maxItems": 100,
+        "endNodeId": "smart-create-27",
+        "collectExpression": "var.problemChoice",
+        "resultVariable": "problemChoices"
+      }
+    },
+    {
+      "id": "smart-create-27",
+      "type": "LOOP_END",
+      "label": "Следующий элемент: Проверить каждую возможную проблему",
+      "x": 3020,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "description": "Завершение одной итерации цикла «Проверить каждую возможную проблему»"
+      }
+    },
+    {
+      "id": "smart-create-28",
+      "type": "OPERATION",
+      "label": "Сбросить результат предыдущего элемента",
+      "x": 1340,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "value.set",
+        "arguments": {
+          "value": null
+        },
+        "resultVariable": "problemChoice"
+      }
+    },
+    {
+      "id": "smart-create-29",
+      "type": "OPERATION",
+      "label": "В сообщении есть проблема по этому сервису?",
+      "x": 1760,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "message": "=message.text",
+            "service": "=var.candidateService",
+            "allServices": "=var.services"
+          },
+          "question": "В последнем сообщении есть вопрос или проблема по указанному сервису? Для «Прочая проблема» отвечай ДА только для вопроса вне перечисленных сервисов. Оценивай последнее сообщение, а не историю заявок.",
+          "kind": "noul",
+          "options": {},
+          "yes": "Да",
+          "no": "Нет"
+        },
+        "resultVariable": "serviceProblem"
+      }
+    },
+    {
+      "id": "smart-create-30",
+      "type": "CONDITION",
+      "label": "Проблема определена уверенно?",
+      "x": 2180,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "expression": "var.serviceProblem.available && var.serviceProblem.probability >= var.settings.split",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.serviceProblem.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.serviceProblem.probability",
+              "operator": ">=",
+              "right": "=var.settings.split"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-31",
+      "type": "OPERATION",
+      "label": "Включить проблему в список",
+      "x": 2600,
+      "y": 2480,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.candidateService"
+        },
+        "resultVariable": "problemChoice"
+      }
+    },
+    {
+      "id": "smart-create-32",
+      "type": "OPERATION",
+      "label": "Отобрать: problems",
+      "x": 1340,
+      "y": 2730,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.problemChoices",
+          "where": "var.item.notNull()",
+          "sortBy": "",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "problems"
+      }
+    },
+    {
+      "id": "smart-create-33",
+      "type": "CONDITION",
+      "label": "Есть проблемы по сервисам?",
+      "x": 1760,
+      "y": 2730,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "expression": "var.problems.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.problems.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "smart-create-34",
+      "type": "CONDITION",
+      "label": "Не продолжение открытой заявки?",
+      "x": 2180,
+      "y": 2730,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "expression": "var.kind.choice != 'existing_task'",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.kind.choice",
+          "operator": "!=",
+          "right": "existing_task"
+        }
+      }
+    },
+    {
+      "id": "smart-create-35",
+      "type": "OPERATION",
+      "label": "Создать одну заявку без сервиса",
+      "x": 2600,
+      "y": 2730,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.other"
+        },
+        "resultVariable": "problems"
+      }
+    },
+    {
+      "id": "smart-create-36",
+      "type": "OPERATION",
+      "label": "Какую закрытую заявку повторяет обращение?",
+      "x": 80,
+      "y": 3450,
+      "config": {
+        "section": "6. Возможный повтор закрытой проблемы",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "message": "=message.text",
+            "dialog": "=var.dialog"
+          },
+          "question": "Сообщает ли клиент, что проблема одной из недавно закрытых заявок вернулась или не была решена?",
+          "kind": "choice",
+          "options": {
+            "__none__": "Не повтор закрытой заявки"
+          },
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.closed",
+          "labelExpression": "var.item.name + ': ' + var.item.description.truncate(500)"
+        },
+        "resultVariable": "repeat"
+      }
+    },
+    {
+      "id": "smart-create-37",
+      "type": "OPERATION",
+      "label": "Счётчик созданных заявок",
+      "x": 500,
+      "y": 3450,
+      "config": {
+        "section": "6. Возможный повтор закрытой проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": 0
+        },
+        "resultVariable": "createdCount"
+      }
+    },
+    {
+      "id": "smart-create-38",
+      "type": "FOR_EACH",
+      "label": "Для каждой проблемы решить вопрос о заявке",
+      "x": 80,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "itemsExpression": "var.problems",
+        "itemVariable": "problem",
+        "indexVariable": "problemIndex",
+        "maxItems": 100,
+        "endNodeId": "smart-create-39"
+      }
+    },
+    {
+      "id": "smart-create-39",
+      "type": "LOOP_END",
+      "label": "Следующий элемент: Для каждой проблемы решить вопрос о заявке",
+      "x": 7220,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "description": "Завершение одной итерации цикла «Для каждой проблемы решить вопрос о заявке»"
+      }
+    },
+    {
+      "id": "smart-create-40",
+      "type": "OPERATION",
+      "label": "Отобрать: covered",
+      "x": 500,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.matched",
+          "where": "var.item.task.serviceId = var.problem.id",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "covered"
+      }
+    },
+    {
+      "id": "smart-create-41",
+      "type": "CONDITION",
+      "label": "Проблема ещё не покрыта открытой заявкой?",
+      "x": 920,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "expression": "var.covered.isEmpty() && !(var.problems.size() = 1 && var.matched.size() > 0)",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.covered",
+              "operator": "empty"
+            },
+            {
+              "not": {
+                "all": [
+                  {
+                    "left": "=var.problems.size()",
+                    "operator": "=",
+                    "right": 1
+                  },
+                  {
+                    "left": "=var.matched.size()",
+                    "operator": ">",
+                    "right": 0
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-42",
+      "type": "OPERATION",
+      "label": "Отобрать: sameService",
+      "x": 1340,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.matches",
+          "where": "var.item.task.serviceId = var.problem.id",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "sameService"
+      }
+    },
+    {
+      "id": "smart-create-43",
+      "type": "OPERATION",
+      "label": "Отобрать: notDifferent",
+      "x": 1760,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.sameService",
+          "where": "!var.item.available || var.item.probability > 1 - var.settings.threshold",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "notDifferent"
+      }
+    },
+    {
+      "id": "smart-create-44",
+      "type": "CONDITION",
+      "label": "Новый вопрос уверенно отличается от существующих?",
+      "x": 2180,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "expression": "var.sameService.isEmpty() || (var.confidentNew && var.notDifferent.isEmpty())",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "any": [
+            {
+              "left": "=var.sameService",
+              "operator": "empty"
+            },
+            {
+              "all": [
+                {
+                  "left": "=var.confidentNew",
+                  "operator": "true"
+                },
+                {
+                  "left": "=var.notDifferent",
+                  "operator": "empty"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-45",
+      "type": "OPERATION",
+      "label": "Исходный заголовок заявки",
+      "x": 2600,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=message.text"
+        },
+        "resultVariable": "newTitle"
+      }
+    },
+    {
+      "id": "smart-create-46",
+      "type": "OPERATION",
+      "label": "Описание новой заявки",
+      "x": 3020,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": ""
+        },
+        "resultVariable": "newDescription"
+      }
+    },
+    {
+      "id": "smart-create-47",
+      "type": "CONDITION",
+      "label": "Найден уверенный повтор закрытой проблемы?",
+      "x": 3440,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "expression": "var.repeat.available && var.repeat.probability >= var.settings.threshold && var.repeat.value.notNull() && (var.problems.size() = 1 || var.repeat.value.serviceId = var.problem.id)",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.repeat.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.repeat.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.repeat.value",
+              "operator": "notNull"
+            },
+            {
+              "any": [
+                {
+                  "left": "=var.problems.size()",
+                  "operator": "=",
+                  "right": 1
+                },
+                {
+                  "left": "=var.repeat.value.serviceId",
+                  "operator": "=",
+                  "right": "=var.problem.id"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-48",
+      "type": "OPERATION",
+      "label": "Заголовок повторного обращения",
+      "x": 3860,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.repeatPrefix + var.repeat.value.name"
+        },
+        "resultVariable": "newTitle"
+      }
+    },
+    {
+      "id": "smart-create-49",
+      "type": "OPERATION",
+      "label": "Пояснить, какую проблему повторяет обращение",
+      "x": 4280,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": "Повторное обращение по закрытой заявке #{{ var.repeat.value.id }}"
+        },
+        "resultVariable": "newDescription"
+      }
+    },
+    {
+      "id": "smart-create-50",
+      "type": "CONDITION",
+      "label": "В сообщении несколько проблем?",
+      "x": 3860,
+      "y": 4170,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "expression": "var.problems.size() > 1",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.problems.size()",
+          "operator": ">",
+          "right": 1
+        }
+      }
+    },
+    {
+      "id": "smart-create-51",
+      "type": "OPERATION",
+      "label": "Добавить сервис к заголовку",
+      "x": 4280,
+      "y": 4170,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.problem.name + ': ' + message.text"
+        },
+        "resultVariable": "newTitle"
+      }
+    },
+    {
+      "id": "smart-create-52",
+      "type": "OPERATION",
+      "label": "Объяснить разбиение обращения",
+      "x": 4700,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": "В сообщении несколько проблем. Эта заявка — по «{{ var.problem.name }}»."
+        },
+        "resultVariable": "newDescription"
+      }
+    },
+    {
+      "id": "smart-create-53",
+      "type": "OPERATION",
+      "label": "Ограничить длину заголовка",
+      "x": 5120,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "text.limit",
+        "arguments": {
+          "text": "=var.newTitle",
+          "length": "=var.settings.nameLength",
+          "firstLine": true
+        },
+        "resultVariable": "newTitle"
+      }
+    },
+    {
+      "id": "smart-create-54",
+      "type": "CONDITION",
+      "label": "Это первая созданная заявка?",
+      "x": 5540,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "expression": "var.createdCount = 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.createdCount",
+          "operator": "=",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "smart-create-55",
+      "type": "OPERATION",
+      "label": "Первую заявку связать с сообщением",
+      "x": 5960,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=message.id"
+        },
+        "resultVariable": "linkedMessageId"
+      }
+    },
+    {
+      "id": "smart-create-56",
+      "type": "OPERATION",
+      "label": "Следующие заявки не дублируют связь с сообщением",
+      "x": 5960,
+      "y": 4170,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "value.set",
+        "arguments": {
+          "value": null
+        },
+        "resultVariable": "linkedMessageId"
+      }
+    },
+    {
+      "id": "smart-create-57",
+      "type": "OPERATION",
+      "label": "Создать заявку по этой проблеме",
+      "x": 6380,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "operation": "task.create",
+        "arguments": {
+          "clientId": "=client.id",
+          "title": "=var.newTitle",
+          "description": "=var.newDescription",
+          "serviceId": "=var.problem.id",
+          "messageId": "=var.linkedMessageId"
+        },
+        "resultVariable": "createdTask"
+      }
+    },
+    {
+      "id": "smart-create-58",
+      "type": "COUNTER",
+      "label": "Увеличить число созданных заявок",
+      "x": 6800,
+      "y": 3920,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "name": "createdCount",
+        "operation": "ADD",
+        "amountExpression": "1"
+      }
+    },
+    {
+      "id": "smart-create-59",
+      "type": "CONDITION",
+      "label": "Это не короткое продолжение диалога?",
+      "x": 80,
+      "y": 4640,
+      "config": {
+        "section": "8. Запасное поведение без Jev",
+        "expression": "!var.shortReply",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "not": {
+            "left": "=var.shortReply",
+            "operator": "true"
+          }
+        }
+      }
+    },
+    {
+      "id": "smart-create-60",
+      "type": "CONDITION",
+      "label": "Нет открытых заявок и сообщение не пустое?",
+      "x": 500,
+      "y": 4640,
+      "config": {
+        "section": "8. Запасное поведение без Jev",
+        "expression": "var.open.isEmpty() && message.text.notEmpty()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.open",
+              "operator": "empty"
+            },
+            {
+              "left": "=message.text",
+              "operator": "notEmpty"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "smart-create-61",
+      "type": "OPERATION",
+      "label": "Подготовить заголовок без Jev",
+      "x": 920,
+      "y": 4640,
+      "config": {
+        "section": "8. Запасное поведение без Jev",
+        "operation": "text.limit",
+        "arguments": {
+          "text": "=message.text",
+          "length": "=var.settings.nameLength",
+          "firstLine": true
+        },
+        "resultVariable": "fallbackTitle"
+      }
+    },
+    {
+      "id": "smart-create-62",
+      "type": "OPERATION",
+      "label": "Создать заявку без анализа",
+      "x": 1340,
+      "y": 4640,
+      "config": {
+        "section": "8. Запасное поведение без Jev",
+        "operation": "task.create",
+        "arguments": {
+          "clientId": "=client.id",
+          "title": "=var.fallbackTitle",
+          "description": "",
+          "messageId": "=message.id"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "smart-create-63",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 3440,
+      "y": 570,
+      "config": {
+        "section": "2. Контекст обращения",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "smart-create-64",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 2180,
+      "y": 1290,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "smart-create-65",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 2600,
+      "y": 1040,
+      "config": {
+        "section": "3. Что означает сообщение",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "smart-create-66",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 920,
+      "y": 2010,
+      "config": {
+        "section": "4. Сопоставить с открытыми заявками",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "smart-create-67",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 3020,
+      "y": 2730,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "smart-create-68",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 2600,
+      "y": 2980,
+      "config": {
+        "section": "5. Выделить проблемы по сервисам",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "smart-create-69",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 920,
+      "y": 3450,
+      "config": {
+        "section": "6. Возможный повтор закрытой проблемы",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "smart-create-70",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 500,
+      "y": 4170,
+      "config": {
+        "section": "7. Создать только непокрытые проблемы",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "smart-create-71",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 1760,
+      "y": 4640,
+      "config": {
+        "section": "8. Запасное поведение без Jev",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "smart-create-72",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1760,
+      "y": 4890,
+      "config": {
+        "section": "8. Запасное поведение без Jev",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "smart-create-edge-smart-create-1-next",
+      "source": "smart-create-1",
+      "target": "smart-create-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "smart-create-edge-smart-create-2-next",
+      "source": "smart-create-2",
+      "target": "smart-create-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "smart-create-edge-smart-create-5-success",
+      "source": "smart-create-5",
+      "target": "smart-create-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-6-success",
+      "source": "smart-create-6",
+      "target": "smart-create-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-7-success",
+      "source": "smart-create-7",
+      "target": "smart-create-8",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-8-success",
+      "source": "smart-create-8",
+      "target": "smart-create-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-9-success",
+      "source": "smart-create-9",
+      "target": "smart-create-10",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-10-success",
+      "source": "smart-create-10",
+      "target": "smart-create-11",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-11-success",
+      "source": "smart-create-11",
+      "target": "smart-create-12",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-12-success",
+      "source": "smart-create-12",
+      "target": "smart-create-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-13-success",
+      "source": "smart-create-13",
+      "target": "smart-create-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-14-true",
+      "source": "smart-create-14",
+      "target": "smart-create-15",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-15-true",
+      "source": "smart-create-15",
+      "target": "smart-create-16",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-16-true",
+      "source": "smart-create-16",
+      "target": "smart-create-17",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-17-success",
+      "source": "smart-create-17",
+      "target": "smart-create-18",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-18-true",
+      "source": "smart-create-18",
+      "target": "smart-create-19",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-19-body",
+      "source": "smart-create-19",
+      "target": "smart-create-21",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "smart-create-edge-smart-create-21-error",
+      "source": "smart-create-21",
+      "target": "smart-create-20",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-21-success",
+      "source": "smart-create-21",
+      "target": "smart-create-22",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-22-error",
+      "source": "smart-create-22",
+      "target": "smart-create-20",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-22-success",
+      "source": "smart-create-22",
+      "target": "smart-create-20",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-19-next",
+      "source": "smart-create-19",
+      "target": "smart-create-23",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "smart-create-edge-smart-create-23-success",
+      "source": "smart-create-23",
+      "target": "smart-create-24",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-24-success",
+      "source": "smart-create-24",
+      "target": "smart-create-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-25-success",
+      "source": "smart-create-25",
+      "target": "smart-create-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-26-body",
+      "source": "smart-create-26",
+      "target": "smart-create-28",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "smart-create-edge-smart-create-28-error",
+      "source": "smart-create-28",
+      "target": "smart-create-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-28-success",
+      "source": "smart-create-28",
+      "target": "smart-create-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-29-error",
+      "source": "smart-create-29",
+      "target": "smart-create-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-29-success",
+      "source": "smart-create-29",
+      "target": "smart-create-30",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-30-false",
+      "source": "smart-create-30",
+      "target": "smart-create-27",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-30-true",
+      "source": "smart-create-30",
+      "target": "smart-create-31",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-31-error",
+      "source": "smart-create-31",
+      "target": "smart-create-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-31-success",
+      "source": "smart-create-31",
+      "target": "smart-create-27",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-26-next",
+      "source": "smart-create-26",
+      "target": "smart-create-32",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "smart-create-edge-smart-create-32-success",
+      "source": "smart-create-32",
+      "target": "smart-create-33",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-33-false",
+      "source": "smart-create-33",
+      "target": "smart-create-34",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-34-true",
+      "source": "smart-create-34",
+      "target": "smart-create-35",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-33-true",
+      "source": "smart-create-33",
+      "target": "smart-create-36",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-35-success",
+      "source": "smart-create-35",
+      "target": "smart-create-36",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-36-success",
+      "source": "smart-create-36",
+      "target": "smart-create-37",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-37-success",
+      "source": "smart-create-37",
+      "target": "smart-create-38",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-38-body",
+      "source": "smart-create-38",
+      "target": "smart-create-40",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "smart-create-edge-smart-create-40-error",
+      "source": "smart-create-40",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-40-success",
+      "source": "smart-create-40",
+      "target": "smart-create-41",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-41-false",
+      "source": "smart-create-41",
+      "target": "smart-create-39",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-41-true",
+      "source": "smart-create-41",
+      "target": "smart-create-42",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-42-error",
+      "source": "smart-create-42",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-42-success",
+      "source": "smart-create-42",
+      "target": "smart-create-43",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-43-error",
+      "source": "smart-create-43",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-43-success",
+      "source": "smart-create-43",
+      "target": "smart-create-44",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-44-false",
+      "source": "smart-create-44",
+      "target": "smart-create-39",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-44-true",
+      "source": "smart-create-44",
+      "target": "smart-create-45",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-45-error",
+      "source": "smart-create-45",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-45-success",
+      "source": "smart-create-45",
+      "target": "smart-create-46",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-46-error",
+      "source": "smart-create-46",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-46-success",
+      "source": "smart-create-46",
+      "target": "smart-create-47",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-47-true",
+      "source": "smart-create-47",
+      "target": "smart-create-48",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-48-error",
+      "source": "smart-create-48",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-48-success",
+      "source": "smart-create-48",
+      "target": "smart-create-49",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-49-error",
+      "source": "smart-create-49",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-47-false",
+      "source": "smart-create-47",
+      "target": "smart-create-50",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-50-true",
+      "source": "smart-create-50",
+      "target": "smart-create-51",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-51-error",
+      "source": "smart-create-51",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-51-success",
+      "source": "smart-create-51",
+      "target": "smart-create-52",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-52-error",
+      "source": "smart-create-52",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-49-success",
+      "source": "smart-create-49",
+      "target": "smart-create-53",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-53-error",
+      "source": "smart-create-53",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-52-success",
+      "source": "smart-create-52",
+      "target": "smart-create-53",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-50-false",
+      "source": "smart-create-50",
+      "target": "smart-create-53",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-53-success",
+      "source": "smart-create-53",
+      "target": "smart-create-54",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-54-true",
+      "source": "smart-create-54",
+      "target": "smart-create-55",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-55-error",
+      "source": "smart-create-55",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-54-false",
+      "source": "smart-create-54",
+      "target": "smart-create-56",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-56-error",
+      "source": "smart-create-56",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-55-success",
+      "source": "smart-create-55",
+      "target": "smart-create-57",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-57-error",
+      "source": "smart-create-57",
+      "target": "smart-create-39",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-56-success",
+      "source": "smart-create-56",
+      "target": "smart-create-57",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-57-success",
+      "source": "smart-create-57",
+      "target": "smart-create-58",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-58-next",
+      "source": "smart-create-58",
+      "target": "smart-create-39",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "smart-create-edge-smart-create-14-false",
+      "source": "smart-create-14",
+      "target": "smart-create-59",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-59-true",
+      "source": "smart-create-59",
+      "target": "smart-create-60",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-60-true",
+      "source": "smart-create-60",
+      "target": "smart-create-61",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "smart-create-edge-smart-create-61-success",
+      "source": "smart-create-61",
+      "target": "smart-create-62",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-5-error",
+      "source": "smart-create-5",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-6-error",
+      "source": "smart-create-6",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-7-error",
+      "source": "smart-create-7",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-8-error",
+      "source": "smart-create-8",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-9-error",
+      "source": "smart-create-9",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-10-error",
+      "source": "smart-create-10",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-11-error",
+      "source": "smart-create-11",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-12-error",
+      "source": "smart-create-12",
+      "target": "smart-create-63",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-13-error",
+      "source": "smart-create-13",
+      "target": "smart-create-64",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-15-false",
+      "source": "smart-create-15",
+      "target": "smart-create-65",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-16-false",
+      "source": "smart-create-16",
+      "target": "smart-create-65",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-17-error",
+      "source": "smart-create-17",
+      "target": "smart-create-64",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-18-false",
+      "source": "smart-create-18",
+      "target": "smart-create-65",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-23-error",
+      "source": "smart-create-23",
+      "target": "smart-create-66",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-24-error",
+      "source": "smart-create-24",
+      "target": "smart-create-67",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-25-error",
+      "source": "smart-create-25",
+      "target": "smart-create-67",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-32-error",
+      "source": "smart-create-32",
+      "target": "smart-create-67",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-34-false",
+      "source": "smart-create-34",
+      "target": "smart-create-68",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-35-error",
+      "source": "smart-create-35",
+      "target": "smart-create-67",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-36-error",
+      "source": "smart-create-36",
+      "target": "smart-create-69",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-37-error",
+      "source": "smart-create-37",
+      "target": "smart-create-69",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-38-next",
+      "source": "smart-create-38",
+      "target": "smart-create-70",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "smart-create-edge-smart-create-59-false",
+      "source": "smart-create-59",
+      "target": "smart-create-71",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-60-false",
+      "source": "smart-create-60",
+      "target": "smart-create-71",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "smart-create-edge-smart-create-61-error",
+      "source": "smart-create-61",
+      "target": "smart-create-72",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "smart-create-edge-smart-create-62-success",
+      "source": "smart-create-62",
+      "target": "smart-create-71",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "smart-create-edge-smart-create-62-error",
+      "source": "smart-create-62",
+      "target": "smart-create-72",
+      "sourceHandle": "error"
+    }
+  ]
+}

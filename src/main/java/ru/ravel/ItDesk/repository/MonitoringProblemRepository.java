@@ -14,6 +14,8 @@ import java.util.Optional;
 @Repository
 public interface MonitoringProblemRepository extends JpaRepository<MonitoringProblem, Long> {
 
+	long countByServiceIdAndStatus(Long serviceId, MonitoringProblem.Status status);
+
 	Optional<MonitoringProblem> findByIntegrationIdAndEventId(Long integrationId, String eventId);
 
 	List<MonitoringProblem> findAllByServiceIdAndStatusOrderBySeverityDescStartedAtDesc(Long serviceId, MonitoringProblem.Status status);

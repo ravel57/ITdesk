@@ -48,6 +48,35 @@ public class TaskService {
 	private final WebSocketService webSocketService;
 	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
 
+	@Transactional(readOnly = true)
+	public long countUnopenedAssignedTasks() {
+		User currentUser = userService.getCurrentUser();
+		if (currentUser == null || currentUser.getId() == null) {
+			throw new org.springframework.security.access.AccessDeniedException("Пользователь не определён");
+		}
+		TaskPageQueryContext context = buildTaskPageQueryContext(
+				false, "", List.of(), List.of(), "AND", null, null, "");
+		context.params().put("openingCurrentUser", currentUser);
+		context.params().put("openingUserId", currentUser.getId());
+		return countTaskPageRows(new TaskPageQueryContext(
+				context.fromWhere() + " and executor = :openingCurrentUser"
+						+ " and not exists (select 1 from TaskOpening opening"
+						+ " where opening.taskId = t.id and opening.userId = :openingUserId) ", context.params()));
+	}
+
+
+	@Transactional
+	public void markTaskOpened(Long taskId) {
+		getTaskForCurrentUser(taskId);
+		User currentUser = userService.getCurrentUser();
+		if (currentUser == null || currentUser.getId() == null) {
+			throw new org.springframework.security.access.AccessDeniedException("Пользователь не определён");
+		}
+		if (taskRepository.markOpened(taskId, currentUser.getId()) > 0) {
+			afterCommitExecutor.run(() -> webSocketService.taskOpened(currentUser, taskId));
+		}
+	}
+
 
 	@Transactional(readOnly = true)
 	public Map<String, Object> getTasksPage(Map<String, Object> request) {

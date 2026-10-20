@@ -1,0 +1,3138 @@
+[
+  {
+    "id": "data.tasks",
+    "label": "Получить заявки",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Загружает заявки клиента или открытые заявки системы. Условия отбора задаются следующим шагом.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "hours",
+        "label": "Период для поиска по всей системе, часов",
+        "type": "number",
+        "defaultValue": 72,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name",
+      "description",
+      "completed",
+      "createdAt",
+      "closedAt",
+      "lastActivity",
+      "enteredLineAt",
+      "serviceId",
+      "typeId",
+      "lineId",
+      "lineLevel",
+      "clientId",
+      "incident"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "description": {
+            "type": "STRING"
+          },
+          "completed": {
+            "type": "BOOLEAN"
+          },
+          "createdAt": {
+            "type": "DATE_TIME"
+          },
+          "closedAt": {
+            "type": "DATE_TIME"
+          },
+          "lastActivity": {
+            "type": "DATE_TIME"
+          },
+          "enteredLineAt": {
+            "type": "DATE_TIME"
+          },
+          "serviceId": {
+            "type": "NUMBER"
+          },
+          "typeId": {
+            "type": "NUMBER"
+          },
+          "lineId": {
+            "type": "NUMBER"
+          },
+          "lineLevel": {
+            "type": "NUMBER"
+          },
+          "clientId": {
+            "type": "NUMBER"
+          },
+          "incident": {
+            "type": "OBJECT",
+            "fields": {
+              "id": {
+                "type": "NUMBER"
+              },
+              "number": {
+                "type": "STRING"
+              },
+              "name": {
+                "type": "STRING"
+              },
+              "title": {
+                "type": "STRING"
+              },
+              "description": {
+                "type": "STRING"
+              },
+              "status": {
+                "type": "STRING"
+              },
+              "severity": {
+                "type": "STRING"
+              },
+              "serviceIds": {
+                "type": "LIST",
+                "element": {
+                  "type": "NUMBER"
+                }
+              }
+            }
+          },
+          "assigneeId": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "tasks"
+  },
+  {
+    "id": "data.messages",
+    "label": "Получить сообщения клиента",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Загружает сообщения от новых к старым. Фильтры применяются до ограничения количества.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "incomingOnly",
+        "label": "Только входящие сообщения клиента",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "Исключить исходящие, комментарии, системные и удалённые сообщения до ограничения количества.",
+        "required": false,
+        "valueType": "boolean"
+      },
+      {
+        "key": "newestFirstById",
+        "label": "Сначала последние поступившие (по ID)",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "Порядок поступления в систему, независимо от времени на стороне отправителя.",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "text",
+      "date",
+      "sent",
+      "comment",
+      "system",
+      "deleted",
+      "fromSource"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "text": {
+            "type": "STRING"
+          },
+          "date": {
+            "type": "DATE_TIME"
+          },
+          "fromSource": {
+            "type": "STRING"
+          },
+          "sent": {
+            "type": "BOOLEAN"
+          },
+          "comment": {
+            "type": "BOOLEAN"
+          },
+          "system": {
+            "type": "BOOLEAN"
+          },
+          "deleted": {
+            "type": "BOOLEAN"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "messages"
+  },
+  {
+    "id": "data.services",
+    "label": "Получить доступные сервисы",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Каталог активных сервисов, доступных организации.",
+    "fields": [
+      {
+        "key": "organizationId",
+        "label": "Организация",
+        "type": "expression",
+        "defaultValue": "=client.organization.id",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name",
+      "description",
+      "allowedTypeIds",
+      "ownerId",
+      "executorIds",
+      "lineId"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "description": {
+            "type": "STRING"
+          },
+          "allowedTypeIds": {
+            "type": "LIST",
+            "element": {
+              "type": "NUMBER"
+            }
+          },
+          "ownerId": {
+            "type": "NUMBER"
+          },
+          "executorIds": {
+            "type": "LIST",
+            "element": {
+              "type": "NUMBER"
+            }
+          },
+          "lineId": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "services"
+  },
+  {
+    "id": "data.taskTypes",
+    "label": "Получить типы заявок",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Каталог типов заявок, включая связи с сервисами.",
+    "fields": [
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.priorities",
+    "label": "Получить приоритеты",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Каталог приоритетов.",
+    "fields": [
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name",
+      "critical",
+      "order"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "critical": {
+            "type": "BOOLEAN"
+          },
+          "order": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.lines",
+    "label": "Получить линии поддержки",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Каталог линий: уровень, активность, участники и ответственный.",
+    "fields": [
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name",
+      "description",
+      "level",
+      "active",
+      "memberIds",
+      "responsibleId"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "description": {
+            "type": "STRING"
+          },
+          "level": {
+            "type": "NUMBER"
+          },
+          "active": {
+            "type": "BOOLEAN"
+          },
+          "memberIds": {
+            "type": "LIST",
+            "element": {
+              "type": "NUMBER"
+            }
+          },
+          "responsibleId": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.articles",
+    "label": "Получить статьи базы знаний",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Статьи с заголовком и текстом.",
+    "fields": [
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name",
+      "text"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "text": {
+            "type": "STRING"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "articles"
+  },
+  {
+    "id": "data.incidents",
+    "label": "Получить инциденты",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Инциденты сервиса. Статусы и порядок выбираются в следующем шаге.",
+    "fields": [
+      {
+        "key": "serviceId",
+        "label": "Сервис",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "services",
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "number",
+      "title",
+      "description",
+      "status",
+      "severity",
+      "serviceIds"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "number": {
+            "type": "STRING"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "title": {
+            "type": "STRING"
+          },
+          "description": {
+            "type": "STRING"
+          },
+          "status": {
+            "type": "STRING"
+          },
+          "severity": {
+            "type": "STRING"
+          },
+          "serviceIds": {
+            "type": "LIST",
+            "element": {
+              "type": "NUMBER"
+            }
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.links",
+    "label": "Получить связи заявок с инцидентами",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Активные связи. Можно задать заявку, инцидент или клиента.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "taskId",
+      "task",
+      "incident",
+      "confirmed"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "taskId": {
+            "type": "NUMBER"
+          },
+          "task": {
+            "type": "OBJECT",
+            "fields": {
+              "id": {
+                "type": "NUMBER"
+              },
+              "name": {
+                "type": "STRING"
+              },
+              "description": {
+                "type": "STRING"
+              },
+              "completed": {
+                "type": "BOOLEAN"
+              },
+              "createdAt": {
+                "type": "DATE_TIME"
+              },
+              "closedAt": {
+                "type": "DATE_TIME"
+              },
+              "lastActivity": {
+                "type": "DATE_TIME"
+              },
+              "enteredLineAt": {
+                "type": "DATE_TIME"
+              },
+              "serviceId": {
+                "type": "NUMBER"
+              },
+              "typeId": {
+                "type": "NUMBER"
+              },
+              "lineId": {
+                "type": "NUMBER"
+              },
+              "lineLevel": {
+                "type": "NUMBER"
+              },
+              "clientId": {
+                "type": "NUMBER"
+              },
+              "incident": {
+                "type": "OBJECT",
+                "fields": {
+                  "id": {
+                    "type": "NUMBER"
+                  },
+                  "number": {
+                    "type": "STRING"
+                  },
+                  "name": {
+                    "type": "STRING"
+                  },
+                  "title": {
+                    "type": "STRING"
+                  },
+                  "description": {
+                    "type": "STRING"
+                  },
+                  "status": {
+                    "type": "STRING"
+                  },
+                  "severity": {
+                    "type": "STRING"
+                  },
+                  "serviceIds": {
+                    "type": "LIST",
+                    "element": {
+                      "type": "NUMBER"
+                    }
+                  }
+                }
+              },
+              "assigneeId": {
+                "type": "NUMBER"
+              }
+            }
+          },
+          "incident": {
+            "type": "OBJECT",
+            "fields": {
+              "id": {
+                "type": "NUMBER"
+              },
+              "number": {
+                "type": "STRING"
+              },
+              "name": {
+                "type": "STRING"
+              },
+              "title": {
+                "type": "STRING"
+              },
+              "description": {
+                "type": "STRING"
+              },
+              "status": {
+                "type": "STRING"
+              },
+              "severity": {
+                "type": "STRING"
+              },
+              "serviceIds": {
+                "type": "LIST",
+                "element": {
+                  "type": "NUMBER"
+                }
+              }
+            }
+          },
+          "confirmed": {
+            "type": "BOOLEAN"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.monitoring",
+    "label": "Получить проблемы мониторинга",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Проблемы сервиса, включая открытые и устранённые.",
+    "fields": [
+      {
+        "key": "serviceId",
+        "label": "Сервис",
+        "type": "expression",
+        "defaultValue": "=service.id",
+        "help": "",
+        "required": true,
+        "entityCatalog": "services",
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "status": {
+            "type": "STRING"
+          },
+          "severity": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.affectedClients",
+    "label": "Получить клиенты сервиса",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Количество клиентов организаций с действующим подключением сервиса.",
+    "fields": [
+      {
+        "key": "serviceId",
+        "label": "Сервис",
+        "type": "expression",
+        "defaultValue": "=service.id",
+        "help": "",
+        "required": true,
+        "entityCatalog": "services",
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Число клиентов",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "NUMBER"
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.users",
+    "label": "Получить пользователи",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Активность и признак администратора доступны для отбора.",
+    "fields": [
+      {
+        "key": "limit",
+        "label": "Максимум записей",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список объектов: id и поля сущности. Примеры полей показаны в справке операции.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "enabled": {
+            "type": "BOOLEAN"
+          },
+          "admin": {
+            "type": "BOOLEAN"
+          }
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "list.select",
+    "label": "Отобрать и упорядочить",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Для каждого элемента проверяется условие. В условии элемент доступен как var.item.",
+    "fields": [
+      {
+        "key": "items",
+        "label": "Исходный список",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "where",
+        "label": "Условие отбора",
+        "type": "script",
+        "defaultValue": "true",
+        "help": "Условие для каждого элемента списка. Текущий элемент — var.item; доступны также переменные сценария.",
+        "required": false,
+        "contextSource": "items"
+      },
+      {
+        "key": "sortBy",
+        "label": "Поле сортировки",
+        "type": "script",
+        "defaultValue": "var.item.id",
+        "help": "Выберите поле текущего элемента из подсказок, например var.item.createdAt. Можно задать вычисляемое значение.",
+        "required": false,
+        "contextSource": "items",
+        "legacyItemPath": true
+      },
+      {
+        "key": "descending",
+        "label": "Сначала большие / новые",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "",
+        "required": false,
+        "valueType": "boolean"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум результатов",
+        "type": "number",
+        "defaultValue": 100,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "distinctBy",
+        "label": "Поле уникальности (необязательно)",
+        "type": "script",
+        "defaultValue": "",
+        "help": "Значение для удаления повторов, например var.item.id. Оставьте пустым, чтобы сохранить повторы.",
+        "required": false,
+        "contextSource": "items",
+        "legacyItemPath": true
+      }
+    ],
+    "result": "Список подходящих элементов. Методы .size(), .first(), .last().",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "UNKNOWN"
+      }
+    },
+    "icon": "filter_list",
+    "defaultResultVariable": "selected"
+  },
+  {
+    "id": "list.project",
+    "label": "Получить поля списка",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Вычисляет значение для каждого элемента. Например var.item.id.",
+    "fields": [
+      {
+        "key": "items",
+        "label": "Исходный список",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "expression",
+        "label": "Значение элемента",
+        "type": "script",
+        "defaultValue": "var.item.id",
+        "help": "Значение для каждого элемента списка, например var.item.id.",
+        "required": false,
+        "contextSource": "items"
+      }
+    ],
+    "result": "Список вычисленных значений",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "UNKNOWN"
+      }
+    },
+    "icon": "view_list",
+    "defaultResultVariable": "values"
+  },
+  {
+    "id": "list.concat",
+    "label": "Объединить списки",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Объединяет два списка, убирая одинаковые элементы.",
+    "fields": [
+      {
+        "key": "first",
+        "label": "Первый список",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "second",
+        "label": "Второй список",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      }
+    ],
+    "result": "Объединённый список",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "UNKNOWN"
+      }
+    },
+    "icon": "merge",
+    "defaultResultVariable": "combined"
+  },
+  {
+    "id": "text.limit",
+    "label": "Ограничить длину текста",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Ограничивает число символов, добавляя многоточие.",
+    "fields": [
+      {
+        "key": "text",
+        "label": "Текст",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "length",
+        "label": "Максимум символов",
+        "type": "number",
+        "defaultValue": 80,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "firstLine",
+        "label": "Взять только первую строку",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "Подходит для названия заявки.",
+        "required": false,
+        "valueType": "boolean"
+      }
+    ],
+    "result": "Строка",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "STRING"
+    },
+    "icon": "short_text",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "ai.decide",
+    "label": "Оценить через Jev",
+    "group": "Решения ИИ",
+    "effect": "ANALYSIS",
+    "description": "Возвращает оценку без изменения данных. Вопрос, варианты и пороги находятся в графе.",
+    "fields": [
+      {
+        "key": "state",
+        "label": "Что анализировать",
+        "type": "expression",
+        "defaultValue": "=message.text",
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "question",
+        "label": "Вопрос для Jev",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "kind",
+        "label": "Тип ответа",
+        "type": "select",
+        "defaultValue": "choice",
+        "help": "",
+        "required": false,
+        "valueType": "text",
+        "options": [
+          {
+            "label": "Выбрать вариант",
+            "value": "choice"
+          },
+          {
+            "label": "Вероятность ответа ДА",
+            "value": "noul"
+          }
+        ]
+      },
+      {
+        "key": "candidates",
+        "label": "Варианты из списка",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "labelField",
+        "label": "Поле с описанием варианта",
+        "type": "script",
+        "defaultValue": "var.item.name",
+        "help": "Выберите поле варианта из контекста, например var.item.name. Используется, если выражение описания не задано.",
+        "required": false,
+        "contextSource": "candidates",
+        "legacyItemPath": true
+      },
+      {
+        "key": "options",
+        "label": "Дополнительные варианты",
+        "type": "options",
+        "defaultValue": {
+          "__none__": "Ни один вариант не подходит"
+        },
+        "help": "",
+        "required": false,
+        "valueType": "object"
+      },
+      {
+        "key": "yes",
+        "label": "Что означает ДА",
+        "type": "text",
+        "defaultValue": "Да",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "no",
+        "label": "Что означает НЕТ",
+        "type": "text",
+        "defaultValue": "Нет",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "labelExpression",
+        "label": "Описание варианта (выражение, необязательно)",
+        "type": "script",
+        "defaultValue": "",
+        "help": "Описание каждого варианта, например var.item.name + \": \" + var.item.description.",
+        "required": false,
+        "contextSource": "candidates"
+      }
+    ],
+    "result": "Объект: available (был ли ответ), status, choice, probability, value (выбранный объект). Для ответа да/нет probability — вероятность ДА.",
+    "resultFields": [
+      "available",
+      "status",
+      "choice",
+      "probability",
+      "value"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "available": {
+          "type": "BOOLEAN"
+        },
+        "status": {
+          "type": "STRING"
+        },
+        "choice": {
+          "type": "STRING"
+        },
+        "probability": {
+          "type": "NUMBER"
+        },
+        "value": {
+          "type": "UNKNOWN"
+        }
+      }
+    },
+    "icon": "psychology",
+    "defaultResultVariable": "decision"
+  },
+  {
+    "id": "ai.generate",
+    "label": "Сформулировать текст через ИИ",
+    "group": "Решения ИИ",
+    "effect": "ANALYSIS",
+    "description": "Выполняется в фоне с сохранением продолжения. Инструкция редактируется в графе.",
+    "fields": [
+      {
+        "key": "prompt",
+        "label": "Инструкция и исходные данные",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: text. Ошибка переходит на выход «Ошибка».",
+    "resultFields": [
+      "text"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "text": {
+          "type": "STRING"
+        }
+      }
+    },
+    "icon": "auto_awesome",
+    "defaultResultVariable": "generatedText"
+  },
+  {
+    "id": "task.create",
+    "label": "Создать заявку",
+    "group": "Заявки",
+    "effect": "WRITE",
+    "description": "Создаёт одну заявку и возвращает её. Повтор шага не создаёт вторую заявку.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "title",
+        "label": "Заголовок",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "description",
+        "label": "Описание",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "serviceId",
+        "label": "Сервис",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "services",
+        "valueType": "number"
+      },
+      {
+        "key": "typeId",
+        "label": "Тип",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "taskTypes",
+        "valueType": "number"
+      },
+      {
+        "key": "lineId",
+        "label": "Линия",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "supportLines",
+        "valueType": "number"
+      },
+      {
+        "key": "priorityId",
+        "label": "Приоритет",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "priorities",
+        "valueType": "number"
+      },
+      {
+        "key": "messageId",
+        "label": "Исходное сообщение",
+        "type": "expression",
+        "defaultValue": "=message.id",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект: id, name, serviceId, typeId, lineId",
+    "resultFields": [
+      "id",
+      "name",
+      "serviceId",
+      "typeId",
+      "lineId"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "typeId": {
+          "type": "NUMBER"
+        },
+        "lineId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "add_task",
+    "defaultResultVariable": "createdTask"
+  },
+  {
+    "id": "task.update",
+    "label": "Изменить заявку",
+    "group": "Заявки",
+    "effect": "WRITE",
+    "description": "Изменяет только указанные поля. Доступность типа и сервиса проверяет сервер.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "fields",
+        "label": "Изменения полей",
+        "type": "json",
+        "defaultValue": {},
+        "help": "",
+        "required": true,
+        "valueType": "object"
+      }
+    ],
+    "result": "Объект заявки. Поля изменения: name, description, serviceId, typeId, priorityId, lineId, status, clearAssignee.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "completed": {
+          "type": "BOOLEAN"
+        },
+        "createdAt": {
+          "type": "DATE_TIME"
+        },
+        "closedAt": {
+          "type": "DATE_TIME"
+        },
+        "lastActivity": {
+          "type": "DATE_TIME"
+        },
+        "enteredLineAt": {
+          "type": "DATE_TIME"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "typeId": {
+          "type": "NUMBER"
+        },
+        "lineId": {
+          "type": "NUMBER"
+        },
+        "lineLevel": {
+          "type": "NUMBER"
+        },
+        "clientId": {
+          "type": "NUMBER"
+        },
+        "incident": {
+          "type": "OBJECT",
+          "fields": {
+            "id": {
+              "type": "NUMBER"
+            },
+            "number": {
+              "type": "STRING"
+            },
+            "name": {
+              "type": "STRING"
+            },
+            "title": {
+              "type": "STRING"
+            },
+            "description": {
+              "type": "STRING"
+            },
+            "status": {
+              "type": "STRING"
+            },
+            "severity": {
+              "type": "STRING"
+            },
+            "serviceIds": {
+              "type": "LIST",
+              "element": {
+                "type": "NUMBER"
+              }
+            }
+          }
+        },
+        "assigneeId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "edit_note",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "client.note",
+    "label": "Добавить внутренний комментарий",
+    "group": "Сообщения и уведомления",
+    "effect": "WRITE",
+    "description": "Текст поддерживает подстановки {{ var.name }}.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "text",
+        "label": "Текст",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: sent",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "sent": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "add_comment",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "client.message",
+    "label": "Отправить сообщение клиенту",
+    "group": "Сообщения и уведомления",
+    "effect": "WRITE",
+    "description": "Текст поддерживает подстановки {{ var.name }}.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "text",
+        "label": "Текст",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: sent",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "sent": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "send",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "client.replyFlag",
+    "label": "Установить необходимость ответа",
+    "group": "Сообщения и уведомления",
+    "effect": "WRITE",
+    "description": "Сохраняет таймер первого сообщения цепочки при повторной установке.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "messageId",
+        "label": "Сообщение",
+        "type": "expression",
+        "defaultValue": "=message.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "required",
+        "label": "Нужен ответ",
+        "type": "boolean",
+        "defaultValue": true,
+        "help": "",
+        "required": false,
+        "valueType": "boolean"
+      }
+    ],
+    "result": "Объект: changed",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "changed": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "mark_chat_unread",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "incident.create",
+    "label": "Создать черновик инцидента",
+    "group": "Инциденты",
+    "effect": "WRITE",
+    "description": "Создаёт черновик с явно заданными параметрами. Не выбирает серьёзность и не отправляет уведомления.",
+    "fields": [
+      {
+        "key": "title",
+        "label": "Заголовок",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "description",
+        "label": "Описание",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "publicDescription",
+        "label": "Текст для клиентов",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "impact",
+        "label": "Влияние",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "severity",
+        "label": "Серьёзность",
+        "type": "text",
+        "defaultValue": "P3",
+        "help": "",
+        "required": true,
+        "valueType": "text",
+        "options": [
+          {
+            "label": "P1",
+            "value": "P1"
+          },
+          {
+            "label": "P2",
+            "value": "P2"
+          },
+          {
+            "label": "P3",
+            "value": "P3"
+          },
+          {
+            "label": "P4",
+            "value": "P4"
+          }
+        ]
+      },
+      {
+        "key": "serviceId",
+        "label": "Сервис",
+        "type": "expression",
+        "defaultValue": "=service.id",
+        "help": "",
+        "required": true,
+        "entityCatalog": "services",
+        "valueType": "number"
+      },
+      {
+        "key": "lineId",
+        "label": "Линия",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "supportLines",
+        "valueType": "number"
+      },
+      {
+        "key": "ownerId",
+        "label": "Ответственный",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "entityCatalog": "users",
+        "valueType": "number"
+      },
+      {
+        "key": "participantIds",
+        "label": "Участники",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "array"
+      },
+      {
+        "key": "intervalMinutes",
+        "label": "Интервал обновлений, минут",
+        "type": "number",
+        "defaultValue": 60,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "startedAt",
+        "label": "Начало проблемы",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      }
+    ],
+    "result": "Объект: id, number, title, status, severity",
+    "resultFields": [
+      "id",
+      "number",
+      "title",
+      "status",
+      "severity"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "number": {
+          "type": "STRING"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "title": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "status": {
+          "type": "STRING"
+        },
+        "severity": {
+          "type": "STRING"
+        },
+        "serviceIds": {
+          "type": "LIST",
+          "element": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "campaign",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "incident.note",
+    "label": "Добавить заметку",
+    "group": "Инциденты",
+    "effect": "WRITE",
+    "description": "Добавляет одну заметку.",
+    "fields": [
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "text",
+        "label": "Текст",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "campaign",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "incident.confirm",
+    "label": "Подтверждение восстановления",
+    "group": "Инциденты",
+    "effect": "WRITE",
+    "description": "Устанавливает или снимает подтверждение клиента.",
+    "fields": [
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "confirmed",
+        "label": "Восстановление подтверждено",
+        "type": "boolean",
+        "defaultValue": true,
+        "help": "",
+        "required": false,
+        "valueType": "boolean"
+      },
+      {
+        "key": "reason",
+        "label": "Причина",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "campaign",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "incident.reportProblem",
+    "label": "Сообщить о проблеме после восстановления",
+    "group": "Инциденты",
+    "effect": "WRITE",
+    "description": "Записывает проблему и уведомляет ответственных средствами инцидента.",
+    "fields": [
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "text",
+        "label": "Описание",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "campaign",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "incident.observe",
+    "label": "Начать проверку восстановления",
+    "group": "Инциденты",
+    "effect": "WRITE",
+    "description": "Переводит объявленный инцидент в наблюдение с проверкой допустимости перехода.",
+    "fields": [
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "reason",
+        "label": "Причина",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "campaign",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "incident.linkTasks",
+    "label": "Привязать заявки",
+    "group": "Инциденты",
+    "effect": "WRITE",
+    "description": "Привязывает указанные заявки к инциденту.",
+    "fields": [
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "taskIds",
+        "label": "Заявки",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "array"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "campaign",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "notify.user",
+    "label": "Уведомить сотрудника",
+    "group": "Сообщения и уведомления",
+    "effect": "WRITE",
+    "description": "Создаёт стандартное уведомление.",
+    "fields": [
+      {
+        "key": "userId",
+        "label": "Сотрудник",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "entityCatalog": "users",
+        "valueType": "number"
+      },
+      {
+        "key": "text",
+        "label": "Текст",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "notifications",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "state.claim",
+    "label": "Выполнить один раз по ключу",
+    "group": "Защита от повторов",
+    "effect": "WRITE",
+    "description": "Первый вызов возвращает acquired=true. Последующие — false. Например ключ «статья:клиент:ID».",
+    "fields": [
+      {
+        "key": "key",
+        "label": "Ключ уникальности",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект результата; для state.claim — acquired.",
+    "resultFields": [
+      "acquired"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "acquired": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "verified",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "value.set",
+    "label": "Подготовить значение",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Сохраняет текст, число, список или объект. Внутри объекта можно использовать выражения и подстановки.",
+    "fields": [
+      {
+        "key": "value",
+        "label": "Значение",
+        "type": "json",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "object"
+      }
+    ],
+    "result": "Переданное значение",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "data_object",
+    "defaultResultVariable": "value"
+  },
+  {
+    "id": "lock.key",
+    "label": "Последовательная обработка по ключу",
+    "group": "Защита от повторов",
+    "effect": "CONTROL",
+    "description": "До конца транзакции сериализует изменения одного объекта, например события одного сервиса.",
+    "fields": [
+      {
+        "key": "key",
+        "label": "Ключ",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: locked",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "locked": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "lock",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "data.task",
+    "label": "Получить заявку",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Возвращает объект по ID или null, если он удалён.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "ID объекта",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект с полями сущности",
+    "resultFields": [
+      "id",
+      "name",
+      "description",
+      "completed",
+      "createdAt",
+      "closedAt",
+      "lastActivity",
+      "enteredLineAt",
+      "serviceId",
+      "typeId",
+      "lineId",
+      "lineLevel",
+      "clientId",
+      "incident"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "completed": {
+          "type": "BOOLEAN"
+        },
+        "createdAt": {
+          "type": "DATE_TIME"
+        },
+        "closedAt": {
+          "type": "DATE_TIME"
+        },
+        "lastActivity": {
+          "type": "DATE_TIME"
+        },
+        "enteredLineAt": {
+          "type": "DATE_TIME"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "typeId": {
+          "type": "NUMBER"
+        },
+        "lineId": {
+          "type": "NUMBER"
+        },
+        "lineLevel": {
+          "type": "NUMBER"
+        },
+        "clientId": {
+          "type": "NUMBER"
+        },
+        "incident": {
+          "type": "OBJECT",
+          "fields": {
+            "id": {
+              "type": "NUMBER"
+            },
+            "number": {
+              "type": "STRING"
+            },
+            "name": {
+              "type": "STRING"
+            },
+            "title": {
+              "type": "STRING"
+            },
+            "description": {
+              "type": "STRING"
+            },
+            "status": {
+              "type": "STRING"
+            },
+            "severity": {
+              "type": "STRING"
+            },
+            "serviceIds": {
+              "type": "LIST",
+              "element": {
+                "type": "NUMBER"
+              }
+            }
+          }
+        },
+        "assigneeId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "loadedTask"
+  },
+  {
+    "id": "data.service",
+    "label": "Получить сервис",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Возвращает объект по ID или null, если он удалён.",
+    "fields": [
+      {
+        "key": "serviceId",
+        "label": "ID объекта",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "entityCatalog": "services",
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект с полями сущности",
+    "resultFields": [
+      "id",
+      "name",
+      "description",
+      "allowedTypeIds",
+      "ownerId",
+      "executorIds",
+      "lineId"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "allowedTypeIds": {
+          "type": "LIST",
+          "element": {
+            "type": "NUMBER"
+          }
+        },
+        "ownerId": {
+          "type": "NUMBER"
+        },
+        "executorIds": {
+          "type": "LIST",
+          "element": {
+            "type": "NUMBER"
+          }
+        },
+        "lineId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "loadedService"
+  },
+  {
+    "id": "data.monitoringCount",
+    "label": "Посчитать проблемы мониторинга",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Точный подсчёт по сервису и статусу без ограничения выборки.",
+    "fields": [
+      {
+        "key": "serviceId",
+        "label": "Сервис",
+        "type": "expression",
+        "defaultValue": "=service.id",
+        "help": "",
+        "required": true,
+        "entityCatalog": "services",
+        "valueType": "number"
+      },
+      {
+        "key": "status",
+        "label": "Статус",
+        "type": "text",
+        "defaultValue": "OPEN",
+        "help": "",
+        "required": true,
+        "valueType": "text",
+        "options": [
+          {
+            "label": "OPEN",
+            "value": "OPEN"
+          },
+          {
+            "label": "RESOLVED",
+            "value": "RESOLVED"
+          }
+        ]
+      }
+    ],
+    "result": "Число проблем",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "NUMBER"
+    },
+    "icon": "download",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.analyze",
+    "label": "Разметить сигнал сбоя",
+    "group": "Сигналы сбоев",
+    "effect": "ANALYSIS",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "analysisThreshold",
+        "label": "Уверенность выбора сервиса",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект: signalId, probability, serviceId, serviceName, symptom, organizationId, monitoringStatus, matchedIncidentId, matchedIncidentNumber. null — ответа нет.",
+    "resultFields": [
+      "signalId",
+      "probability",
+      "serviceId",
+      "serviceName",
+      "symptom",
+      "monitoringStatus",
+      "matchedIncidentId",
+      "matchedIncidentNumber"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "signalId": {
+          "type": "NUMBER"
+        },
+        "probability": {
+          "type": "NUMBER"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "serviceName": {
+          "type": "STRING"
+        },
+        "symptom": {
+          "type": "STRING"
+        },
+        "organizationId": {
+          "type": "NUMBER"
+        },
+        "monitoringStatus": {
+          "type": "STRING"
+        },
+        "matchedIncidentId": {
+          "type": "NUMBER"
+        },
+        "matchedIncidentNumber": {
+          "type": "STRING"
+        }
+      }
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.verify",
+    "label": "Проверить сходство обращений",
+    "group": "Сигналы сбоев",
+    "effect": "ANALYSIS",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "signalId",
+        "label": "Сигнал",
+        "type": "expression",
+        "defaultValue": "=var.outage.signalId",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "window",
+        "label": "Пачка обращений",
+        "type": "expression",
+        "defaultValue": "=var.window",
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "analysisThreshold",
+        "label": "Уверенность выбора причины",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект: sameProblem (вероятность 0..1), severity, severityScore, cause.",
+    "resultFields": [
+      "sameProblem",
+      "severity",
+      "severityScore",
+      "cause"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "sameProblem": {
+          "type": "NUMBER"
+        },
+        "severity": {
+          "type": "STRING"
+        },
+        "severityScore": {
+          "type": "NUMBER"
+        },
+        "cause": {
+          "type": "STRING"
+        }
+      }
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.count",
+    "label": "Посчитать обращения в окне",
+    "group": "Сигналы сбоев",
+    "effect": "READ",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "signalId",
+        "label": "Сигнал",
+        "type": "expression",
+        "defaultValue": "=var.outage.signalId",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "windowMinutes",
+        "label": "Окно, минут",
+        "type": "expression",
+        "defaultValue": 15,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "scope",
+        "label": "Область подсчёта",
+        "type": "expression",
+        "defaultValue": "all",
+        "help": "all — все организации; organization — организация текущего клиента. GLOBAL из ранее сохранённых графов также поддерживается.",
+        "required": false
+      }
+    ],
+    "result": "Объект: clients, signalIds, windowMinutes.",
+    "resultFields": [
+      "clients",
+      "signalIds",
+      "windowMinutes"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "clients": {
+          "type": "NUMBER"
+        },
+        "signalIds": {
+          "type": "LIST",
+          "element": {
+            "type": "NUMBER"
+          }
+        },
+        "windowMinutes": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.cooldown",
+    "label": "Получить данные о паузе",
+    "group": "Сигналы сбоев",
+    "effect": "READ",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "signalId",
+        "label": "Сигнал",
+        "type": "expression",
+        "defaultValue": "=var.outage.signalId",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "minutes",
+        "label": "Пауза, минут",
+        "type": "expression",
+        "defaultValue": 60,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "onlyWithIncident",
+        "label": "Учитывать только созданные инциденты",
+        "type": "expression",
+        "defaultValue": false,
+        "help": "",
+        "required": false
+      }
+    ],
+    "result": "Объект: active, incidentId.",
+    "resultFields": [
+      "active",
+      "incidentId"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "active": {
+          "type": "BOOLEAN"
+        },
+        "incidentId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.mark",
+    "label": "Отметить обработку сигнала",
+    "group": "Сигналы сбоев",
+    "effect": "WRITE",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "signalId",
+        "label": "Сигнал",
+        "type": "expression",
+        "defaultValue": "=var.outage.signalId",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "decision",
+        "label": "Решение",
+        "type": "expression",
+        "defaultValue": "COUNTED",
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Результат записи.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.attach",
+    "label": "Привязать сигнал к инциденту",
+    "group": "Сигналы сбоев",
+    "effect": "WRITE",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "signalId",
+        "label": "Сигнал",
+        "type": "expression",
+        "defaultValue": "=var.outage.signalId",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "incidentId",
+        "label": "Инцидент",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "lookbackMinutes",
+        "label": "Связать обращения за окно, минут",
+        "type": "expression",
+        "defaultValue": 15,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Результат привязки.",
+    "resultFields": [],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "UNKNOWN"
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "signal.create",
+    "label": "Создать инцидент по выбранной пачке",
+    "group": "Сигналы сбоев",
+    "effect": "WRITE",
+    "description": "Все пороги и решения задаются соседними шагами графа.",
+    "fields": [
+      {
+        "key": "signalId",
+        "label": "Сигнал",
+        "type": "expression",
+        "defaultValue": "=var.outage.signalId",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "window",
+        "label": "Пачка",
+        "type": "expression",
+        "defaultValue": "=var.window",
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "verdict",
+        "label": "Оценка",
+        "type": "expression",
+        "defaultValue": "=var.verdict",
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "severity",
+        "label": "Серьёзность",
+        "type": "expression",
+        "defaultValue": "=var.severity",
+        "help": "",
+        "required": false,
+        "valueType": "text",
+        "options": [
+          {
+            "label": "P1",
+            "value": "P1"
+          },
+          {
+            "label": "P2",
+            "value": "P2"
+          },
+          {
+            "label": "P3",
+            "value": "P3"
+          },
+          {
+            "label": "P4",
+            "value": "P4"
+          }
+        ]
+      },
+      {
+        "key": "p1Interval",
+        "label": "Интервал P1",
+        "type": "expression",
+        "defaultValue": 15,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "p2Interval",
+        "label": "Интервал P2",
+        "type": "expression",
+        "defaultValue": 30,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "p3Interval",
+        "label": "Интервал P3",
+        "type": "expression",
+        "defaultValue": 60,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "p4Interval",
+        "label": "Интервал P4",
+        "type": "expression",
+        "defaultValue": 120,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект: id, number. Атомарно связывает выбранные сигналы и заявки с созданным инцидентом.",
+    "resultFields": [
+      "id",
+      "number"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "number": {
+          "type": "STRING"
+        }
+      }
+    },
+    "icon": "hub",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "state.release",
+    "label": "Разрешить повтор по ключу",
+    "group": "Защита от повторов",
+    "effect": "WRITE",
+    "description": "Удаляет отметку выполнения. Используйте явно в ветке ошибки, если действие не удалось.",
+    "fields": [
+      {
+        "key": "key",
+        "label": "Ключ уникальности",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: released",
+    "resultFields": [
+      "released"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "released": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "lock_open",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "task.addTag",
+    "label": "Добавить тег заявке",
+    "group": "Заявки",
+    "effect": "WRITE",
+    "description": "Выполняет действие для выбранной заявки. Значения можно задать явно или вычислить скриптом.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "required": true,
+        "help": "ID заявки из события или результата предыдущего шага.",
+        "valueType": "number"
+      },
+      {
+        "key": "tag",
+        "label": "Тег",
+        "type": "text",
+        "defaultValue": "",
+        "required": true,
+        "help": "",
+        "valueType": "text",
+        "entityCatalog": "tags"
+      }
+    ],
+    "result": "Обновлённая заявка",
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "completed": {
+          "type": "BOOLEAN"
+        },
+        "createdAt": {
+          "type": "DATE_TIME"
+        },
+        "closedAt": {
+          "type": "DATE_TIME"
+        },
+        "lastActivity": {
+          "type": "DATE_TIME"
+        },
+        "enteredLineAt": {
+          "type": "DATE_TIME"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "typeId": {
+          "type": "NUMBER"
+        },
+        "lineId": {
+          "type": "NUMBER"
+        },
+        "lineLevel": {
+          "type": "NUMBER"
+        },
+        "clientId": {
+          "type": "NUMBER"
+        },
+        "incident": {
+          "type": "OBJECT",
+          "fields": {
+            "id": {
+              "type": "NUMBER"
+            },
+            "number": {
+              "type": "STRING"
+            },
+            "name": {
+              "type": "STRING"
+            },
+            "title": {
+              "type": "STRING"
+            },
+            "description": {
+              "type": "STRING"
+            },
+            "status": {
+              "type": "STRING"
+            },
+            "severity": {
+              "type": "STRING"
+            },
+            "serviceIds": {
+              "type": "LIST",
+              "element": {
+                "type": "NUMBER"
+              }
+            }
+          }
+        },
+        "assigneeId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "label",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "task.removeTag",
+    "label": "Удалить тег заявки",
+    "group": "Заявки",
+    "effect": "WRITE",
+    "description": "Выполняет действие для выбранной заявки. Значения можно задать явно или вычислить скриптом.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "required": true,
+        "help": "ID заявки из события или результата предыдущего шага.",
+        "valueType": "number"
+      },
+      {
+        "key": "tag",
+        "label": "Тег",
+        "type": "text",
+        "defaultValue": "",
+        "required": true,
+        "help": "",
+        "valueType": "text",
+        "entityCatalog": "tags"
+      }
+    ],
+    "result": "Обновлённая заявка",
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "completed": {
+          "type": "BOOLEAN"
+        },
+        "createdAt": {
+          "type": "DATE_TIME"
+        },
+        "closedAt": {
+          "type": "DATE_TIME"
+        },
+        "lastActivity": {
+          "type": "DATE_TIME"
+        },
+        "enteredLineAt": {
+          "type": "DATE_TIME"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "typeId": {
+          "type": "NUMBER"
+        },
+        "lineId": {
+          "type": "NUMBER"
+        },
+        "lineLevel": {
+          "type": "NUMBER"
+        },
+        "clientId": {
+          "type": "NUMBER"
+        },
+        "incident": {
+          "type": "OBJECT",
+          "fields": {
+            "id": {
+              "type": "NUMBER"
+            },
+            "number": {
+              "type": "STRING"
+            },
+            "name": {
+              "type": "STRING"
+            },
+            "title": {
+              "type": "STRING"
+            },
+            "description": {
+              "type": "STRING"
+            },
+            "status": {
+              "type": "STRING"
+            },
+            "severity": {
+              "type": "STRING"
+            },
+            "serviceIds": {
+              "type": "LIST",
+              "element": {
+                "type": "NUMBER"
+              }
+            }
+          }
+        },
+        "assigneeId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "label_off",
+    "defaultResultVariable": ""
+  },
+  {
+    "id": "task.assignLeastLoaded",
+    "label": "Назначить наименее загруженного сотрудника",
+    "group": "Заявки",
+    "effect": "WRITE",
+    "description": "Выполняет действие для выбранной заявки. Значения можно задать явно или вычислить скриптом.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "required": true,
+        "help": "ID заявки из события или результата предыдущего шага.",
+        "valueType": "number"
+      },
+      {
+        "key": "lineId",
+        "label": "Линия поддержки",
+        "type": "expression",
+        "defaultValue": null,
+        "required": true,
+        "help": "",
+        "entityCatalog": "supportLines",
+        "valueType": "number"
+      }
+    ],
+    "result": "Обновлённая заявка",
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "id": {
+          "type": "NUMBER"
+        },
+        "name": {
+          "type": "STRING"
+        },
+        "description": {
+          "type": "STRING"
+        },
+        "completed": {
+          "type": "BOOLEAN"
+        },
+        "createdAt": {
+          "type": "DATE_TIME"
+        },
+        "closedAt": {
+          "type": "DATE_TIME"
+        },
+        "lastActivity": {
+          "type": "DATE_TIME"
+        },
+        "enteredLineAt": {
+          "type": "DATE_TIME"
+        },
+        "serviceId": {
+          "type": "NUMBER"
+        },
+        "typeId": {
+          "type": "NUMBER"
+        },
+        "lineId": {
+          "type": "NUMBER"
+        },
+        "lineLevel": {
+          "type": "NUMBER"
+        },
+        "clientId": {
+          "type": "NUMBER"
+        },
+        "incident": {
+          "type": "OBJECT",
+          "fields": {
+            "id": {
+              "type": "NUMBER"
+            },
+            "number": {
+              "type": "STRING"
+            },
+            "name": {
+              "type": "STRING"
+            },
+            "title": {
+              "type": "STRING"
+            },
+            "description": {
+              "type": "STRING"
+            },
+            "status": {
+              "type": "STRING"
+            },
+            "severity": {
+              "type": "STRING"
+            },
+            "serviceIds": {
+              "type": "LIST",
+              "element": {
+                "type": "NUMBER"
+              }
+            }
+          }
+        },
+        "assigneeId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "person_add",
+    "defaultResultVariable": ""
+  }
+]

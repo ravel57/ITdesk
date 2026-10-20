@@ -5,6 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -38,6 +40,8 @@ public class UserService {
 	private final MessageRepository messageRepository;
 	private final SupportRepository supportRepository;
 	private final ClientRepository clientRepository;
+	private final PasswordResetService passwordResetService;
+	private final SupportLineRepository supportLineRepository;
 
 	private final Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -48,6 +52,13 @@ public class UserService {
 	private final GlobalSearchService globalSearchService;
 	private final AppSettingsService appSettingsService;
 	private final SecurityAuditService securityAuditService;
+	/**
+	 * Не final и внедряется отдельно (не через {@code @RequiredArgsConstructor}): UserSessionService сам
+	 * зависит от UserService, и {@code @Lazy} на поле конструктора Lombok не копирует — нужен сеттер/поле.
+	 */
+	@Lazy
+	@Autowired
+	private UserSessionService userSessionService;
 
 
 	public List<User> getUsers() {
@@ -96,6 +107,9 @@ public class UserService {
 			throw new RuntimeException("not email");
 		}
 
+		boolean passwordProvided = userDto.getPassword() != null && !userDto.getPassword().isBlank();
+		SupportLine selectedSupportLine = resolveNewUserSupportLine(userDto.getSupportLineId(), requestedRole);
+
 		User existingUser = userRepository.findByUsername(username).orElse(null);
 		validateLicenseSeatAvailable(requestedRole, existingUser != null && existingUser.isEnabled() && consumesLicense(existingUser));
 		Long clientId = resolveClientIdForNewUser(userDto, requestedRole, existingUser);
@@ -108,19 +122,33 @@ public class UserService {
 			existingUser.setClientId(clientId);
 			existingUser.setIsEnabled(true);
 			existingUser.setIsAccountNonLocked(true);
-			if (userDto.getPassword() != null && !userDto.getPassword().isBlank()) {
+			if (passwordProvided) {
 				validateRawPassword(userDto.getPassword());
 				existingUser.setPassword(passwordEncoder.encode(userDto.getPassword()));
+				existingUser.setInvitePending(false);
+			} else {
+				existingUser.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+				existingUser.setInvitePending(true);
 			}
 //			User saved = userRepository.save(existingUser);
+			addNewUserToSupportLine(existingUser, selectedSupportLine);
 			globalSearchService.indexUser(existingUser);
 			audit(SecurityAuditEventType.USER_CREATED, existingUser.getUsername(), "Повторно включён, роль: " + requestedRole.getName());
+			if (!passwordProvided) {
+				passwordResetService.requestInviteLink(existingUser.getUsername());
+			}
 			return existingUser;
 		}
 
 		try {
-			String rawPassword = Objects.toString(userDto.getPassword(), "");
-			validateRawPassword(rawPassword);
+			String rawPassword;
+			boolean invitePending = !passwordProvided;
+			if (passwordProvided) {
+				rawPassword = userDto.getPassword();
+				validateRawPassword(rawPassword);
+			} else {
+				rawPassword = UUID.randomUUID().toString();
+			}
 			User user = User.builder()
 					.username(username)
 					.firstname(userDto.getFirstname())
@@ -133,16 +161,63 @@ public class UserService {
 					.isAccountNonLocked(true)
 					.isAccountNonExpired(true)
 					.isCredentialsNonExpired(true)
+					.invitePending(invitePending)
 					.build();
 			User saved = userRepository.save(user);
+			addNewUserToSupportLine(saved, selectedSupportLine);
 			globalSearchService.indexUser(saved);
 			eventPublisher.publish(TriggerType.USER_CREATED, Map.of("user", saved));
 			audit(SecurityAuditEventType.USER_CREATED, saved.getUsername(), "Роль: " + requestedRole.getName());
+			if (invitePending) {
+				passwordResetService.requestInviteLink(saved.getUsername());
+			}
 			return saved;
 		} catch (Exception e) {
 			logger.error(e.getMessage(), e);
 			throw new RuntimeException(e);
 		}
+	}
+
+
+	private SupportLine resolveNewUserSupportLine(Long supportLineId, Role role) {
+		if (supportLineId == null) {
+			return null;
+		}
+		if (!role.consumesLicense()) {
+			throw new IllegalArgumentException("Участником линии может быть только сотрудник поддержки");
+		}
+		SupportLine line = supportLineRepository.findById(supportLineId)
+				.orElseThrow(() -> new IllegalArgumentException("Линия поддержки не найдена"));
+		if (!Boolean.TRUE.equals(line.getActive())) {
+			throw new IllegalArgumentException("Линия поддержки отключена");
+		}
+		return line;
+	}
+
+
+	private void addNewUserToSupportLine(User user, SupportLine line) {
+		if (line == null) {
+			return;
+		}
+		List<User> members = new ArrayList<>(Objects.requireNonNullElse(line.getMembers(), List.of()));
+		if (members.stream().noneMatch(member -> Objects.equals(member.getId(), user.getId()))) {
+			members.add(user);
+			line.setMembers(members);
+			if (line.getObservers() != null) {
+				line.getObservers().removeIf(observer -> Objects.equals(observer.getId(), user.getId()));
+			}
+			supportLineRepository.save(line);
+		}
+	}
+
+
+	/** Повторно отправить приглашение задать пароль; только для пользователей, которые ещё не активировали учётную запись. */
+	public void resendInvite(Long userId) {
+		User user = userRepository.findById(userId).orElseThrow();
+		if (!Boolean.TRUE.equals(user.getInvitePending())) {
+			throw new IllegalStateException("Пользователь уже задал пароль");
+		}
+		passwordResetService.requestInviteLink(user.getUsername());
 	}
 
 
@@ -176,12 +251,16 @@ public class UserService {
 				.isAccountNonLocked(savedUser.getIsAccountNonLocked())
 				.isAccountNonExpired(savedUser.getIsAccountNonExpired())
 				.isCredentialsNonExpired(savedUser.getIsCredentialsNonExpired())
+				.invitePending(savedUser.getInvitePending())
 				.mfaEnabled(savedUser.getMfaEnabled())
 				.mfaSecret(savedUser.getMfaSecret())
 				.mfaPendingSecret(savedUser.getMfaPendingSecret())
 				.mfaRecoveryCodes(savedUser.getMfaRecoveryCodes())
 				.mfaLastStep(savedUser.getMfaLastStep())
 				.mfaEnabledAt(savedUser.getMfaEnabledAt())
+				.welcomeSeen(savedUser.getWelcomeSeen())
+				.taskCardFieldsConfig(savedUser.getTaskCardFieldsConfig())
+				.onboardingProgress(savedUser.getOnboardingProgress())
 				.build();
 		User saved = userRepository.save(user);
 		globalSearchService.indexUser(saved);
@@ -190,6 +269,7 @@ public class UserService {
 		String currentRoles = roleNames(saved);
 		if (!previousRoles.equals(currentRoles)) {
 			audit(SecurityAuditEventType.USER_ROLE_CHANGED, saved.getUsername(), previousRoles + " → " + currentRoles);
+			userSessionService.forceLogout(saved.getUsername(), "ROLE_CHANGED");
 		} else {
 			audit(SecurityAuditEventType.USER_UPDATED, saved.getUsername(), "Роль: " + currentRoles);
 		}
@@ -297,6 +377,7 @@ public class UserService {
 		globalSearchService.indexUser(saved);
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
 		audit(SecurityAuditEventType.PASSWORD_CHANGED_BY_ADMIN, saved.getUsername(), null);
+		userSessionService.forceLogout(saved.getUsername(), "PASSWORD_CHANGED");
 		return saved;
 	}
 
@@ -333,6 +414,7 @@ public class UserService {
 		globalSearchService.deleteUser(saved.getId());
 		eventPublisher.publish(TriggerType.USER_UPDATED, Map.of("user", saved));
 		audit(SecurityAuditEventType.USER_DELETED, saved.getUsername(), "Роль: " + roleNames(saved));
+		userSessionService.forceLogout(saved.getUsername(), "ACCOUNT_DISABLED");
 	}
 
 
@@ -446,6 +528,45 @@ public class UserService {
 		user.setNotifyChatUnansweredTooLongMinutes(chatUnansweredTooLongMinutes);
 		user.setNotifyDeadlineOverdue(Boolean.TRUE.equals(dto.getNotifyDeadlineOverdue()));
 		return user;
+	}
+
+
+	/** Пользователь закрыл/прошёл приветственный мастер (/welcome) — больше показывать не нужно. */
+	public void markCurrentUserWelcomeSeen() {
+		User user = getCurrentUser();
+		if (!Boolean.TRUE.equals(user.getWelcomeSeen())) {
+			user.setWelcomeSeen(true);
+			userRepository.save(user);
+		}
+	}
+
+
+	public List<User.TaskCardFieldConfig> updateCurrentUserTaskCardConfig(List<User.TaskCardFieldConfig> config) {
+		User user = getCurrentUser();
+		user.setTaskCardFieldsConfig(config);
+		User saved = userRepository.save(user);
+		return saved.getTaskCardFieldsConfig();
+	}
+
+
+	/**
+	 * Объединяет переданные пары ключ→статус тура ("done"/"skipped"/…, конкретное значение — на усмотрение
+	 * страницы) с уже сохранёнными; остальные туры не трогает. Одним вызовом можно обновить сразу несколько
+	 * туров (например "Пропустить всё" на велком-экране) — это один read-modify-write, без гонки между
+	 * несколькими параллельными запросами по одному туру за раз.
+	 */
+	public Map<String, String> updateCurrentUserOnboardingProgress(Map<String, String> updates) {
+		if (updates == null || updates.isEmpty()) {
+			throw new IllegalArgumentException("updates не указаны");
+		}
+		User user = getCurrentUser();
+		Map<String, String> progress = new LinkedHashMap<>(
+				user.getOnboardingProgress() != null ? user.getOnboardingProgress() : Map.of()
+		);
+		progress.putAll(updates);
+		user.setOnboardingProgress(progress);
+		User saved = userRepository.save(user);
+		return saved.getOnboardingProgress();
 	}
 
 
@@ -864,6 +985,7 @@ public class UserService {
 			throw new IllegalArgumentException("Данные пользователя не заданы");
 		}
 		Client client = Client.builder()
+				.messageFrom(MessageFrom.PORTAL)
 				.firstname(normalizeNullable(userDto.getFirstname()))
 				.lastname(normalizeNullable(userDto.getLastname()))
 				.email(normalizeNullable(userDto.getUsername()))

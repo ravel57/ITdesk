@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.access.AccessDeniedException;
@@ -46,6 +48,16 @@ public class PendingFileUploadRegistry {
 
     @Value("${minio.bucket-name}")
     private String bucketName;
+
+    private volatile boolean shuttingDown;
+
+
+    @EventListener
+    public void onContextClosed(ContextClosedEvent event) {
+        if (event.getApplicationContext().getParent() == null) {
+            shuttingDown = true;
+        }
+    }
 
 
     public void register(String fileUuid, String username) {
@@ -109,6 +121,9 @@ public class PendingFileUploadRegistry {
 
     @Scheduled(fixedDelayString = "${app.files.pending-upload-cleanup-ms:3600000}")
     public void cleanupExpiredUploads() {
+        if (shuttingDown) {
+            return;
+        }
         long now = System.currentTimeMillis();
         try {
             Set<byte[]> expired = byteArrayRedisTemplate.opsForZSet()
@@ -118,6 +133,9 @@ public class PendingFileUploadRegistry {
             }
             int processed = 0;
             for (byte[] rawUuid : expired) {
+                if (shuttingDown) {
+                    return;
+                }
                 if (rawUuid == null || processed++ >= MAX_CLEANUP_BATCH) {
                     break;
                 }
@@ -134,11 +152,19 @@ public class PendingFileUploadRegistry {
                     }
                     consume(canonicalUuid);
                 } catch (Exception cleanupException) {
+                    if (shuttingDown) {
+                        logger.debug("Pending upload cleanup interrupted by application shutdown", cleanupException);
+                        return;
+                    }
                     logger.warn("Failed to clean expired pending upload {}", fileUuid, cleanupException);
                 }
             }
         } catch (Exception e) {
-            logger.warn("Pending upload cleanup failed", e);
+            if (shuttingDown) {
+                logger.debug("Pending upload cleanup interrupted by application shutdown", e);
+            } else {
+                logger.warn("Pending upload cleanup failed", e);
+            }
         }
     }
 

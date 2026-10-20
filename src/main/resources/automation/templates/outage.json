@@ -1,0 +1,1582 @@
+{
+  "version": 3,
+  "entryNodeId": "outage-1",
+  "nodes": [
+    {
+      "id": "outage-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MESSAGE_INCOMING"
+      }
+    },
+    {
+      "id": "outage-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "analysis",
+            "label": "Уверенность выбора сервиса и причины",
+            "value": 0.6,
+            "help": "",
+            "type": "number",
+            "migrationSetting": "detectIncident",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "window",
+            "label": "Окно подсчёта, минут",
+            "value": 15,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 10080
+          },
+          {
+            "name": "clients",
+            "label": "Минимум разных клиентов",
+            "value": 3,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 10080
+          },
+          {
+            "name": "alertClients",
+            "label": "Минимум клиентов при тревоге мониторинга",
+            "value": 2,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 10080
+          },
+          {
+            "name": "outage",
+            "label": "Вероятность «это сбой»",
+            "value": 0.7,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "cooldown",
+            "label": "Пауза после срабатывания, минут",
+            "value": 60,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 10080
+          },
+          {
+            "name": "sameProblem",
+            "label": "Вероятность общей проблемы",
+            "value": 0.6,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "p1Clients",
+            "label": "Клиентов для P1",
+            "value": 10,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 10080
+          },
+          {
+            "name": "createDraft",
+            "label": "При срабатывании создавать черновик инцидента",
+            "value": false,
+            "help": "Если выключено — только уведомление.",
+            "type": "boolean"
+          },
+          {
+            "name": "p1Interval",
+            "label": "Интервал обновлений P1, минут",
+            "value": 15,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p2Interval",
+            "label": "Интервал обновлений P2, минут",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p3Interval",
+            "label": "Интервал обновлений P3, минут",
+            "value": 60,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p4Interval",
+            "label": "Интервал обновлений P4, минут",
+            "value": 120,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "inc-analyze",
+      "type": "OPERATION",
+      "label": "Jev: разметка сообщения",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "analysisThreshold": "=var.settings.analysis"
+        },
+        "resultVariable": "outage",
+        "operation": "signal.analyze"
+      }
+    },
+    {
+      "id": "inc-c-answer",
+      "type": "CONDITION",
+      "label": "Jev ответил?",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "expression": "var.outage.notNull()",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "left": "=var.outage",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "inc-c-matched",
+      "type": "CONDITION",
+      "label": "Относится к открытому инциденту?",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "expression": "var.outage.matchedIncidentId.notNull()",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "left": "=var.outage.matchedIncidentId",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "inc-attach-matched",
+      "type": "CONDITION",
+      "label": "Отметить: тот же инцидент",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {},
+        "resultVariable": "",
+        "expression": "var.settings.createDraft",
+        "manualExpression": true,
+        "rule": {
+          "left": "=var.settings.createDraft",
+          "operator": "true"
+        }
+      }
+    },
+    {
+      "id": "inc-c-outage",
+      "type": "CONDITION",
+      "label": "Это сбой с понятным сервисом?",
+      "x": 1340,
+      "y": 820,
+      "config": {
+        "expression": "var.outage.serviceId.notNull() && var.outage.probability >= var.settings.outage",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "all": [
+            {
+              "left": "=var.outage.serviceId",
+              "operator": "notNull"
+            },
+            {
+              "left": "=var.outage.probability",
+              "operator": ">=",
+              "right": "=var.settings.outage"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "inc-ignore",
+      "type": "OPERATION",
+      "label": "Не считать",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "IGNORED",
+          "incidentId": null
+        },
+        "resultVariable": "",
+        "operation": "signal.mark"
+      }
+    },
+    {
+      "id": "inc-count",
+      "type": "OPERATION",
+      "label": "Посчитать обращения в окне",
+      "x": 1760,
+      "y": 820,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "windowMinutes": "=var.settings.window",
+          "scope": "all"
+        },
+        "resultVariable": "window",
+        "operation": "signal.count"
+      }
+    },
+    {
+      "id": "inc-c-threshold",
+      "type": "CONDITION",
+      "label": "Достаточно клиентов?",
+      "x": 2180,
+      "y": 570,
+      "config": {
+        "expression": "var.window.clients >= var.settings.clients || ((var.outage.monitoringStatus = 'WARNING' || var.outage.monitoringStatus = 'CRITICAL') && var.window.clients >= var.settings.alertClients)",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "any": [
+            {
+              "left": "=var.window.clients",
+              "operator": ">=",
+              "right": "=var.settings.clients"
+            },
+            {
+              "all": [
+                {
+                  "any": [
+                    {
+                      "left": "=var.outage.monitoringStatus",
+                      "operator": "=",
+                      "right": "WARNING"
+                    },
+                    {
+                      "left": "=var.outage.monitoringStatus",
+                      "operator": "=",
+                      "right": "CRITICAL"
+                    }
+                  ]
+                },
+                {
+                  "left": "=var.window.clients",
+                  "operator": ">=",
+                  "right": "=var.settings.alertClients"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "inc-counted",
+      "type": "OPERATION",
+      "label": "Учесть, порог не достигнут",
+      "x": 2600,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "COUNTED",
+          "incidentId": null
+        },
+        "resultVariable": "",
+        "operation": "signal.mark"
+      }
+    },
+    {
+      "id": "inc-cooldown",
+      "type": "OPERATION",
+      "label": "Проверить паузу после срабатывания",
+      "x": 2600,
+      "y": 820,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "minutes": "=var.settings.cooldown",
+          "onlyWithIncident": "=var.settings.createDraft"
+        },
+        "resultVariable": "cooldown",
+        "operation": "signal.cooldown"
+      }
+    },
+    {
+      "id": "inc-c-recent-incident",
+      "type": "CONDITION",
+      "label": "Недавний инцидент по этой проблеме?",
+      "x": 3020,
+      "y": 570,
+      "config": {
+        "expression": "var.cooldown.incidentId.notNull()",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "left": "=var.cooldown.incidentId",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "inc-attach-recent",
+      "type": "CONDITION",
+      "label": "Отметить: недавний инцидент",
+      "x": 3440,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {},
+        "resultVariable": "",
+        "expression": "var.settings.createDraft",
+        "manualExpression": true,
+        "rule": {
+          "left": "=var.settings.createDraft",
+          "operator": "true"
+        }
+      }
+    },
+    {
+      "id": "inc-c-cooldown",
+      "type": "CONDITION",
+      "label": "Пауза ещё идёт?",
+      "x": 3440,
+      "y": 820,
+      "config": {
+        "expression": "var.cooldown.active",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "left": "=var.cooldown.active",
+          "operator": "true"
+        }
+      }
+    },
+    {
+      "id": "inc-in-cooldown",
+      "type": "OPERATION",
+      "label": "Пауза",
+      "x": 3860,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "COOLDOWN",
+          "incidentId": null
+        },
+        "resultVariable": "",
+        "operation": "signal.mark"
+      }
+    },
+    {
+      "id": "inc-verify",
+      "type": "OPERATION",
+      "label": "Jev: проверка пачки",
+      "x": 3860,
+      "y": 820,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "window": "=var.window",
+          "analysisThreshold": "=var.settings.analysis"
+        },
+        "resultVariable": "verdict",
+        "operation": "signal.verify"
+      }
+    },
+    {
+      "id": "inc-c-verified",
+      "type": "CONDITION",
+      "label": "Проверка выполнена?",
+      "x": 4280,
+      "y": 570,
+      "config": {
+        "expression": "var.verdict.notNull()",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "left": "=var.verdict",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "inc-unverified",
+      "type": "OPERATION",
+      "label": "Учесть без проверки",
+      "x": 4700,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "COUNTED",
+          "incidentId": null
+        },
+        "resultVariable": "",
+        "operation": "signal.mark"
+      }
+    },
+    {
+      "id": "inc-c-same",
+      "type": "CONDITION",
+      "label": "Одна проблема?",
+      "x": 4700,
+      "y": 820,
+      "config": {
+        "expression": "var.verdict.sameProblem >= var.settings.sameProblem",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "left": "=var.verdict.sameProblem",
+          "operator": ">=",
+          "right": "=var.settings.sameProblem"
+        }
+      }
+    },
+    {
+      "id": "inc-rejected",
+      "type": "OPERATION",
+      "label": "Разные проблемы",
+      "x": 5120,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "BATCH_REJECTED",
+          "incidentId": null
+        },
+        "resultVariable": "",
+        "operation": "signal.mark"
+      }
+    },
+    {
+      "id": "inc-severity",
+      "type": "SET_VARIABLE",
+      "label": "Серьёзность по оценке Jev",
+      "x": 5120,
+      "y": 820,
+      "config": {
+        "name": "severity",
+        "expression": "var.verdict.severity",
+        "section": "2. Разметка и подсчёт обращений"
+      }
+    },
+    {
+      "id": "inc-c-p1",
+      "type": "CONDITION",
+      "label": "P1 при малом числе клиентов?",
+      "x": 5540,
+      "y": 570,
+      "config": {
+        "expression": "var.severity = 'P1' && var.window.clients < var.settings.p1Clients",
+        "groups": [],
+        "manualExpression": true,
+        "section": "2. Разметка и подсчёт обращений",
+        "rule": {
+          "all": [
+            {
+              "left": "=var.severity",
+              "operator": "=",
+              "right": "P1"
+            },
+            {
+              "left": "=var.window.clients",
+              "operator": "<",
+              "right": "=var.settings.p1Clients"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "inc-cap",
+      "type": "SET_VARIABLE",
+      "label": "Не выше P2",
+      "x": 5960,
+      "y": 570,
+      "config": {
+        "name": "severity",
+        "expression": "'P2'",
+        "section": "2. Разметка и подсчёт обращений"
+      }
+    },
+    {
+      "id": "inc-trigger",
+      "type": "CONDITION",
+      "label": "Уведомить ответственных",
+      "x": 6380,
+      "y": 570,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "arguments": {},
+        "resultVariable": "",
+        "expression": "var.settings.createDraft",
+        "manualExpression": true,
+        "rule": {
+          "left": "=var.settings.createDraft",
+          "operator": "true"
+        }
+      }
+    },
+    {
+      "id": "outage-5",
+      "type": "OPERATION",
+      "label": "Привязать к найденному инциденту",
+      "x": 1760,
+      "y": 1070,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "operation": "signal.attach",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "incidentId": "=var.outage.matchedIncidentId",
+          "lookbackMinutes": "=var.settings.window"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "outage-6",
+      "type": "OPERATION",
+      "label": "Отметить найденное совпадение",
+      "x": 1760,
+      "y": 1320,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "operation": "signal.mark",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "MATCHED_INCIDENT",
+          "incidentId": "=var.outage.matchedIncidentId"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "outage-7",
+      "type": "OPERATION",
+      "label": "Привязать к найденному инциденту",
+      "x": 3860,
+      "y": 1070,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "operation": "signal.attach",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "incidentId": "=var.cooldown.incidentId",
+          "lookbackMinutes": "=var.settings.window"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "outage-8",
+      "type": "OPERATION",
+      "label": "Отметить найденное совпадение",
+      "x": 3860,
+      "y": 1320,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "operation": "signal.mark",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "MATCHED_INCIDENT",
+          "incidentId": "=var.cooldown.incidentId"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "outage-9",
+      "type": "OPERATION",
+      "label": "Создать черновик по выбранным обращениям",
+      "x": 80,
+      "y": 1790,
+      "config": {
+        "section": "3. Срабатывание и способ уведомления",
+        "operation": "signal.create",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "window": "=var.window",
+          "verdict": "=var.verdict",
+          "severity": "=var.severity",
+          "p1Interval": "=var.settings.p1Interval",
+          "p2Interval": "=var.settings.p2Interval",
+          "p3Interval": "=var.settings.p3Interval",
+          "p4Interval": "=var.settings.p4Interval"
+        },
+        "resultVariable": "createdIncident"
+      }
+    },
+    {
+      "id": "outage-10",
+      "type": "OPERATION",
+      "label": "Подготовить notification",
+      "x": 500,
+      "y": 1790,
+      "config": {
+        "section": "3. Срабатывание и способ уведомления",
+        "operation": "value.set",
+        "arguments": {
+          "value": "Создан черновик {{ var.createdIncident.number }}. Массовые обращения: {{ var.outage.serviceName }} — {{ var.outage.symptom }}: {{ var.window.clients }} клиент(ов) за {{ var.window.windowMinutes }} мин. Серьёзность {{ var.severity }}, вероятная причина — {{ var.verdict.cause }}. Проверьте и объявите инцидент."
+        },
+        "resultVariable": "notification"
+      }
+    },
+    {
+      "id": "outage-11",
+      "type": "OPERATION",
+      "label": "Отметить срабатывание без создания инцидента",
+      "x": 80,
+      "y": 2040,
+      "config": {
+        "section": "3. Срабатывание и способ уведомления",
+        "operation": "signal.mark",
+        "arguments": {
+          "signalId": "=var.outage.signalId",
+          "decision": "TRIGGERED",
+          "incidentId": null
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "outage-12",
+      "type": "OPERATION",
+      "label": "Подготовить notification",
+      "x": 500,
+      "y": 2040,
+      "config": {
+        "section": "3. Срабатывание и способ уведомления",
+        "operation": "value.set",
+        "arguments": {
+          "value": "Обнаружен массовый сбой. Массовые обращения: {{ var.outage.serviceName }} — {{ var.outage.symptom }}: {{ var.window.clients }} клиент(ов) за {{ var.window.windowMinutes }} мин. Серьёзность {{ var.severity }}, вероятная причина — {{ var.verdict.cause }}. Инцидент не создан: в настройках графа выбран режим только уведомлений."
+        },
+        "resultVariable": "notification"
+      }
+    },
+    {
+      "id": "outage-13",
+      "type": "OPERATION",
+      "label": "Получить сервис и ответственных",
+      "x": 920,
+      "y": 1790,
+      "config": {
+        "section": "3. Срабатывание и способ уведомления",
+        "operation": "data.service",
+        "arguments": {
+          "serviceId": "=var.outage.serviceId"
+        },
+        "resultVariable": "catalogService"
+      }
+    },
+    {
+      "id": "outage-14",
+      "type": "OPERATION",
+      "label": "Данные линии поддержки",
+      "x": 80,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "data.lines",
+        "arguments": {},
+        "resultVariable": "allLines"
+      }
+    },
+    {
+      "id": "outage-15",
+      "type": "OPERATION",
+      "label": "Отобрать: incidentLines",
+      "x": 500,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLines",
+          "where": "var.item.id = var.catalogService.lineId",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "incidentLines"
+      }
+    },
+    {
+      "id": "outage-16",
+      "type": "OPERATION",
+      "label": "Список участников линии по умолчанию",
+      "x": 920,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "value.set",
+        "arguments": {
+          "value": []
+        },
+        "resultVariable": "lineMembers"
+      }
+    },
+    {
+      "id": "outage-17",
+      "type": "CONDITION",
+      "label": "У сервиса есть линия?",
+      "x": 1340,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "expression": "var.incidentLines.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.incidentLines.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "outage-18",
+      "type": "OPERATION",
+      "label": "Участники и ответственный линии",
+      "x": 1760,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.incidentLines.first().memberIds",
+          "second": [
+            "=var.incidentLines.first().responsibleId"
+          ]
+        },
+        "resultVariable": "lineMembers"
+      }
+    },
+    {
+      "id": "outage-19",
+      "type": "OPERATION",
+      "label": "Ответственные за сервис",
+      "x": 2180,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.catalogService.executorIds",
+          "second": [
+            "=var.catalogService.ownerId"
+          ]
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "outage-20",
+      "type": "OPERATION",
+      "label": "Объединить ответственных сервиса и линии",
+      "x": 2600,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.recipientIds",
+          "second": "=var.lineMembers"
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "outage-21",
+      "type": "OPERATION",
+      "label": "Отобрать: recipientIds",
+      "x": 3020,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.recipientIds",
+          "where": "var.item.notNull()",
+          "sortBy": "",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "outage-22",
+      "type": "CONDITION",
+      "label": "Ответственные найдены?",
+      "x": 3440,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "expression": "var.recipientIds.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.recipientIds.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "outage-23",
+      "type": "OPERATION",
+      "label": "Запасной вариант: пользователи системы",
+      "x": 3860,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "data.users",
+        "arguments": {},
+        "resultVariable": "users"
+      }
+    },
+    {
+      "id": "outage-24",
+      "type": "OPERATION",
+      "label": "Отобрать: admins",
+      "x": 4280,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.users",
+          "where": "var.item.enabled && var.item.admin",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "admins"
+      }
+    },
+    {
+      "id": "outage-25",
+      "type": "OPERATION",
+      "label": "Уведомить администраторов, если ответственных нет",
+      "x": 4700,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.project",
+        "arguments": {
+          "items": "=var.admins",
+          "expression": "var.item.id"
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "outage-26",
+      "type": "FOR_EACH",
+      "label": "Уведомить каждого ответственного",
+      "x": 5120,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "itemsExpression": "var.recipientIds",
+        "itemVariable": "recipientId",
+        "indexVariable": "recipientIdIndex",
+        "maxItems": 100,
+        "endNodeId": "outage-27"
+      }
+    },
+    {
+      "id": "outage-27",
+      "type": "LOOP_END",
+      "label": "Следующий элемент: Уведомить каждого ответственного",
+      "x": 5960,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "description": "Завершение одной итерации цикла «Уведомить каждого ответственного»"
+      }
+    },
+    {
+      "id": "outage-28",
+      "type": "OPERATION",
+      "label": "Отправить уведомление о черновике",
+      "x": 5540,
+      "y": 2510,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "notify.user",
+        "arguments": {
+          "userId": "=var.recipientId",
+          "text": "=var.notification"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "outage-29",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 5540,
+      "y": 820,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "outage-30",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 5540,
+      "y": 1070,
+      "config": {
+        "section": "2. Разметка и подсчёт обращений",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "outage-31",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1340,
+      "y": 1790,
+      "config": {
+        "section": "3. Срабатывание и способ уведомления",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "outage-32",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 5120,
+      "y": 2760,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "outage-33",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 5540,
+      "y": 2760,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "outage-edge-outage-1-next",
+      "source": "outage-1",
+      "target": "outage-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "outage-edge-outage-2-next",
+      "source": "outage-2",
+      "target": "inc-analyze",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "outage-edge-inc-analyze-success",
+      "source": "inc-analyze",
+      "target": "inc-c-answer",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-c-answer-true",
+      "source": "inc-c-answer",
+      "target": "inc-c-matched",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-answer-false",
+      "source": "inc-c-answer",
+      "target": "outage-29",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-c-matched-true",
+      "source": "inc-c-matched",
+      "target": "inc-attach-matched",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-matched-false",
+      "source": "inc-c-matched",
+      "target": "inc-c-outage",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-c-outage-true",
+      "source": "inc-c-outage",
+      "target": "inc-count",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-outage-false",
+      "source": "inc-c-outage",
+      "target": "inc-ignore",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-ignore-success",
+      "source": "inc-ignore",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-count-success",
+      "source": "inc-count",
+      "target": "inc-c-threshold",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-c-threshold-true",
+      "source": "inc-c-threshold",
+      "target": "inc-cooldown",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-threshold-false",
+      "source": "inc-c-threshold",
+      "target": "inc-counted",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-counted-success",
+      "source": "inc-counted",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-cooldown-success",
+      "source": "inc-cooldown",
+      "target": "inc-c-recent-incident",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-c-recent-incident-true",
+      "source": "inc-c-recent-incident",
+      "target": "inc-attach-recent",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-recent-incident-false",
+      "source": "inc-c-recent-incident",
+      "target": "inc-c-cooldown",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-c-cooldown-true",
+      "source": "inc-c-cooldown",
+      "target": "inc-in-cooldown",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-cooldown-false",
+      "source": "inc-c-cooldown",
+      "target": "inc-verify",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-in-cooldown-success",
+      "source": "inc-in-cooldown",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-verify-success",
+      "source": "inc-verify",
+      "target": "inc-c-verified",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-c-verified-true",
+      "source": "inc-c-verified",
+      "target": "inc-c-same",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-verified-false",
+      "source": "inc-c-verified",
+      "target": "inc-unverified",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-unverified-success",
+      "source": "inc-unverified",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-c-same-true",
+      "source": "inc-c-same",
+      "target": "inc-severity",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-same-false",
+      "source": "inc-c-same",
+      "target": "inc-rejected",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-rejected-success",
+      "source": "inc-rejected",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-severity-next",
+      "source": "inc-severity",
+      "target": "inc-c-p1",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "outage-edge-inc-c-p1-true",
+      "source": "inc-c-p1",
+      "target": "inc-cap",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-inc-c-p1-false",
+      "source": "inc-c-p1",
+      "target": "inc-trigger",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-inc-cap-next",
+      "source": "inc-cap",
+      "target": "inc-trigger",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "outage-edge-inc-attach-matched-true",
+      "source": "inc-attach-matched",
+      "target": "outage-5",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-outage-5-success",
+      "source": "outage-5",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-attach-matched-false",
+      "source": "inc-attach-matched",
+      "target": "outage-6",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-outage-6-success",
+      "source": "outage-6",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-attach-recent-true",
+      "source": "inc-attach-recent",
+      "target": "outage-7",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-outage-7-success",
+      "source": "outage-7",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-attach-recent-false",
+      "source": "inc-attach-recent",
+      "target": "outage-8",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-outage-8-success",
+      "source": "outage-8",
+      "target": "outage-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-trigger-true",
+      "source": "inc-trigger",
+      "target": "outage-9",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-outage-9-success",
+      "source": "outage-9",
+      "target": "outage-10",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-trigger-false",
+      "source": "inc-trigger",
+      "target": "outage-11",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-outage-11-success",
+      "source": "outage-11",
+      "target": "outage-12",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-10-success",
+      "source": "outage-10",
+      "target": "outage-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-12-success",
+      "source": "outage-12",
+      "target": "outage-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-13-success",
+      "source": "outage-13",
+      "target": "outage-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-14-success",
+      "source": "outage-14",
+      "target": "outage-15",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-15-success",
+      "source": "outage-15",
+      "target": "outage-16",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-16-success",
+      "source": "outage-16",
+      "target": "outage-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-17-true",
+      "source": "outage-17",
+      "target": "outage-18",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-outage-18-success",
+      "source": "outage-18",
+      "target": "outage-19",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-17-false",
+      "source": "outage-17",
+      "target": "outage-19",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-outage-19-success",
+      "source": "outage-19",
+      "target": "outage-20",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-20-success",
+      "source": "outage-20",
+      "target": "outage-21",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-21-success",
+      "source": "outage-21",
+      "target": "outage-22",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-22-false",
+      "source": "outage-22",
+      "target": "outage-23",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "outage-edge-outage-23-success",
+      "source": "outage-23",
+      "target": "outage-24",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-24-success",
+      "source": "outage-24",
+      "target": "outage-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-22-true",
+      "source": "outage-22",
+      "target": "outage-26",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "outage-edge-outage-25-success",
+      "source": "outage-25",
+      "target": "outage-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-outage-26-body",
+      "source": "outage-26",
+      "target": "outage-28",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "outage-edge-outage-28-error",
+      "source": "outage-28",
+      "target": "outage-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-28-success",
+      "source": "outage-28",
+      "target": "outage-27",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "outage-edge-inc-analyze-error",
+      "source": "inc-analyze",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-ignore-error",
+      "source": "inc-ignore",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-count-error",
+      "source": "inc-count",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-counted-error",
+      "source": "inc-counted",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-cooldown-error",
+      "source": "inc-cooldown",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-in-cooldown-error",
+      "source": "inc-in-cooldown",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-verify-error",
+      "source": "inc-verify",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-unverified-error",
+      "source": "inc-unverified",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-inc-rejected-error",
+      "source": "inc-rejected",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-5-error",
+      "source": "outage-5",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-6-error",
+      "source": "outage-6",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-7-error",
+      "source": "outage-7",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-8-error",
+      "source": "outage-8",
+      "target": "outage-30",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-9-error",
+      "source": "outage-9",
+      "target": "outage-31",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-10-error",
+      "source": "outage-10",
+      "target": "outage-31",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-11-error",
+      "source": "outage-11",
+      "target": "outage-31",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-12-error",
+      "source": "outage-12",
+      "target": "outage-31",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-13-error",
+      "source": "outage-13",
+      "target": "outage-31",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-14-error",
+      "source": "outage-14",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-15-error",
+      "source": "outage-15",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-16-error",
+      "source": "outage-16",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-18-error",
+      "source": "outage-18",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-19-error",
+      "source": "outage-19",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-20-error",
+      "source": "outage-20",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-21-error",
+      "source": "outage-21",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-23-error",
+      "source": "outage-23",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-24-error",
+      "source": "outage-24",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-25-error",
+      "source": "outage-25",
+      "target": "outage-32",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "outage-edge-outage-26-next",
+      "source": "outage-26",
+      "target": "outage-33",
+      "sourceHandle": "next"
+    }
+  ]
+}

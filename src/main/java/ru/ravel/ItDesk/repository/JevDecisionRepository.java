@@ -19,6 +19,8 @@ public interface JevDecisionRepository extends JpaRepository<JevDecision, Long> 
 			  and (:action is null or d.action = :action)
 			  and (:question is null or d.question = :question)
 			  and (:outcome is null or d.outcome = :outcome)
+			  and (:ruleId is null or d.ruleId = :ruleId)
+			  and (:nodeId is null or d.nodeId = :nodeId)
 			order by d.createdAt desc, d.id desc
 			""")
 	Page<JevDecision> search(
@@ -26,26 +28,24 @@ public interface JevDecisionRepository extends JpaRepository<JevDecision, Long> 
 			@Param("action") String action,
 			@Param("question") String question,
 			@Param("outcome") String outcome,
+			@Param("ruleId") Long ruleId,
+			@Param("nodeId") String nodeId,
 			Pageable pageable
 	);
 
-	/**
-	 * Сводка по действию и вопросу: всего, средняя уверенность, принято, отклонено, «ни один»,
-	 * решений у порога (|уверенность − порог| ≤ 0.1).
-	 */
-	@Query("""
-			select d.action, d.question, count(d), avg(d.confidence),
-			       sum(case when d.outcome = 'ACCEPTED' then 1 else 0 end),
-			       sum(case when d.outcome = 'REJECTED' then 1 else 0 end),
-			       sum(case when d.outcome = 'NONE' then 1 else 0 end),
-			       sum(case when d.threshold is not null and abs(d.confidence - d.threshold) <= 0.1 then 1 else 0 end),
-			       max(d.threshold)
-			from JevDecision d
-			where d.createdAt >= :since
-			group by d.action, d.question
-			order by d.action, d.question
-			""")
-	List<Object[]> stats(@Param("since") ZonedDateTime since);
+	/** Aggregate per rule and graph step. A graph may have several gates; no synthetic global threshold. */
+    @Query("""
+            select d.ruleId, d.ruleName, d.nodeId, d.nodeLabel, d.action, d.question, d.questionTitle, d.answerType,
+                   count(d), avg(d.confidence),
+                   sum(case when d.outcome in ('ANSWERED','ACCEPTED','REJECTED','NONE','UNDECIDED') then 1 else 0 end),
+                   sum(case when d.outcome in ('FAILED','INVALID') then 1 else 0 end),
+                   sum(case when d.outcome = 'SKIPPED' then 1 else 0 end),
+                   sum(case when d.outcome = 'PENDING' then 1 else 0 end)
+            from JevDecision d where d.createdAt >= :since
+            group by d.ruleId, d.ruleName, d.nodeId, d.nodeLabel, d.action, d.question, d.questionTitle, d.answerType
+            order by d.ruleName, d.nodeLabel, d.action, d.question
+            """)
+    List<Object[]> stats(@Param("since") ZonedDateTime since);
 
 	@Modifying
 	@Query("delete from JevDecision d where d.createdAt < :before")

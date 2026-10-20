@@ -51,6 +51,14 @@ public class PasswordResetService {
 	public enum LinkState {VALID, INVALID}
 
 
+	/** Результат проверки ссылки вместе с её назначением (приглашение/сброс пароля), когда она действует. */
+	public record LinkVerification(LinkState state, String purpose) {
+		public boolean isInvite() {
+			return "INVITE".equalsIgnoreCase(purpose);
+		}
+	}
+
+
 	/** Ответ всегда одинаковый: по нему нельзя узнать, есть ли такой пользователь. */
 	public void requestLink(String username) {
 		User user = userRepository.findFirstByUsernameIgnoreCase(username).orElse(null);
@@ -59,7 +67,7 @@ public class PasswordResetService {
 		}
 		securityAuditService.record(ru.ravel.ItDesk.model.SecurityAuditEventType.PASSWORD_RESET_LINK_REQUESTED, user.getUsername(), null);
 		try {
-			supportFeignClient.requestPasswordResetLink(license(), new PasswordResetLinkRequest(user.getUsername(), baseUrl()));
+			supportFeignClient.requestPasswordResetLink(license(), new PasswordResetLinkRequest(user.getUsername(), baseUrl(), null));
 		} catch (FeignException.TooManyRequests e) {
 			logger.warn("Password reset link rate limited by license server: userId={}", user.getId());
 		} catch (RuntimeException e) {
@@ -68,27 +76,54 @@ public class PasswordResetService {
 	}
 
 
+	/**
+	 * Приглашение задать пароль для пользователя, которого администратор создал без пароля.
+	 * Письмо содержит одноразовый ключ и ссылку на /welcome; обычный сброс остаётся на /reset-password.
+	 */
+	public void requestInviteLink(String username) {
+		User user = userRepository.findFirstByUsernameIgnoreCase(username).orElse(null);
+		if (user == null || !user.isEnabled()) {
+			return;
+		}
+		securityAuditService.record(ru.ravel.ItDesk.model.SecurityAuditEventType.INVITE_LINK_SENT, user.getUsername(), null);
+		try {
+			supportFeignClient.requestPasswordResetLink(license(), new PasswordResetLinkRequest(user.getUsername(), baseUrl(), "INVITE"));
+		} catch (FeignException.TooManyRequests e) {
+			logger.warn("Invite link rate limited by license server: userId={}", user.getId());
+		} catch (RuntimeException e) {
+			logger.error("Invite link request failed: userId={}", user.getId(), e);
+		}
+	}
+
+
 	public LinkState verify(String token) {
+		return verifyWithPurpose(token).state();
+	}
+
+
+	/** То же самое, но также сообщает, приглашение это или обычный сброс пароля — фронту нужно показать разный UI. */
+	public LinkVerification verifyWithPurpose(String token) {
 		if (isBlank(token)) {
-			return LinkState.INVALID;
+			return new LinkVerification(LinkState.INVALID, null);
 		}
 		try {
-			supportFeignClient.verifyPasswordResetLink(license(), new PasswordResetConfirm(token.trim(), null));
-			return LinkState.VALID;
+			Map<String, Object> result = supportFeignClient.verifyPasswordResetLink(license(), new PasswordResetConfirm(token.trim(), null));
+			String purpose = result == null ? null : Objects.toString(result.get("purpose"), null);
+			return new LinkVerification(LinkState.VALID, purpose);
 		} catch (FeignException.Gone | FeignException.NotFound e) {
-			return LinkState.INVALID;
+			return new LinkVerification(LinkState.INVALID, null);
 		}
 	}
 
 
 	/**
 	 * Проверяет новый пароль, гасит ссылку и меняет пароль пользователю, для которого она выдана.
-	 * Открытые сессии пользователя завершаются.
+	 * Открытые сессии пользователя завершаются. Возвращает username — им фронт входит в систему сразу после приглашения.
 	 *
 	 * @throws IllegalArgumentException пароль не подходит (ссылка при этом не гасится)
 	 * @throws IllegalStateException    ссылка недействительна или пользователь недоступен
 	 */
-	public void complete(String token, String rawPassword) {
+	public String complete(String token, String rawPassword) {
 		String password = Objects.toString(rawPassword, "");
 		UserService.validateRawPassword(password);
 		if (isBlank(token)) {
@@ -106,9 +141,13 @@ public class PasswordResetService {
 			throw new IllegalStateException("Учётная запись недоступна");
 		}
 		user.setPassword(passwordEncoder.encode(password));
+		if (Boolean.TRUE.equals(user.getInvitePending())) {
+			user.setInvitePending(false);
+		}
 		userRepository.save(user);
 		expireSessions(user.getUsername());
 		securityAuditService.passwordChangedByResetLink(user.getUsername());
+		return user.getUsername();
 	}
 
 

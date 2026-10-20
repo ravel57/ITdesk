@@ -1,0 +1,472 @@
+{
+  "version": 3,
+  "entryNodeId": "recovery-1",
+  "nodes": [
+    {
+      "id": "recovery-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MESSAGE_INCOMING"
+      }
+    },
+    {
+      "id": "recovery-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "threshold",
+            "label": "Минимальная уверенность Jev",
+            "value": 0.6,
+            "help": "Ниже порога данные не меняются.",
+            "type": "number",
+            "migrationSetting": "checkIncidentRecovery",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "statuses",
+            "label": "Статусы для проверки",
+            "value": [
+              "MONITORING",
+              "RESTORED"
+            ],
+            "help": "В каких статусах учитывать сообщения клиентов.",
+            "type": "json"
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "recovery-5",
+      "type": "OPERATION",
+      "label": "Связанные инциденты клиента",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Найти подходящий инцидент",
+        "operation": "data.links",
+        "arguments": {
+          "clientId": "=client.id"
+        },
+        "resultVariable": "links"
+      }
+    },
+    {
+      "id": "recovery-6",
+      "type": "OPERATION",
+      "label": "Отобрать: eligible",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Найти подходящий инцидент",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.links",
+          "where": "var.item.incident.status in var.settings.statuses",
+          "sortBy": "incident.id",
+          "descending": true,
+          "limit": 1
+        },
+        "resultVariable": "eligible"
+      }
+    },
+    {
+      "id": "recovery-7",
+      "type": "CONDITION",
+      "label": "Есть инцидент для проверки?",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Найти подходящий инцидент",
+        "expression": "var.eligible.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.eligible.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "recovery-8",
+      "type": "OPERATION",
+      "label": "Последний подходящий инцидент",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Найти подходящий инцидент",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.eligible.first()"
+        },
+        "resultVariable": "link"
+      }
+    },
+    {
+      "id": "recovery-9",
+      "type": "OPERATION",
+      "label": "Что клиент сообщает о восстановлении?",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Оценка сообщения",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "message": "=message.text",
+            "incident": "=var.link.incident"
+          },
+          "question": "Сообщение о проблеме этого инцидента: восстановление подтверждено, проблема сохраняется или сообщение не относится к инциденту?",
+          "kind": "choice",
+          "options": {
+            "confirmed": "Клиент подтверждает, что всё снова работает",
+            "still_broken": "Проблема сохраняется или повторилась",
+            "unrelated": "Сообщение не о проблеме этого инцидента"
+          },
+          "yes": "Да",
+          "no": "Нет"
+        },
+        "resultVariable": "decision"
+      }
+    },
+    {
+      "id": "recovery-10",
+      "type": "CONDITION",
+      "label": "Оценка достаточно уверенная?",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Оценка сообщения",
+        "expression": "var.decision.available && var.decision.probability >= var.settings.threshold",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.decision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.decision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "recovery-11",
+      "type": "CONDITION",
+      "label": "Восстановление подтверждено?",
+      "x": 920,
+      "y": 1290,
+      "config": {
+        "section": "3. Оценка сообщения",
+        "expression": "var.decision.choice = 'confirmed'",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.decision.choice",
+          "operator": "=",
+          "right": "confirmed"
+        }
+      }
+    },
+    {
+      "id": "recovery-12",
+      "type": "OPERATION",
+      "label": "Отметить подтверждение клиента",
+      "x": 80,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные действия по результату",
+        "operation": "incident.confirm",
+        "arguments": {
+          "incidentId": "=var.link.incident.id",
+          "taskId": "=var.link.taskId",
+          "confirmed": true,
+          "reason": "Jev: клиент #{{ client.id }}, сообщение #{{ message.id }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "recovery-13",
+      "type": "CONDITION",
+      "label": "Клиент сообщает о сохраняющейся проблеме?",
+      "x": 80,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные действия по результату",
+        "expression": "var.decision.choice = 'still_broken'",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.decision.choice",
+          "operator": "=",
+          "right": "still_broken"
+        }
+      }
+    },
+    {
+      "id": "recovery-14",
+      "type": "OPERATION",
+      "label": "Снять подтверждение восстановления",
+      "x": 500,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные действия по результату",
+        "operation": "incident.confirm",
+        "arguments": {
+          "incidentId": "=var.link.incident.id",
+          "taskId": "=var.link.taskId",
+          "confirmed": false,
+          "reason": "Jev: проблема сохраняется"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "recovery-15",
+      "type": "OPERATION",
+      "label": "Записать проблему и уведомить ответственных",
+      "x": 920,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные действия по результату",
+        "operation": "incident.reportProblem",
+        "arguments": {
+          "incidentId": "=var.link.incident.id",
+          "taskId": "=var.link.taskId",
+          "text": "Клиент #{{ client.id }}, сообщение #{{ message.id }}: {{ message.text }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "recovery-16",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Найти подходящий инцидент",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "recovery-17",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 1340,
+      "y": 820,
+      "config": {
+        "section": "2. Найти подходящий инцидент",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "recovery-18",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 500,
+      "y": 1540,
+      "config": {
+        "section": "3. Оценка сообщения",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "recovery-19",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 920,
+      "y": 1540,
+      "config": {
+        "section": "3. Оценка сообщения",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "recovery-20",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 1340,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные действия по результату",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "recovery-21",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1340,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные действия по результату",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "recovery-edge-recovery-1-next",
+      "source": "recovery-1",
+      "target": "recovery-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "recovery-edge-recovery-2-next",
+      "source": "recovery-2",
+      "target": "recovery-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "recovery-edge-recovery-5-success",
+      "source": "recovery-5",
+      "target": "recovery-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-6-success",
+      "source": "recovery-6",
+      "target": "recovery-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-7-true",
+      "source": "recovery-7",
+      "target": "recovery-8",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "recovery-edge-recovery-8-success",
+      "source": "recovery-8",
+      "target": "recovery-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-9-success",
+      "source": "recovery-9",
+      "target": "recovery-10",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-10-true",
+      "source": "recovery-10",
+      "target": "recovery-11",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "recovery-edge-recovery-11-true",
+      "source": "recovery-11",
+      "target": "recovery-12",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "recovery-edge-recovery-11-false",
+      "source": "recovery-11",
+      "target": "recovery-13",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "recovery-edge-recovery-13-true",
+      "source": "recovery-13",
+      "target": "recovery-14",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "recovery-edge-recovery-14-success",
+      "source": "recovery-14",
+      "target": "recovery-15",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-5-error",
+      "source": "recovery-5",
+      "target": "recovery-16",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "recovery-edge-recovery-6-error",
+      "source": "recovery-6",
+      "target": "recovery-16",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "recovery-edge-recovery-7-false",
+      "source": "recovery-7",
+      "target": "recovery-17",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "recovery-edge-recovery-8-error",
+      "source": "recovery-8",
+      "target": "recovery-16",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "recovery-edge-recovery-9-error",
+      "source": "recovery-9",
+      "target": "recovery-18",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "recovery-edge-recovery-10-false",
+      "source": "recovery-10",
+      "target": "recovery-19",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "recovery-edge-recovery-12-success",
+      "source": "recovery-12",
+      "target": "recovery-20",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-12-error",
+      "source": "recovery-12",
+      "target": "recovery-21",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "recovery-edge-recovery-13-false",
+      "source": "recovery-13",
+      "target": "recovery-20",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "recovery-edge-recovery-14-error",
+      "source": "recovery-14",
+      "target": "recovery-21",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "recovery-edge-recovery-15-success",
+      "source": "recovery-15",
+      "target": "recovery-20",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "recovery-edge-recovery-15-error",
+      "source": "recovery-15",
+      "target": "recovery-21",
+      "sourceHandle": "error"
+    }
+  ]
+}

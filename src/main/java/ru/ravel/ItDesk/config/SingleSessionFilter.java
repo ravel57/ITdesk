@@ -39,9 +39,12 @@ public class SingleSessionFilter extends OncePerRequestFilter {
 				String uri = request.getRequestURI();
 				if (uri.startsWith(request.getContextPath() + "/api/")) {
 					response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+					String reason = userSessionService.consumePendingLogoutReason(username);
+					response.setContentType("application/json;charset=UTF-8");
+					response.getWriter().write("{\"reason\":\"" + (reason != null ? reason : "LOGGED_IN_ELSEWHERE") + "\"}");
 					return;
 				}
-				response.sendRedirect(request.getContextPath() + "/login?sessionExpired=1");
+				response.sendRedirect(LoginRedirects.withTarget(request.getContextPath() + "/login?sessionExpired=1", LoginRedirects.requestTarget(request)));
 				return;
 			}
 		}

@@ -45,7 +45,9 @@ public class MfaEnforcementFilter extends OncePerRequestFilter {
 			response.getWriter().write("{\"mfaRequired\":true}");
 			return;
 		}
-		response.sendRedirect(request.getContextPath() + MFA_PAGE);
+		String target = LoginRedirects.requestTarget(request);
+		LoginRedirects.rememberForMfa(session, target);
+		response.sendRedirect(LoginRedirects.withTarget(request.getContextPath() + MFA_PAGE, target));
 	}
 
 

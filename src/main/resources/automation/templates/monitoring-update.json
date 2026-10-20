@@ -1,0 +1,1238 @@
+{
+  "version": 3,
+  "entryNodeId": "monitoring-update-1",
+  "nodes": [
+    {
+      "id": "monitoring-update-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MONITORING_PROBLEM_UPDATED"
+      }
+    },
+    {
+      "id": "monitoring-update-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "createSeverity",
+            "label": "Создавать инцидент при важности Zabbix от",
+            "value": 4,
+            "help": "Порог действует и при создании из обновления.",
+            "type": "number",
+            "min": 0,
+            "max": 5
+          },
+          {
+            "name": "p1Clients",
+            "label": "P1 только при числе затронутых клиентов от",
+            "value": 10,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 1000000
+          },
+          {
+            "name": "p1Interval",
+            "label": "Интервал обновлений P1, минут",
+            "value": 15,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p2Interval",
+            "label": "Интервал обновлений P2, минут",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p3Interval",
+            "label": "Интервал обновлений P3, минут",
+            "value": 60,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p4Interval",
+            "label": "Интервал обновлений P4, минут",
+            "value": 120,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "monitoring-update-5",
+      "type": "CONDITION",
+      "label": "Проблема сопоставлена с сервисом?",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "expression": "service.id.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=service.id",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-6",
+      "type": "OPERATION",
+      "label": "Последовательно обработать события одного сервиса",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "lock.key",
+        "arguments": {
+          "key": "monitoring-service:{{ service.id }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-update-7",
+      "type": "OPERATION",
+      "label": "Загрузить инциденты сервиса",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "data.incidents",
+        "arguments": {
+          "serviceId": "=service.id",
+          "limit": 1000
+        },
+        "resultVariable": "incidents"
+      }
+    },
+    {
+      "id": "monitoring-update-8",
+      "type": "OPERATION",
+      "label": "Отобрать: active",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.incidents",
+          "where": "!(var.item.status in ['CLOSED','CANCELLED'])",
+          "sortBy": "id",
+          "descending": true,
+          "limit": 1
+        },
+        "resultVariable": "active"
+      }
+    },
+    {
+      "id": "monitoring-update-9",
+      "type": "CONDITION",
+      "label": "Активный инцидент уже есть?",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "expression": "var.active.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.active.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-10",
+      "type": "OPERATION",
+      "label": "Добавить заметку о событии мониторинга",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Запись в существующий инцидент",
+        "operation": "incident.note",
+        "arguments": {
+          "incidentId": "=var.active.first().id",
+          "text": "Мониторинг: {{ problem.name }}. Важность {{ problem.severity }}. {{ problem.updateMessage }} {{ problem.updateAction }} {{ problem.updateUser }} {{ problem.url }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-update-11",
+      "type": "CONDITION",
+      "label": "Важности достаточно для нового инцидента?",
+      "x": 80,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity >= var.settings.createSeverity",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.severity",
+          "operator": ">=",
+          "right": "=var.settings.createSeverity"
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-12",
+      "type": "CONDITION",
+      "label": "Проблема всё ещё открыта?",
+      "x": 500,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.status = 'OPEN'",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.status",
+          "operator": "=",
+          "right": "OPEN"
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-13",
+      "type": "OPERATION",
+      "label": "Получить сервис и ответственных",
+      "x": 920,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "data.service",
+        "arguments": {
+          "serviceId": "=service.id"
+        },
+        "resultVariable": "catalogService"
+      }
+    },
+    {
+      "id": "monitoring-update-14",
+      "type": "OPERATION",
+      "label": "Посчитать затронутых клиентов",
+      "x": 1340,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "data.affectedClients",
+        "arguments": {
+          "serviceId": "=service.id"
+        },
+        "resultVariable": "affected"
+      }
+    },
+    {
+      "id": "monitoring-update-15",
+      "type": "OPERATION",
+      "label": "Серьёзность по умолчанию",
+      "x": 1760,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P4"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-update-16",
+      "type": "OPERATION",
+      "label": "Интервал обновлений по умолчанию",
+      "x": 2180,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p4Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-update-17",
+      "type": "CONDITION",
+      "label": "Авария максимальной важности и достаточно клиентов?",
+      "x": 2600,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity >= 5 && var.affected >= var.settings.p1Clients",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=problem.severity",
+              "operator": ">=",
+              "right": 5
+            },
+            {
+              "left": "=var.affected",
+              "operator": ">=",
+              "right": "=var.settings.p1Clients"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-18",
+      "type": "OPERATION",
+      "label": "Установить P1",
+      "x": 3020,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P1"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-update-19",
+      "type": "OPERATION",
+      "label": "Интервал P1",
+      "x": 3440,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p1Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-update-20",
+      "type": "CONDITION",
+      "label": "Высокая важность или P1 ограничен числом клиентов?",
+      "x": 3020,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity >= 4",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.severity",
+          "operator": ">=",
+          "right": 4
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-21",
+      "type": "OPERATION",
+      "label": "Установить P2",
+      "x": 3440,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P2"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-update-22",
+      "type": "OPERATION",
+      "label": "Интервал P2",
+      "x": 3860,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p2Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-update-23",
+      "type": "CONDITION",
+      "label": "Средняя важность?",
+      "x": 3440,
+      "y": 2510,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "expression": "problem.severity = 3",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=problem.severity",
+          "operator": "=",
+          "right": 3
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-24",
+      "type": "OPERATION",
+      "label": "Установить P3",
+      "x": 3860,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "P3"
+        },
+        "resultVariable": "severity"
+      }
+    },
+    {
+      "id": "monitoring-update-25",
+      "type": "OPERATION",
+      "label": "Интервал P3",
+      "x": 4280,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.settings.p3Interval"
+        },
+        "resultVariable": "interval"
+      }
+    },
+    {
+      "id": "monitoring-update-26",
+      "type": "OPERATION",
+      "label": "Создать черновик с выбранными параметрами",
+      "x": 4700,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "operation": "incident.create",
+        "arguments": {
+          "title": "Мониторинг: {{ service.name }} — {{ problem.name }}",
+          "description": "Создан по событию Zabbix. Сервис: {{ service.name }}. Проблема: {{ problem.name }}. Важность: {{ problem.severity }}. Затронуто клиентов: {{ var.affected }}. Ссылка: {{ problem.url }}. Проверьте данные и объявите инцидент.",
+          "publicDescription": "Наблюдаются проблемы с сервисом «{{ service.name }}». Мы разбираемся и сообщим новости.",
+          "impact": "По данным мониторинга: {{ problem.name }}",
+          "severity": "=var.severity",
+          "serviceId": "=service.id",
+          "lineId": "=var.catalogService.lineId",
+          "ownerId": "=var.catalogService.ownerId",
+          "participantIds": "=var.catalogService.executorIds",
+          "intervalMinutes": "=var.interval",
+          "startedAt": "=problem.startedAt"
+        },
+        "resultVariable": "createdIncident"
+      }
+    },
+    {
+      "id": "monitoring-update-27",
+      "type": "OPERATION",
+      "label": "Данные линии поддержки",
+      "x": 80,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "data.lines",
+        "arguments": {},
+        "resultVariable": "allLines"
+      }
+    },
+    {
+      "id": "monitoring-update-28",
+      "type": "OPERATION",
+      "label": "Отобрать: incidentLines",
+      "x": 500,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLines",
+          "where": "var.item.id = var.catalogService.lineId",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "incidentLines"
+      }
+    },
+    {
+      "id": "monitoring-update-29",
+      "type": "OPERATION",
+      "label": "Список участников линии по умолчанию",
+      "x": 920,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "value.set",
+        "arguments": {
+          "value": []
+        },
+        "resultVariable": "lineMembers"
+      }
+    },
+    {
+      "id": "monitoring-update-30",
+      "type": "CONDITION",
+      "label": "У сервиса есть линия?",
+      "x": 1340,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "expression": "var.incidentLines.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.incidentLines.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-31",
+      "type": "OPERATION",
+      "label": "Участники и ответственный линии",
+      "x": 1760,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.incidentLines.first().memberIds",
+          "second": [
+            "=var.incidentLines.first().responsibleId"
+          ]
+        },
+        "resultVariable": "lineMembers"
+      }
+    },
+    {
+      "id": "monitoring-update-32",
+      "type": "OPERATION",
+      "label": "Ответственные за сервис",
+      "x": 2180,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.catalogService.executorIds",
+          "second": [
+            "=var.catalogService.ownerId"
+          ]
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-update-33",
+      "type": "OPERATION",
+      "label": "Объединить ответственных сервиса и линии",
+      "x": 2600,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.recipientIds",
+          "second": "=var.lineMembers"
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-update-34",
+      "type": "OPERATION",
+      "label": "Отобрать: recipientIds",
+      "x": 3020,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.recipientIds",
+          "where": "var.item.notNull()",
+          "sortBy": "",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-update-35",
+      "type": "CONDITION",
+      "label": "Ответственные найдены?",
+      "x": 3440,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "expression": "var.recipientIds.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.recipientIds.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-update-36",
+      "type": "OPERATION",
+      "label": "Запасной вариант: пользователи системы",
+      "x": 3860,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "data.users",
+        "arguments": {},
+        "resultVariable": "users"
+      }
+    },
+    {
+      "id": "monitoring-update-37",
+      "type": "OPERATION",
+      "label": "Отобрать: admins",
+      "x": 4280,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.users",
+          "where": "var.item.enabled && var.item.admin",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "admins"
+      }
+    },
+    {
+      "id": "monitoring-update-38",
+      "type": "OPERATION",
+      "label": "Уведомить администраторов, если ответственных нет",
+      "x": 4700,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "list.project",
+        "arguments": {
+          "items": "=var.admins",
+          "expression": "var.item.id"
+        },
+        "resultVariable": "recipientIds"
+      }
+    },
+    {
+      "id": "monitoring-update-39",
+      "type": "FOR_EACH",
+      "label": "Уведомить каждого ответственного",
+      "x": 5120,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "itemsExpression": "var.recipientIds",
+        "itemVariable": "recipientId",
+        "indexVariable": "recipientIdIndex",
+        "maxItems": 100,
+        "endNodeId": "monitoring-update-40"
+      }
+    },
+    {
+      "id": "monitoring-update-40",
+      "type": "LOOP_END",
+      "label": "Следующий элемент: Уведомить каждого ответственного",
+      "x": 5960,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "description": "Завершение одной итерации цикла «Уведомить каждого ответственного»"
+      }
+    },
+    {
+      "id": "monitoring-update-41",
+      "type": "OPERATION",
+      "label": "Отправить уведомление о черновике",
+      "x": 5540,
+      "y": 2980,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "operation": "notify.user",
+        "arguments": {
+          "userId": "=var.recipientId",
+          "text": "Мониторинг: создан черновик {{ var.createdIncident.number }} «{{ var.createdIncident.title }}»"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-update-42",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 500,
+      "y": 820,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-update-43",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1760,
+      "y": 820,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-update-44",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Запись в существующий инцидент",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-update-45",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 500,
+      "y": 1540,
+      "config": {
+        "section": "3. Запись в существующий инцидент",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-update-46",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 920,
+      "y": 2260,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-update-47",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 5120,
+      "y": 2010,
+      "config": {
+        "section": "4. Явные условия создания черновика",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-update-48",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 5120,
+      "y": 3230,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-update-49",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 5540,
+      "y": 3230,
+      "config": {
+        "section": "5. Получатели уведомлений",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "monitoring-update-edge-monitoring-update-1-next",
+      "source": "monitoring-update-1",
+      "target": "monitoring-update-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-2-next",
+      "source": "monitoring-update-2",
+      "target": "monitoring-update-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-5-true",
+      "source": "monitoring-update-5",
+      "target": "monitoring-update-6",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-6-success",
+      "source": "monitoring-update-6",
+      "target": "monitoring-update-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-7-success",
+      "source": "monitoring-update-7",
+      "target": "monitoring-update-8",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-8-success",
+      "source": "monitoring-update-8",
+      "target": "monitoring-update-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-9-true",
+      "source": "monitoring-update-9",
+      "target": "monitoring-update-10",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-9-false",
+      "source": "monitoring-update-9",
+      "target": "monitoring-update-11",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-11-true",
+      "source": "monitoring-update-11",
+      "target": "monitoring-update-12",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-12-true",
+      "source": "monitoring-update-12",
+      "target": "monitoring-update-13",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-13-success",
+      "source": "monitoring-update-13",
+      "target": "monitoring-update-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-14-success",
+      "source": "monitoring-update-14",
+      "target": "monitoring-update-15",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-15-success",
+      "source": "monitoring-update-15",
+      "target": "monitoring-update-16",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-16-success",
+      "source": "monitoring-update-16",
+      "target": "monitoring-update-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-17-true",
+      "source": "monitoring-update-17",
+      "target": "monitoring-update-18",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-18-success",
+      "source": "monitoring-update-18",
+      "target": "monitoring-update-19",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-17-false",
+      "source": "monitoring-update-17",
+      "target": "monitoring-update-20",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-20-true",
+      "source": "monitoring-update-20",
+      "target": "monitoring-update-21",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-21-success",
+      "source": "monitoring-update-21",
+      "target": "monitoring-update-22",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-20-false",
+      "source": "monitoring-update-20",
+      "target": "monitoring-update-23",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-23-true",
+      "source": "monitoring-update-23",
+      "target": "monitoring-update-24",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-24-success",
+      "source": "monitoring-update-24",
+      "target": "monitoring-update-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-19-success",
+      "source": "monitoring-update-19",
+      "target": "monitoring-update-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-22-success",
+      "source": "monitoring-update-22",
+      "target": "monitoring-update-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-25-success",
+      "source": "monitoring-update-25",
+      "target": "monitoring-update-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-23-false",
+      "source": "monitoring-update-23",
+      "target": "monitoring-update-26",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-26-success",
+      "source": "monitoring-update-26",
+      "target": "monitoring-update-27",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-27-success",
+      "source": "monitoring-update-27",
+      "target": "monitoring-update-28",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-28-success",
+      "source": "monitoring-update-28",
+      "target": "monitoring-update-29",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-29-success",
+      "source": "monitoring-update-29",
+      "target": "monitoring-update-30",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-30-true",
+      "source": "monitoring-update-30",
+      "target": "monitoring-update-31",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-31-success",
+      "source": "monitoring-update-31",
+      "target": "monitoring-update-32",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-30-false",
+      "source": "monitoring-update-30",
+      "target": "monitoring-update-32",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-32-success",
+      "source": "monitoring-update-32",
+      "target": "monitoring-update-33",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-33-success",
+      "source": "monitoring-update-33",
+      "target": "monitoring-update-34",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-34-success",
+      "source": "monitoring-update-34",
+      "target": "monitoring-update-35",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-35-false",
+      "source": "monitoring-update-35",
+      "target": "monitoring-update-36",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-36-success",
+      "source": "monitoring-update-36",
+      "target": "monitoring-update-37",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-37-success",
+      "source": "monitoring-update-37",
+      "target": "monitoring-update-38",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-35-true",
+      "source": "monitoring-update-35",
+      "target": "monitoring-update-39",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-38-success",
+      "source": "monitoring-update-38",
+      "target": "monitoring-update-39",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-39-body",
+      "source": "monitoring-update-39",
+      "target": "monitoring-update-41",
+      "sourceHandle": "body"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-41-error",
+      "source": "monitoring-update-41",
+      "target": "monitoring-update-40",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-41-success",
+      "source": "monitoring-update-41",
+      "target": "monitoring-update-40",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-5-false",
+      "source": "monitoring-update-5",
+      "target": "monitoring-update-42",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-6-error",
+      "source": "monitoring-update-6",
+      "target": "monitoring-update-43",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-7-error",
+      "source": "monitoring-update-7",
+      "target": "monitoring-update-43",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-8-error",
+      "source": "monitoring-update-8",
+      "target": "monitoring-update-43",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-10-success",
+      "source": "monitoring-update-10",
+      "target": "monitoring-update-44",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-10-error",
+      "source": "monitoring-update-10",
+      "target": "monitoring-update-45",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-11-false",
+      "source": "monitoring-update-11",
+      "target": "monitoring-update-46",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-12-false",
+      "source": "monitoring-update-12",
+      "target": "monitoring-update-46",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-13-error",
+      "source": "monitoring-update-13",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-14-error",
+      "source": "monitoring-update-14",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-15-error",
+      "source": "monitoring-update-15",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-16-error",
+      "source": "monitoring-update-16",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-18-error",
+      "source": "monitoring-update-18",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-19-error",
+      "source": "monitoring-update-19",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-21-error",
+      "source": "monitoring-update-21",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-22-error",
+      "source": "monitoring-update-22",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-24-error",
+      "source": "monitoring-update-24",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-25-error",
+      "source": "monitoring-update-25",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-26-error",
+      "source": "monitoring-update-26",
+      "target": "monitoring-update-47",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-27-error",
+      "source": "monitoring-update-27",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-28-error",
+      "source": "monitoring-update-28",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-29-error",
+      "source": "monitoring-update-29",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-31-error",
+      "source": "monitoring-update-31",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-32-error",
+      "source": "monitoring-update-32",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-33-error",
+      "source": "monitoring-update-33",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-34-error",
+      "source": "monitoring-update-34",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-36-error",
+      "source": "monitoring-update-36",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-37-error",
+      "source": "monitoring-update-37",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-38-error",
+      "source": "monitoring-update-38",
+      "target": "monitoring-update-48",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-update-edge-monitoring-update-39-next",
+      "source": "monitoring-update-39",
+      "target": "monitoring-update-49",
+      "sourceHandle": "next"
+    }
+  ]
+}

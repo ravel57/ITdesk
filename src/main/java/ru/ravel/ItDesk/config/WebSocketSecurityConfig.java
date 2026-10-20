@@ -70,6 +70,7 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 				.simpSubscribeDestMatchers(
 						"/user/topic/task-messages/**",
 						"/user/topic/task-updated/**",
+						"/user/topic/task-opened/**",
 						"/user/topic/incidents-updated/**",
 						"/user/topic/user-notification/**",
 						"/user/topic/force-logout/**"
@@ -87,6 +88,7 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 						"/topic/mark-read/**",
 						"/topic/task-messages/**",
 						"/topic/task-updated/**",
+						"/topic/task-opened/**",
 						"/topic/incidents-updated/**",
 						"/topic/user-notification/**",
 						"/topic/force-logout/**"

@@ -3,6 +3,8 @@ package ru.ravel.ItDesk.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.jetbrains.annotations.NotNull;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -11,6 +13,7 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 
 @Entity
@@ -64,6 +67,11 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 
 	@Builder.Default
 	protected Boolean isEnabled = true;
+
+	/** Создан без пароля администратором: ждёт перехода по ссылке-приглашению, чтобы задать пароль. */
+	@Builder.Default
+	@Column(name = "invite_pending", nullable = false, columnDefinition = "boolean default false")
+	protected Boolean invitePending = false;
 
 	/** Двухфакторная аутентификация (TOTP) включена. Секреты наружу не отдаются. */
 	@Builder.Default
@@ -136,6 +144,40 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	@Builder.Default
 	@Column(name = "notify_deadline_overdue", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyDeadlineOverdue = false;
+
+	/** Прошёл приветственный мастер первого входа (/welcome) хотя бы раз; раньше хранилось в localStorage браузера. */
+	@Builder.Default
+	@Column(name = "welcome_seen", nullable = false, columnDefinition = "boolean default false")
+	protected Boolean welcomeSeen = false;
+
+	/**
+	 * Какие поля показывать в карточке заявки и в каком порядке — личная настройка пользователя;
+	 * раньше хранилось в localStorage браузера под ключом taskCardConfig. null — использовать
+	 * настройки по умолчанию (все поля, порядок как во фронтовом справочнике TASK_CARD_FIELDS).
+	 */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "task_card_fields_config", columnDefinition = "jsonb")
+	protected List<TaskCardFieldConfig> taskCardFieldsConfig;
+
+	/**
+	 * Какие подсказки-туры на отдельных страницах (заявки, карточка заявки, чаты и т.д.) уже пройдены
+	 * или пропущены — ключ тура → "done"/"skipped". Раньше каждая страница хранила свой ключ в localStorage.
+	 */
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(name = "onboarding_progress", columnDefinition = "jsonb")
+	protected Map<String, String> onboardingProgress;
+
+
+	/** User сам Serializable (хранится в HttpSession как principal) — вложенные типы обязаны быть тоже. */
+	@Data
+	@NoArgsConstructor
+	@AllArgsConstructor
+	public static class TaskCardFieldConfig implements Serializable {
+		@Serial
+		private static final long serialVersionUID = 1L;
+		String key;
+		Boolean enabled;
+	}
 
 
 	@Override

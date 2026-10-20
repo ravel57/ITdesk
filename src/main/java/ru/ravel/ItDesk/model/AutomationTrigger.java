@@ -72,6 +72,14 @@ public class AutomationTrigger implements Comparable<AutomationTrigger> {
 	@Column(nullable = false, columnDefinition = "int default 0")
 	private Integer orderNumber;
 
+	/** Папка, в которой лежит правило; null — верхний уровень. Только организация, на выполнение не влияет. */
+	private Long folderId;
+
+	/** Позиция среди соседей: внутри папки либо среди элементов верхнего уровня (вместе с папками). */
+	@Column(nullable = false, columnDefinition = "int default 0")
+	@Builder.Default
+	private Integer displayOrder = 0;
+
 
 	@Override
 	public int compareTo(@NotNull AutomationTrigger o) {

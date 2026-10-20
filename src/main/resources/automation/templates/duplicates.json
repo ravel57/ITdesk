@@ -1,0 +1,650 @@
+{
+  "version": 3,
+  "entryNodeId": "duplicates-1",
+  "nodes": [
+    {
+      "id": "duplicates-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "TASK_CREATED"
+      }
+    },
+    {
+      "id": "duplicates-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "threshold",
+            "label": "Минимальная уверенность Jev",
+            "value": 0.6,
+            "help": "Ниже порога данные не меняются.",
+            "type": "number",
+            "migrationSetting": "findDuplicate",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "hours",
+            "label": "Окно поиска открытых заявок, часов",
+            "value": 72,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 8760
+          },
+          {
+            "name": "candidates",
+            "label": "Максимум кандидатов",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 100
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "duplicates-5",
+      "type": "OPERATION",
+      "label": "Проверить связь текущей заявки",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "operation": "data.links",
+        "arguments": {
+          "taskId": "=task.id"
+        },
+        "resultVariable": "currentLinks"
+      }
+    },
+    {
+      "id": "duplicates-6",
+      "type": "CONDITION",
+      "label": "Текущая заявка ещё не связана с инцидентом?",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "expression": "var.currentLinks.isEmpty()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.currentLinks",
+          "operator": "empty"
+        }
+      }
+    },
+    {
+      "id": "duplicates-7",
+      "type": "OPERATION",
+      "label": "Заявки активных инцидентов",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "operation": "data.links",
+        "arguments": {
+          "limit": 1000
+        },
+        "resultVariable": "allLinks"
+      }
+    },
+    {
+      "id": "duplicates-8",
+      "type": "OPERATION",
+      "label": "Отобрать: activeLinks",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLinks",
+          "where": "!(var.item.incident.status in ['CLOSED', 'CANCELLED'])",
+          "sortBy": "incident.id",
+          "descending": false,
+          "limit": 1000
+        },
+        "resultVariable": "activeLinks"
+      }
+    },
+    {
+      "id": "duplicates-9",
+      "type": "OPERATION",
+      "label": "Кандидаты из инцидентов",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "operation": "list.project",
+        "arguments": {
+          "items": "=var.activeLinks",
+          "expression": "var.item.task"
+        },
+        "resultVariable": "incidentTasks"
+      }
+    },
+    {
+      "id": "duplicates-10",
+      "type": "OPERATION",
+      "label": "Свежие открытые заявки",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Дополнить свежими открытыми заявками",
+        "operation": "data.tasks",
+        "arguments": {
+          "hours": "=var.settings.hours",
+          "limit": "=var.settings.candidates"
+        },
+        "resultVariable": "recentTasks"
+      }
+    },
+    {
+      "id": "duplicates-11",
+      "type": "OPERATION",
+      "label": "Сначала заявки инцидентов, затем остальные",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Дополнить свежими открытыми заявками",
+        "operation": "list.concat",
+        "arguments": {
+          "first": "=var.incidentTasks",
+          "second": "=var.recentTasks"
+        },
+        "resultVariable": "allCandidates"
+      }
+    },
+    {
+      "id": "duplicates-12",
+      "type": "OPERATION",
+      "label": "Исключить текущую и повторяющихся кандидатов",
+      "x": 920,
+      "y": 1290,
+      "config": {
+        "section": "3. Дополнить свежими открытыми заявками",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allCandidates",
+          "where": "var.item.id != task.id",
+          "sortBy": "",
+          "distinctBy": "id",
+          "limit": "=var.settings.candidates"
+        },
+        "resultVariable": "candidates"
+      }
+    },
+    {
+      "id": "duplicates-13",
+      "type": "OPERATION",
+      "label": "Есть ли дубль среди кандидатов?",
+      "x": 80,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "name": "=task.name",
+            "description": "=task.description"
+          },
+          "question": "Описывает ли новая заявка ту же проблему, что одна из этих заявок?",
+          "kind": "choice",
+          "options": {
+            "__none__": "Это отдельная проблема"
+          },
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.candidates",
+          "labelExpression": "var.item.name + ': ' + var.item.description.truncate(500)"
+        },
+        "resultVariable": "decision"
+      }
+    },
+    {
+      "id": "duplicates-14",
+      "type": "CONDITION",
+      "label": "Ответ получен и уверенности достаточно?",
+      "x": 500,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "expression": "var.decision.available && var.decision.probability >= var.settings.threshold && var.decision.value.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.decision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.decision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.decision.value",
+              "operator": "notNull"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "duplicates-15",
+      "type": "CONDITION",
+      "label": "Дубль относится к активному инциденту?",
+      "x": 920,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "expression": "var.decision.value.incident.notNull() && !(var.decision.value.incident.status in ['CLOSED','CANCELLED'])",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.decision.value.incident",
+              "operator": "notNull"
+            },
+            {
+              "not": {
+                "left": "=var.decision.value.incident.status",
+                "operator": "in",
+                "right": "=['CLOSED','CANCELLED']"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "duplicates-16",
+      "type": "OPERATION",
+      "label": "Привязать новую заявку к инциденту",
+      "x": 1340,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "operation": "incident.linkTasks",
+        "arguments": {
+          "incidentId": "=var.decision.value.incident.id",
+          "taskIds": [
+            "=task.id"
+          ]
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "duplicates-17",
+      "type": "OPERATION",
+      "label": "Записать связь в инцидент",
+      "x": 1760,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "operation": "incident.note",
+        "arguments": {
+          "incidentId": "=var.decision.value.incident.id",
+          "text": "Заявка #{{ task.id }} — дубль заявки #{{ var.decision.value.id }} (Jev)"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "duplicates-18",
+      "type": "OPERATION",
+      "label": "Сообщить оператору о привязке",
+      "x": 2180,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "operation": "client.note",
+        "arguments": {
+          "clientId": "=client.id",
+          "text": "Jev: заявка #{{ task.id }} — дубль заявки #{{ var.decision.value.id }}, привязана к инциденту {{ var.decision.value.incident.number }}."
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "duplicates-19",
+      "type": "CONDITION",
+      "label": "Это заявка того же клиента?",
+      "x": 1340,
+      "y": 2010,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "expression": "var.decision.value.clientId = client.id",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.decision.value.clientId",
+          "operator": "=",
+          "right": "=client.id"
+        }
+      }
+    },
+    {
+      "id": "duplicates-20",
+      "type": "OPERATION",
+      "label": "Подсказать объединение заявок",
+      "x": 1760,
+      "y": 2010,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "operation": "client.note",
+        "arguments": {
+          "clientId": "=client.id",
+          "text": "Jev: заявка #{{ task.id }} похожа на открытую заявку #{{ var.decision.value.id }} этого же клиента. Возможно, заявки стоит объединить."
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "duplicates-21",
+      "type": "OPERATION",
+      "label": "Подсказать возможный массовый инцидент",
+      "x": 1760,
+      "y": 2260,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "operation": "client.note",
+        "arguments": {
+          "clientId": "=client.id",
+          "text": "Jev: заявка #{{ task.id }} похожа на открытую заявку #{{ var.decision.value.id }} другого клиента. Проверьте, не массовый ли это сбой."
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "duplicates-22",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 2180,
+      "y": 570,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "duplicates-23",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 920,
+      "y": 820,
+      "config": {
+        "section": "2. Кандидаты из активных инцидентов",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "duplicates-24",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1340,
+      "y": 1290,
+      "config": {
+        "section": "3. Дополнить свежими открытыми заявками",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "duplicates-25",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 2600,
+      "y": 1760,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "duplicates-26",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 2600,
+      "y": 2010,
+      "config": {
+        "section": "4. Получить оценку и выбрать явное действие",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "duplicates-edge-duplicates-1-next",
+      "source": "duplicates-1",
+      "target": "duplicates-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "duplicates-edge-duplicates-2-next",
+      "source": "duplicates-2",
+      "target": "duplicates-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "duplicates-edge-duplicates-5-success",
+      "source": "duplicates-5",
+      "target": "duplicates-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-6-true",
+      "source": "duplicates-6",
+      "target": "duplicates-7",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "duplicates-edge-duplicates-7-success",
+      "source": "duplicates-7",
+      "target": "duplicates-8",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-8-success",
+      "source": "duplicates-8",
+      "target": "duplicates-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-9-success",
+      "source": "duplicates-9",
+      "target": "duplicates-10",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-10-success",
+      "source": "duplicates-10",
+      "target": "duplicates-11",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-11-success",
+      "source": "duplicates-11",
+      "target": "duplicates-12",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-12-success",
+      "source": "duplicates-12",
+      "target": "duplicates-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-13-success",
+      "source": "duplicates-13",
+      "target": "duplicates-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-14-true",
+      "source": "duplicates-14",
+      "target": "duplicates-15",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "duplicates-edge-duplicates-15-true",
+      "source": "duplicates-15",
+      "target": "duplicates-16",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "duplicates-edge-duplicates-16-success",
+      "source": "duplicates-16",
+      "target": "duplicates-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-17-success",
+      "source": "duplicates-17",
+      "target": "duplicates-18",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-15-false",
+      "source": "duplicates-15",
+      "target": "duplicates-19",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "duplicates-edge-duplicates-19-true",
+      "source": "duplicates-19",
+      "target": "duplicates-20",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "duplicates-edge-duplicates-19-false",
+      "source": "duplicates-19",
+      "target": "duplicates-21",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "duplicates-edge-duplicates-5-error",
+      "source": "duplicates-5",
+      "target": "duplicates-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-6-false",
+      "source": "duplicates-6",
+      "target": "duplicates-23",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "duplicates-edge-duplicates-7-error",
+      "source": "duplicates-7",
+      "target": "duplicates-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-8-error",
+      "source": "duplicates-8",
+      "target": "duplicates-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-9-error",
+      "source": "duplicates-9",
+      "target": "duplicates-22",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-10-error",
+      "source": "duplicates-10",
+      "target": "duplicates-24",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-11-error",
+      "source": "duplicates-11",
+      "target": "duplicates-24",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-12-error",
+      "source": "duplicates-12",
+      "target": "duplicates-24",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-13-error",
+      "source": "duplicates-13",
+      "target": "duplicates-25",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-14-false",
+      "source": "duplicates-14",
+      "target": "duplicates-26",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "duplicates-edge-duplicates-16-error",
+      "source": "duplicates-16",
+      "target": "duplicates-25",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-17-error",
+      "source": "duplicates-17",
+      "target": "duplicates-25",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-18-success",
+      "source": "duplicates-18",
+      "target": "duplicates-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-18-error",
+      "source": "duplicates-18",
+      "target": "duplicates-25",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-20-success",
+      "source": "duplicates-20",
+      "target": "duplicates-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-20-error",
+      "source": "duplicates-20",
+      "target": "duplicates-25",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "duplicates-edge-duplicates-21-success",
+      "source": "duplicates-21",
+      "target": "duplicates-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "duplicates-edge-duplicates-21-error",
+      "source": "duplicates-21",
+      "target": "duplicates-25",
+      "sourceHandle": "error"
+    }
+  ]
+}

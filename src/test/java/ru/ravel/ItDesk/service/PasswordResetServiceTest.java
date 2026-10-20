@@ -66,9 +66,18 @@ class PasswordResetServiceTest {
 	void requestAsksLicenseServerForLinkToThisInstanceWithoutChangingPassword() {
 		service.requestLink("ivan@example.ru");
 
-		verify(supportFeignClient).requestPasswordResetLink(license, new PasswordResetLinkRequest("Ivan@Example.ru", "https://desk.example.ru"));
+		verify(supportFeignClient).requestPasswordResetLink(license, new PasswordResetLinkRequest("Ivan@Example.ru", "https://desk.example.ru", null));
 		assertEquals("old", ivan.getPassword());
 		verify(userRepository, never()).save(any());
+	}
+
+
+	@Test
+	void inviteAsksLicenseServerForInviteLink() {
+		service.requestInviteLink("ivan@example.ru");
+
+		verify(supportFeignClient).requestPasswordResetLink(license, new PasswordResetLinkRequest("Ivan@Example.ru", "https://desk.example.ru", "INVITE"));
+		assertEquals("old", ivan.getPassword());
 	}
 
 
@@ -96,8 +105,9 @@ class PasswordResetServiceTest {
 		when(sessionRegistry.getAllPrincipals()).thenReturn(List.of(ivan));
 		when(sessionRegistry.getAllSessions(ivan, false)).thenReturn(List.of(session));
 
-		service.complete(" token-1 ", "new-password-1");
+		String username = service.complete(" token-1 ", "new-password-1");
 
+		assertEquals("Ivan@Example.ru", username);
 		verify(supportFeignClient).consumePasswordResetLink(license, new PasswordResetConfirm("token-1", null));
 		assertEquals("hash:new-password-1", ivan.getPassword());
 		verify(userRepository).save(ivan);
@@ -130,6 +140,20 @@ class PasswordResetServiceTest {
 
 		assertEquals(PasswordResetService.LinkState.VALID, service.verify("token-1"));
 		verify(supportFeignClient, never()).consumePasswordResetLink(any(), any());
+	}
+
+
+	@Test
+	void verifyWithPurposeReportsInviteLinksSeparatelyFromResetLinks() {
+		when(supportFeignClient.verifyPasswordResetLink(eq(license), any()))
+				.thenReturn(Map.of("expiresAt", "2026-10-18T13:00:00Z", "purpose", "INVITE"));
+		PasswordResetService.LinkVerification verification = service.verifyWithPurpose("token-1");
+		assertEquals(PasswordResetService.LinkState.VALID, verification.state());
+		assertTrue(verification.isInvite());
+
+		when(supportFeignClient.verifyPasswordResetLink(eq(license), any()))
+				.thenReturn(Map.of("expiresAt", "2026-10-18T13:00:00Z", "purpose", "RESET_PASSWORD"));
+		assertFalse(service.verifyWithPurpose("token-1").isInvite());
 	}
 
 

@@ -41,6 +41,7 @@ public class AutomationScriptRuntime {
 	private final ObjectMapper mapper;
 	private final AutomationActionExecutor actionExecutor;
 	private final AppSettingsService appSettingsService;
+	private final AutomationWorkflowValueService workflowValueService;
 	private static final ThreadLocal<AutomationTimeSettings> CURRENT_TIME_SETTINGS = ThreadLocal.withInitial(AutomationTimeSettings::defaultSettings);
 
 	// ------------------------- PUBLIC API -------------------------
@@ -56,7 +57,7 @@ public class AutomationScriptRuntime {
 		try {
 			Lexer lx = new Lexer(expression);
 			Parser parser = new Parser(lx);
-			ExprNode ast = parser.parseExpression();
+			ExprNode ast = parser.parseCompleteExpression();
 			return asBool(ast.eval(payloadRoot));
 		} finally {
 			CURRENT_TIME_SETTINGS.remove();
@@ -222,7 +223,10 @@ public class AutomationScriptRuntime {
 
 	/**
 	 * Выполнить действия (как в UI поле "Действие").
-	 * Поддерживает несколько команд через ';'
+	 * Поддерживает несколько команд через ';' или перенос строки вне кавычек и скобок. Переменные задаются только здесь, в графе:
+	 * {@code var.имя = target.method(...)} кладёт в переменную то, что вернул метод, а
+	 * {@code var.имя = выражение} — значение выражения; дальше их читают условия и следующие команды
+	 * ({@code var.имя.поле}).
 	 */
 	public void executeActions(String actionScript, AutomationExecutionContext ctx) {
 		if (actionScript == null || actionScript.isBlank()) {
@@ -231,25 +235,65 @@ public class AutomationScriptRuntime {
 		List<String> commands = splitCommands(actionScript);
 		for (String cmd : commands) {
 			if (cmd.isBlank()) continue;
+			// payload тот же объект, что меняют предыдущие команды: переменная из прошлой команды видна в следующей
 			JsonNode payloadRoot = ctx.getEvent().getPayload();
-			ParsedCall call = parseCall(cmd.trim(), payloadRoot);
+			String command = cmd.trim();
+			Matcher assignment = ASSIGNMENT_PATTERN.matcher(command);
+			if (assignment.matches()) {
+				String value = assignment.group(2).trim();
+				ParsedCall call = parseCall(value, payloadRoot);
+				Object result = call != null ? runCall(call, ctx) : parseArg(value, payloadRoot);
+				workflowValueService.setVariable(payloadRoot, assignment.group(1), result);
+				continue;
+			}
+			ParsedCall call = parseCall(command, payloadRoot);
 			if (call == null) continue;
-
-			// actionType = "client.sendMessage"
-			String actionType = call.target + "." + call.method;
-
-			// actionNode: { "args": [...] }
-			ObjectNode actionNode = mapper.createObjectNode();
-			ArrayNode args = actionNode.putArray("args");
-			for (Object arg : call.args) args.addPOJO(arg);
-
-			actionExecutor.execute(actionType, actionNode, ctx);
+			runCall(call, ctx);
 		}
+	}
+
+    public List<String> previewActions(String script, AutomationExecutionContext context) {
+        List<String> missing = new ArrayList<>();
+        if (script == null) return missing;
+        for (String command : splitCommands(script)) {
+            Matcher assignment = ASSIGNMENT_PATTERN.matcher(command);
+            if (!assignment.matches()) continue;
+            String name = assignment.group(1), expression = assignment.group(2).trim();
+            ParsedCall call = parseCall(expression, context.getEvent().getPayload());
+            if (call == null) workflowValueService.setVariable(context.getEvent().getPayload(), name, parseArg(expression, context.getEvent().getPayload()));
+            else {
+                JsonNode sample = context.getEvent().getPayload().path("_automation").path("testResults").path(name);
+                if (sample.isMissingNode()) missing.add(name);
+                else workflowValueService.setVariable(context.getEvent().getPayload(), name, sample);
+            }
+        }
+        return missing;
+    }
+
+    public void validateValueExpression(String expression) {
+        if (expression == null || expression.isBlank()) throw new IllegalArgumentException("Выражение не заполнено");
+        new Parser(new Lexer(expression)).parseCompleteExpression();
+    }
+
+	private Object runCall(ParsedCall call, AutomationExecutionContext ctx) {
+		ObjectNode actionNode = mapper.createObjectNode();
+		ArrayNode args = actionNode.putArray("args");
+		for (Object arg : call.args) args.addPOJO(arg);
+		return actionExecutor.execute(call.target + "." + call.method, actionNode, ctx);
+	}
+
+	/** Arguments are already evaluated values; message text must never be parsed as another script/template. */
+	public Object executeResolvedAction(String method, List<?> arguments, AutomationExecutionContext ctx) {
+		ObjectNode action = mapper.createObjectNode();
+		action.set("args", mapper.valueToTree(arguments));
+		return actionExecutor.execute(method, action, ctx);
 	}
 
 	// ------------------------- ACTION PARSER -------------------------
 
-	private static final Pattern CALL_PATTERN = Pattern.compile("^([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\((.*)\\)$");
+	/** var.имя = ... (одиночный «=», не «==») */
+	private static final Pattern ASSIGNMENT_PATTERN = Pattern.compile("^var\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*=(?!=)\\s*(.+)$", Pattern.DOTALL);
+	private static final Pattern CALL_PATTERN = Pattern.compile("^([a-zA-Z_][a-zA-Z0-9_]*)\\.([a-zA-Z_][a-zA-Z0-9_]*)\\((.*)\\)$", Pattern.DOTALL);
 	private static final Pattern TEMPLATE_EXPRESSION_PATTERN = Pattern.compile("\\{\\{\\s*(.+?)\\s*}}");
 
 	private ParsedCall parseCall(String script, JsonNode payloadRoot) {
@@ -463,7 +507,8 @@ public class AutomationScriptRuntime {
 		return String.valueOf(value);
 	}
 
-	private List<String> splitTopLevel(String value, char delimiter) {
+	private List<String> splitTopLevel(String value, char... delimiters) {
+		String separators = new String(delimiters);
 		List<String> parts = new ArrayList<>();
 		StringBuilder current = new StringBuilder();
 		boolean inString = false;
@@ -505,7 +550,7 @@ public class AutomationScriptRuntime {
 				}
 			}
 
-			if (c == delimiter && roundDepth == 0 && squareDepth == 0 && curlyDepth == 0) {
+			if (separators.indexOf(c) >= 0 && roundDepth == 0 && squareDepth == 0 && curlyDepth == 0) {
 				parts.add(current.toString());
 				current.setLength(0);
 			} else {
@@ -562,38 +607,25 @@ public class AutomationScriptRuntime {
 		return raw;
 	}
 
-	private List<String> splitCommands(String script) {
-		List<String> list = new ArrayList<>();
-		StringBuilder sb = new StringBuilder();
-
-		boolean inString = false;
-		char quote = 0;
-
-		for (int i = 0; i < script.length(); i++) {
-			char c = script.charAt(i);
-			if (inString) {
-				sb.append(c);
-				if (c == quote && script.charAt(i - 1) != '\\') inString = false;
-				continue;
-			}
-			if (c == '\'' || c == '"') {
-				inString = true;
-				quote = c;
-				sb.append(c);
-				continue;
-			}
-			if (c == ';') {
-				list.add(sb.toString().trim());
-				sb.setLength(0);
-				continue;
-			}
-			sb.append(c);
-		}
-		if (!sb.toString().trim().isBlank()) {
-			list.add(sb.toString().trim());
-		}
-		return list;
+	/** Strict, side-effect-free value evaluation shared by graph fields and conditions. */
+	public Object evaluateValue(String expression, JsonNode payload) {
+		if (expression == null || expression.isBlank()) return null;
+		CURRENT_TIME_SETTINGS.set(resolveAutomationTimeSettings());
+		try { return new Parser(new Lexer(expression)).parseCompleteExpression().eval(payload); }
+		finally { CURRENT_TIME_SETTINGS.remove(); }
 	}
+
+	public String renderValueTemplate(String text, JsonNode payload) {
+		return interpolateActionTemplate(text, payload);
+	}
+
+	private List<String> splitCommands(String script) {
+		return splitTopLevel(script, ';', '\n', '\r').stream()
+				.map(String::trim)
+				.filter(command -> !command.isBlank())
+				.toList();
+	}
+
 
 	private record ParsedCall(String target, String method, List<Object> args) {
 	}
@@ -699,12 +731,17 @@ public class AutomationScriptRuntime {
 				i += 2;
 				return new Tok(TokType.OP, "or");
 			}
-			if (startsWith(">=") || startsWith("<=")) {
+			if (startsWith(">=") || startsWith("<=") || startsWith("!=") || startsWith("==")) {
 				String op = s.substring(i, i + 2);
 				i += 2;
 				return new Tok(TokType.OP, op);
 			}
 			if (c == '>' || c == '<' || c == '=' || c == '!') {
+				i++;
+				return new Tok(TokType.OP, String.valueOf(c));
+			}
+
+			if (c == '+' || c == '-' || c == '*' || c == '/') {
 				i++;
 				return new Tok(TokType.OP, String.valueOf(c));
 			}
@@ -815,14 +852,14 @@ public class AutomationScriptRuntime {
 		}
 
 		private ExprNode parseCompare() {
-			ExprNode left = parsePrimary();
+			ExprNode left = parseSum();
 
 			if (cur.type == TokType.OP) {
 				String opText = cur.text;
 
 				if (isCompareOp(opText)) {
 					consume();
-					ExprNode right = parsePrimary();
+					ExprNode right = parseSum();
 					TriggerOperationType op = mapOp(opText);
 
 					return ctx -> evalCompare(op, left.eval(ctx), right.eval(ctx));
@@ -830,6 +867,47 @@ public class AutomationScriptRuntime {
 			}
 
 			return left;
+		}
+
+		private ExprNode parseSum() {
+			ExprNode left = parseProduct();
+			while (cur.type == TokType.OP && (cur.text.equals("+") || cur.text.equals("-"))) {
+				String op = cur.text; consume();
+				ExprNode a = left, b = parseProduct();
+				left = ctx -> arithmetic(op, a.eval(ctx), b.eval(ctx));
+			}
+			return left;
+		}
+
+		private ExprNode parseProduct() {
+			ExprNode left = parseUnary();
+			while (cur.type == TokType.OP && (cur.text.equals("*") || cur.text.equals("/"))) {
+				String op = cur.text; consume();
+				ExprNode a = left, b = parseUnary();
+				left = ctx -> arithmetic(op, a.eval(ctx), b.eval(ctx));
+			}
+			return left;
+		}
+
+		private ExprNode parseUnary() {
+			if (cur.type == TokType.OP && cur.text.equals("-")) {
+				consume(); ExprNode value = parseUnary();
+				return ctx -> new BigDecimal(String.valueOf(value.eval(ctx))).negate();
+			}
+			return parsePrimary();
+		}
+
+		private static Object arithmetic(String op, Object a, Object b) {
+			if (op.equals("+") && (a instanceof String || b instanceof String)) {
+				return Objects.toString(a, "") + Objects.toString(b, "");
+			}
+			BigDecimal x = new BigDecimal(String.valueOf(a)), y = new BigDecimal(String.valueOf(b));
+			return switch (op) {
+				case "+" -> x.add(y);
+				case "-" -> x.subtract(y);
+				case "*" -> x.multiply(y);
+				default -> x.divide(y, java.math.MathContext.DECIMAL128);
+			};
 		}
 
 		private ExprNode parsePrimary() {
@@ -941,6 +1019,22 @@ public class AutomationScriptRuntime {
 							continue;
 						}
 
+						if ("truncate".equalsIgnoreCase(part)) {
+							current = ctx -> {
+								String text = Objects.toString(receiver.eval(ctx), "");
+								int length = args.isEmpty() ? 300 : Math.max(0, new BigDecimal(String.valueOf(args.getFirst().eval(ctx))).intValue());
+								return text.length() <= length ? text : text.substring(0, length);
+							};
+							continue;
+						}
+						if ("first".equalsIgnoreCase(part)) {
+							current = ctx -> {
+								Object value = receiver.eval(ctx);
+								if (value instanceof JsonNode json) return json.isArray() && !json.isEmpty() ? json.get(0) : null;
+								return value instanceof List<?> list && !list.isEmpty() ? list.getFirst() : null;
+							};
+							continue;
+						}
 						if ("last".equalsIgnoreCase(part)) {
 							current = ctx -> lastOf(receiver.eval(ctx));
 							continue;
@@ -995,7 +1089,7 @@ public class AutomationScriptRuntime {
 		}
 
 		private boolean isCompareOp(String x) {
-			return "=".equals(x) || ">".equals(x) || ">=".equals(x) || "<".equals(x) || "<=".equals(x) || "in".equalsIgnoreCase(x);
+			return "!=".equals(x) || "==".equals(x) || "=".equals(x) || ">".equals(x) || ">=".equals(x) || "<".equals(x) || "<=".equals(x) || "in".equalsIgnoreCase(x);
 		}
 
 		private TriggerOperationType mapOp(String x) {
@@ -1208,6 +1302,7 @@ public class AutomationScriptRuntime {
 	private static boolean evalCompare(TriggerOperationType op, Object left, Object right) {
 		return switch (op) {
 			case EQ -> Objects.equals(norm(left), norm(right));
+			case NE -> !Objects.equals(norm(left), norm(right));
 			case GT -> cmp(left, right) > 0;
 			case GTE -> cmp(left, right) >= 0;
 			case LT -> cmp(left, right) < 0;

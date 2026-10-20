@@ -81,6 +81,12 @@ public class AutomationPayloadService {
 				))
 				.toList();
 		objectNode(payload, "client").set("messages", objectMapper.valueToTree(messages));
+		// lastMessage is transient on Client and is not populated by a repository lookup.
+		Message lastMessage = messages.stream().max(Comparator
+				.comparing(Message::getDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+				.thenComparing(Message::getId, Comparator.nullsFirst(Comparator.naturalOrder())))
+				.orElse(null);
+		objectNode(payload, "client").set("lastMessage", objectMapper.valueToTree(lastMessage));
 		objectNode(payload, "client").set(
 				"incomeMessages",
 				objectMapper.valueToTree(messages.stream().filter(message -> !Boolean.TRUE.equals(message.getIsSent())).toList())

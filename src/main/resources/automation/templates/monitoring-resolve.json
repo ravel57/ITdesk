@@ -1,0 +1,402 @@
+{
+  "version": 3,
+  "entryNodeId": "monitoring-resolve-1",
+  "nodes": [
+    {
+      "id": "monitoring-resolve-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MONITORING_PROBLEM_RESOLVED"
+      }
+    },
+    {
+      "id": "monitoring-resolve-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "createSeverity",
+            "label": "Создавать инцидент при важности Zabbix от",
+            "value": 4,
+            "help": "Порог действует и при создании из обновления.",
+            "type": "number",
+            "min": 0,
+            "max": 5
+          },
+          {
+            "name": "p1Clients",
+            "label": "P1 только при числе затронутых клиентов от",
+            "value": 10,
+            "help": "",
+            "type": "number",
+            "min": 0,
+            "max": 1000000
+          },
+          {
+            "name": "p1Interval",
+            "label": "Интервал обновлений P1, минут",
+            "value": 15,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p2Interval",
+            "label": "Интервал обновлений P2, минут",
+            "value": 30,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p3Interval",
+            "label": "Интервал обновлений P3, минут",
+            "value": 60,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          },
+          {
+            "name": "p4Interval",
+            "label": "Интервал обновлений P4, минут",
+            "value": 120,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 10080
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "monitoring-resolve-5",
+      "type": "CONDITION",
+      "label": "Проблема сопоставлена с сервисом?",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "expression": "service.id.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=service.id",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "monitoring-resolve-6",
+      "type": "OPERATION",
+      "label": "Последовательно обработать события одного сервиса",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "lock.key",
+        "arguments": {
+          "key": "monitoring-service:{{ service.id }}"
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-resolve-7",
+      "type": "OPERATION",
+      "label": "Загрузить инциденты сервиса",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "data.incidents",
+        "arguments": {
+          "serviceId": "=service.id",
+          "limit": 1000
+        },
+        "resultVariable": "incidents"
+      }
+    },
+    {
+      "id": "monitoring-resolve-8",
+      "type": "OPERATION",
+      "label": "Отобрать: active",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.incidents",
+          "where": "!(var.item.status in ['CLOSED','CANCELLED'])",
+          "sortBy": "id",
+          "descending": true,
+          "limit": 1
+        },
+        "resultVariable": "active"
+      }
+    },
+    {
+      "id": "monitoring-resolve-9",
+      "type": "CONDITION",
+      "label": "Активный инцидент уже есть?",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "expression": "var.active.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.active.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-resolve-10",
+      "type": "OPERATION",
+      "label": "Посчитать открытые проблемы сервиса",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Проверка открытых проблем",
+        "operation": "data.monitoringCount",
+        "arguments": {
+          "serviceId": "=service.id",
+          "status": "OPEN"
+        },
+        "resultVariable": "openCount"
+      }
+    },
+    {
+      "id": "monitoring-resolve-11",
+      "type": "CONDITION",
+      "label": "Все проблемы сервиса устранены?",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Проверка открытых проблем",
+        "expression": "var.openCount = 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.openCount",
+          "operator": "=",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "monitoring-resolve-12",
+      "type": "OPERATION",
+      "label": "Перевести инцидент в наблюдение",
+      "x": 920,
+      "y": 1290,
+      "config": {
+        "section": "3. Проверка открытых проблем",
+        "operation": "incident.observe",
+        "arguments": {
+          "incidentId": "=var.active.first().id",
+          "reason": "Мониторинг: все проблемы сервиса устранены. Последняя — {{ problem.name }}."
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-resolve-13",
+      "type": "OPERATION",
+      "label": "Записать оставшиеся проблемы",
+      "x": 920,
+      "y": 1540,
+      "config": {
+        "section": "3. Проверка открытых проблем",
+        "operation": "incident.note",
+        "arguments": {
+          "incidentId": "=var.active.first().id",
+          "text": "Мониторинг: устранена проблема «{{ problem.name }}». Открытых проблем сервиса: {{ var.openCount }}."
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "monitoring-resolve-14",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 2180,
+      "y": 570,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "monitoring-resolve-15",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1760,
+      "y": 820,
+      "config": {
+        "section": "2. Сервис и активный инцидент",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-resolve-16",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1340,
+      "y": 1290,
+      "config": {
+        "section": "3. Проверка открытых проблем",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "monitoring-resolve-17",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 1340,
+      "y": 1540,
+      "config": {
+        "section": "3. Проверка открытых проблем",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-1-next",
+      "source": "monitoring-resolve-1",
+      "target": "monitoring-resolve-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-2-next",
+      "source": "monitoring-resolve-2",
+      "target": "monitoring-resolve-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-5-true",
+      "source": "monitoring-resolve-5",
+      "target": "monitoring-resolve-6",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-6-success",
+      "source": "monitoring-resolve-6",
+      "target": "monitoring-resolve-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-7-success",
+      "source": "monitoring-resolve-7",
+      "target": "monitoring-resolve-8",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-8-success",
+      "source": "monitoring-resolve-8",
+      "target": "monitoring-resolve-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-9-true",
+      "source": "monitoring-resolve-9",
+      "target": "monitoring-resolve-10",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-10-success",
+      "source": "monitoring-resolve-10",
+      "target": "monitoring-resolve-11",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-11-true",
+      "source": "monitoring-resolve-11",
+      "target": "monitoring-resolve-12",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-11-false",
+      "source": "monitoring-resolve-11",
+      "target": "monitoring-resolve-13",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-5-false",
+      "source": "monitoring-resolve-5",
+      "target": "monitoring-resolve-14",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-6-error",
+      "source": "monitoring-resolve-6",
+      "target": "monitoring-resolve-15",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-7-error",
+      "source": "monitoring-resolve-7",
+      "target": "monitoring-resolve-15",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-8-error",
+      "source": "monitoring-resolve-8",
+      "target": "monitoring-resolve-15",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-9-false",
+      "source": "monitoring-resolve-9",
+      "target": "monitoring-resolve-14",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-10-error",
+      "source": "monitoring-resolve-10",
+      "target": "monitoring-resolve-16",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-12-success",
+      "source": "monitoring-resolve-12",
+      "target": "monitoring-resolve-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-12-error",
+      "source": "monitoring-resolve-12",
+      "target": "monitoring-resolve-16",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-13-success",
+      "source": "monitoring-resolve-13",
+      "target": "monitoring-resolve-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "monitoring-resolve-edge-monitoring-resolve-13-error",
+      "source": "monitoring-resolve-13",
+      "target": "monitoring-resolve-16",
+      "sourceHandle": "error"
+    }
+  ]
+}

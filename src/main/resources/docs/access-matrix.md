@@ -64,8 +64,16 @@
 | POST | `/api/v1/auth/mfa/enroll/start` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET | `/api/v1/auth/mfa/status` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | POST | `/api/v1/auth/mfa/verify` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GET | `/api/v1/automation/backups` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | GET | `/api/v1/automation/expression/roots` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | POST | `/api/v1/automation/expression/suggestions` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| GET | `/api/v1/automation/folders` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| POST | `/api/v1/automation/folders` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| DELETE | `/api/v1/automation/folders/{folderId}` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| PATCH | `/api/v1/automation/folders/{folderId}` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| GET | `/api/v1/automation/history` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| PUT | `/api/v1/automation/layout` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| GET | `/api/v1/automation/operations` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | GET | `/api/v1/automation/runs` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | DELETE | `/api/v1/automation/runs/{runId}` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | POST | `/api/v1/automation/runs/{runId}/approve` | can('AUTOMATION_APPROVE') | ✅ | ✅ | ✅ | ✅ | — | — |
@@ -92,7 +100,7 @@
 | PATCH | `/api/v1/client/{clientId}/task` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
 | POST | `/api/v1/client/{clientId}/task` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
 | GET | `/api/v1/client/{clientId}/task-pings` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
-| GET | `/api/v1/client/{clientId}/task/{taskId}/files` | can('TASK_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| GET | `/api/v1/client/{clientId}/task/{taskId}/files` | canAny('TASK_VIEW', 'TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | POST | `/api/v1/client/{clientId}/task/{taskId}/mark-message-read` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
 | POST | `/api/v1/client/{clientId}/task/{taskId}/message` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
 | PATCH | `/api/v1/client/{clientId}/task/{taskId}/message/{messageId}` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
@@ -201,6 +209,7 @@
 | PATCH | `/api/v1/services/resort` | can('SERVICE_MANAGE') | ✅ | ✅ | — | — | — | — |
 | GET | `/api/v1/services/{serviceId}` | can('SERVICE_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | GET | `/api/v1/session/current` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GET | `/api/v1/settings/answer-waiting` | can('CHAT_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | GET | `/api/v1/settings/general` | can('SETTINGS_VIEW') | ✅ | ✅ | — | — | — | — |
 | PATCH | `/api/v1/settings/general` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/settings/jev` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
@@ -242,12 +251,15 @@
 | DELETE | `/api/v1/task-types/{id}` | can('REFERENCE_MANAGE') | ✅ | ✅ | — | — | — | — |
 | GET | `/api/v1/task-types/{id}` | can('REFERENCE_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | PATCH | `/api/v1/task-types/{id}` | can('REFERENCE_MANAGE') | ✅ | ✅ | — | — | — | — |
-| GET | `/api/v1/task/{taskId}/history` | can('TASK_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| GET | `/api/v1/task/{taskId}/history` | canAny('TASK_VIEW', 'TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | GET | `/api/v1/task/{taskId}/incident` | can('INCIDENT_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| POST | `/api/v1/task/{taskId}/opened` | canAny('TASK_VIEW', 'TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | GET | `/api/v1/task/{taskId}/sla/info` | can('TASK_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | POST | `/api/v1/task/{taskId}/sla/pause` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
 | POST | `/api/v1/task/{taskId}/sla/resume` | can('TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | — | — |
-| POST | `/api/v1/tasks-page` | can('TASK_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| POST | `/api/v1/tasks-page` | canAny('TASK_VIEW', 'TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| POST | `/api/v1/tasks/sla/info` | can('TASK_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| GET | `/api/v1/tasks/unopened-assigned-count` | canAny('TASK_VIEW', 'TASK_EDIT') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | PATCH | `/api/v1/telegram-bot` | can('CHANNEL_MANAGE') | ✅ | — | — | — | — | — |
 | POST | `/api/v1/telegram-bot` | can('CHANNEL_MANAGE') | ✅ | — | — | — | — | — |
 | DELETE | `/api/v1/telegram-bot/{tgBotId}` | can('CHANNEL_MANAGE') | ✅ | — | — | — | — | — |
@@ -275,9 +287,13 @@
 | GET | `/api/v1/user/notifications` | can('NOTIFICATIONS') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | PATCH | `/api/v1/user/notifications/read-all` | can('NOTIFICATIONS') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | PATCH | `/api/v1/user/notifications/{notificationId}/read` | can('NOTIFICATIONS') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| PATCH | `/api/v1/user/onboarding-progress` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET | `/api/v1/user/permissions` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| PATCH | `/api/v1/user/task-card-config` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| POST | `/api/v1/user/welcome-seen` | isAuthenticated() | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | POST | `/api/v1/user/{userId}/change-password` | can('USER_MANAGE') | ✅ | — | — | — | — | — |
 | POST | `/api/v1/user/{userId}/mfa/reset` | can('USER_MANAGE') | ✅ | — | — | — | — | — |
+| POST | `/api/v1/user/{userId}/resend-invite` | can('USER_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/users` | can('STAFF_DIRECTORY_VIEW') | ✅ | ✅ | ✅ | ✅ | — | — |
 | GET | `/api/v1/users/manage` | can('USER_MANAGE') | ✅ | — | — | — | — | — |
 | PATCH | `/api/v1/visit-reason` | can('REFERENCE_MANAGE') | ✅ | ✅ | — | — | — | — |

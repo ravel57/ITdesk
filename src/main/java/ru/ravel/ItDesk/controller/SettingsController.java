@@ -36,6 +36,7 @@ public class SettingsController {
 
 	private final SecurityAuditService securityAuditService;
 	private final AppSettingsService appSettingsService;
+	private final AnswerWaitingTimeService answerWaitingTimeService;
 
 
 	@Operation(summary = "Получить общие настройки", description = "Получить общие настройки. Endpoint GET /api/v1/settings/general; действующие проверки ролей, валидация и бизнес-логика сохранены.")
@@ -43,6 +44,14 @@ public class SettingsController {
 	@PreAuthorize("@access.can('SETTINGS_VIEW')")
 	public ResponseEntity<Object> getGeneralSettings() {
 		return ResponseEntity.ok(appSettingsService.getGeneralSettings());
+	}
+
+
+	@Operation(summary = "Настройки отсчёта «Ожидает ответа»", description = "Календарное или рабочее время в «Ожидает ответа» и рабочий календарь для расчёта таймера в списке чатов. Endpoint GET /api/v1/settings/answer-waiting.")
+	@GetMapping("/settings/answer-waiting")
+	@PreAuthorize("@access.can('CHAT_VIEW')")
+	public ResponseEntity<AnswerWaitingSettingsDto> getAnswerWaitingSettings() {
+		return ResponseEntity.ok(answerWaitingTimeService.getSettings());
 	}
 
 

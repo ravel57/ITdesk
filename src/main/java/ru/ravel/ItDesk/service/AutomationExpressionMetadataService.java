@@ -1,6 +1,7 @@
 package ru.ravel.ItDesk.service;
 
 import com.fasterxml.jackson.databind.BeanDescription;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.introspect.AnnotatedMember;
@@ -148,6 +149,7 @@ public class AutomationExpressionMetadataService {
 				: request.getMode().trim().toUpperCase(Locale.ROOT);
 		boolean actionMode = "ACTION".equals(requestedMode);
 		List<String> variables = request == null ? List.of() : safeVariables(request.getVariables());
+        Map<String, VariableType> variableTypes = safeVariableTypes(request == null ? null : request.getVariableTypes());
 
 		TokenContext context = tokenContext(text, cursor);
 		ActionCursorContext actionContext = actionMode
@@ -164,6 +166,7 @@ public class AutomationExpressionMetadataService {
 					context.parentPath(),
 					context.query(),
 					variables,
+                    variableTypes,
 					limit
 			);
 			effectiveMode = "ACTION";
@@ -172,6 +175,7 @@ public class AutomationExpressionMetadataService {
 					context.parentPath(),
 					context.query(),
 					variables,
+                    variableTypes,
 					limit
 			);
 			effectiveMode = "EXPRESSION";
@@ -262,6 +266,7 @@ public class AutomationExpressionMetadataService {
 			String parentPath,
 			String query,
 			List<String> variables,
+            Map<String, VariableType> variableTypes,
 			int limit
 	) {
 		String normalizedQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
@@ -325,25 +330,8 @@ public class AutomationExpressionMetadataService {
 		if (actionRoot == null && dataRoot == null) return List.of();
 
 		if (dataRoot != null && "var".equals(dataRoot.name())) {
-			if (segments.length > 1) return List.of();
-			return variables.stream()
-					.filter(variable -> matches(variable, variable, normalizedQuery))
-					.limit(limit)
-					.map(variable -> suggestion(
-							variable,
-							"var." + variable,
-							variable,
-							"Переменная автоматизации",
-							"VARIABLE",
-							"runtime",
-							false,
-							false,
-							false,
-							0,
-							List.of()
-					))
-					.toList();
-		}
+            return variableSuggestions(parentPath, variables, variableTypes, normalizedQuery, limit);
+        }
 
 		JavaType actionType = actionRoot == null ? null : actionRoot.type();
 		JavaType dataType = dataRoot == null ? null : dataRoot.type();
@@ -388,6 +376,7 @@ public class AutomationExpressionMetadataService {
 			String parentPath,
 			String query,
 			List<String> variables,
+            Map<String, VariableType> variableTypes,
 			int limit
 	) {
 		String normalizedQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
@@ -418,25 +407,8 @@ public class AutomationExpressionMetadataService {
 		if (root == null) return List.of();
 
 		if ("var".equals(root.name())) {
-			if (segments.length > 1) return List.of();
-			return variables.stream()
-					.filter(variable -> matches(variable, variable, normalizedQuery))
-					.limit(limit)
-					.map(variable -> suggestion(
-							variable,
-							"var." + variable,
-							variable,
-							"Переменная автоматизации",
-							"VARIABLE",
-							"runtime",
-							false,
-							false,
-							false,
-							0,
-							List.of()
-					))
-					.toList();
-		}
+            return variableSuggestions(parentPath, variables, variableTypes, normalizedQuery, limit);
+        }
 
 		JavaType currentType = root.type();
 		for (int i = 1; i < segments.length; i++) {
@@ -859,7 +831,10 @@ public class AutomationExpressionMetadataService {
 
 			JavaType propertyType = member.getType();
 			if (propertyType == null) continue;
-			addProperty(result, name, humanize(name), propertyType);
+			String label = Message.class.isAssignableFrom(type.getRawClass()) && "fromSource".equals(name)
+					? "Источник сообщения: TELEGRAM, WHATSAPP, EMAIL, PORTAL (личный кабинет), INTERNAL (комментарий); null — неизвестен"
+					: humanize(name);
+			addProperty(result, name, label, propertyType);
 		}
 
 		if (Client.class.isAssignableFrom(type.getRawClass())) {
@@ -1090,13 +1065,134 @@ public class AutomationExpressionMetadataService {
 	}
 
 
+    private record VariableType(String type, Map<String, VariableType> fields, VariableType element) {
+        static VariableType of(String type) { return new VariableType(type, Map.of(), null); }
+    }
+
+    private Map<String, VariableType> safeVariableTypes(Map<String, Object> input) {
+        Map<String, VariableType> result = new LinkedHashMap<>();
+        if (input == null) return result;
+        int[] budget = {5000};
+        input.entrySet().stream().limit(1000).forEach(entry -> {
+            if (safeVariables(List.of(entry.getKey())).isEmpty()) return;
+            String name = entry.getKey().replaceFirst("^var\\.", "");
+            result.put(name, readVariableType(objectMapper.valueToTree(entry.getValue()), 0, budget));
+        });
+        return result;
+    }
+
+    private VariableType readVariableType(JsonNode node, int depth, int[] budget) {
+        if (node == null || !node.isObject() || depth > 8 || budget[0]-- <= 0) return VariableType.of("UNKNOWN");
+        String type = node.path("type").asText("UNKNOWN");
+        if (!Set.of("LIST", "OBJECT", "STRING", "NUMBER", "BOOLEAN", "DATE_TIME", "NULL").contains(type)) return VariableType.of("UNKNOWN");
+        Map<String, VariableType> fields = new LinkedHashMap<>();
+        if (type.equals("OBJECT") && node.path("fields").isObject()) {
+            node.path("fields").properties().stream().limit(100).forEach(entry -> {
+                if (IDENTIFIER.matcher(entry.getKey()).matches() && !HIDDEN_PROPERTIES.contains(entry.getKey()))
+                    fields.put(entry.getKey(), readVariableType(entry.getValue(), depth + 1, budget));
+            });
+        }
+        VariableType element = type.equals("LIST") ? readVariableType(node.path("element"), depth + 1, budget) : null;
+        return new VariableType(type, fields, element);
+    }
+
+    private List<Map<String, Object>> variableSuggestions(String parentPath, List<String> variables,
+            Map<String, VariableType> schemas, String query, int limit) {
+        Map<String, VariableType> members = new LinkedHashMap<>();
+        String path = parentPath.equals("var") ? "" : parentPath.substring(4);
+        String prefix = path.isEmpty() ? "" : path + ".";
+        // Retain plain variable-name completion for old clients and unknown custom values.
+        Stream.concat(variables.stream(), schemas.keySet().stream())
+                .filter(value -> value.startsWith(prefix) && value.length() > prefix.length())
+                .map(value -> value.substring(prefix.length()).split("\\.")[0]).distinct()
+                .forEach(name -> members.put(name, schemas.getOrDefault(prefix + name, VariableType.of("UNKNOWN"))));
+        VariableType owner = variableTypeAt(path, schemas);
+        if (owner != null) members.putAll(owner.fields());
+        Map<String, Map<String, Object>> suggestions = new LinkedHashMap<>();
+        members.forEach((name, schema) -> {
+            boolean children = !schema.type().equals("NULL") && !schema.type().equals("UNKNOWN")
+                    || variables.stream().anyMatch(value -> value.startsWith(prefix + name + "."));
+            suggestions.put(name, suggestion(name, parentPath + "." + name, name,
+                    "Поле результата автоматизации", schema.type().equals("LIST") ? "COLLECTION" : schema.type(),
+                    variableTypeName(schema), children, false, children, 0, List.of()));
+        });
+        if (owner != null) for (MemberDefinition member : variableMethodMembers(owner)) {
+            suggestions.putIfAbsent(member.label(), suggestion(member.insertText(), parentPath + "." + member.insertText(),
+                    member.label(), member.description(), member.kind(), member.typeName(), member.hasChildren(),
+                    member.callable(), member.appendDot(), member.caretOffset(), member.parameters()));
+        }
+        return suggestions.values().stream().filter(item -> matches(item.get("label").toString(), item.get("description").toString(), query))
+                .limit(limit).toList();
+    }
+
+    private VariableType variableTypeAt(String path, Map<String, VariableType> schemas) {
+        if (schemas.containsKey(path)) return schemas.get(path);
+        if (path.isBlank()) return null;
+        String[] parts = path.split("\\.");
+        VariableType current = schemas.get(parts[0]);
+        for (int i = 1; current != null && i < parts.length; i++) {
+            String part = parts[i];
+            if (current.type().equals("LIST") && Set.of("first()", "last()").contains(part)) current = current.element();
+            else if (part.endsWith("()")) {
+                String name = part.substring(0, part.length() - 2);
+                current = variableMethodMembers(current).stream().filter(member -> member.queryName().equals(name) && member.parameters().isEmpty())
+                        .findFirst().map(member -> VariableType.of(switch (member.typeName()) {
+                            case "Integer", "Long", "Number", "int", "long", "double", "float" -> "NUMBER";
+                            case "Boolean", "boolean" -> "BOOLEAN"; case "String" -> "STRING"; default -> "UNKNOWN";
+                        })).orElse(null);
+            } else current = current.fields().get(part);
+        }
+        return current;
+    }
+
+    private String variableTypeName(VariableType schema) {
+        return switch (schema.type()) {
+            case "LIST" -> "Список<" + variableTypeName(schema.element() == null ? VariableType.of("UNKNOWN") : schema.element()) + ">";
+            case "OBJECT" -> "Объект"; case "STRING" -> "String"; case "NUMBER" -> "Number";
+            case "BOOLEAN" -> "Boolean"; case "DATE_TIME" -> "Дата и время"; default -> "runtime";
+        };
+    }
+
+    private List<MemberDefinition> variableMethodMembers(VariableType type) {
+        JavaType javaType = objectMapper.getTypeFactory().constructType(switch (type.type()) {
+            case "STRING" -> String.class; case "NUMBER" -> Number.class; case "BOOLEAN" -> Boolean.class;
+            case "DATE_TIME" -> java.time.ZonedDateTime.class; case "LIST" -> List.class;
+            case "OBJECT" -> Map.class; default -> Object.class;
+        });
+        List<MemberDefinition> result = new ArrayList<>();
+        if (!type.type().equals("UNKNOWN") && !type.type().equals("NULL")) result.addAll(methodMembers(javaType));
+        result.add(virtualMethod("isNull", "Значение не задано", "Boolean"));
+        result.add(virtualMethod("notNull", "Значение задано", "Boolean"));
+        if (Set.of("LIST", "OBJECT", "STRING").contains(type.type())) {
+            result.add(virtualMethod("notEmpty", "Значение содержит элементы или текст", "Boolean"));
+        }
+        if (type.type().equals("LIST")) {
+            result.removeIf(member -> member.queryName().equals("first") || member.queryName().equals("last"));
+            VariableType element = type.element() == null ? VariableType.of("UNKNOWN") : type.element();
+            for (String method : List.of("first", "last")) result.add(new MemberDefinition(method + "()", method, method + "()",
+                    method.equals("first") ? "Первый элемент списка" : "Последний элемент списка", "METHOD", variableTypeName(element),
+                    true, true, true, 0, List.of()));
+        }
+        if (type.type().equals("STRING")) result.add(virtualMethod("truncate", "Ограничить длину текста", "String", "Number length"));
+        if (type.type().equals("BOOLEAN")) {
+            result.add(virtualMethod("isTrue", "Значение равно да", "Boolean"));
+            result.add(virtualMethod("isFalse", "Значение равно нет", "Boolean"));
+        }
+        if (type.type().equals("DATE_TIME")) {
+            result.add(virtualMethod("daysSince", "Дней с указанной даты", "Number"));
+            result.add(virtualMethod("minutesSince", "Минут с указанной даты", "Number"));
+            result.add(virtualMethod("isToday", "Дата относится к сегодняшнему дню", "Boolean"));
+        }
+        return result;
+    }
+
 	private List<String> safeVariables(List<String> variables) {
 		if (variables == null || variables.isEmpty()) return List.of();
-		return variables.stream()
+		return variables.stream().limit(1000)
 				.filter(Objects::nonNull)
 				.map(String::trim)
 				.map(value -> value.startsWith("var.") ? value.substring(4) : value)
-				.filter(value -> IDENTIFIER.matcher(value).matches())
+				.filter(value -> value.length() <= 512 && java.util.Arrays.stream(value.split("\\.")).allMatch(part -> IDENTIFIER.matcher(part).matches()))
 				.distinct()
 				.sorted(String.CASE_INSENSITIVE_ORDER)
 				.toList();

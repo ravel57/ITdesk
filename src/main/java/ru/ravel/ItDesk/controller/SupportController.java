@@ -71,14 +71,18 @@ public class SupportController {
 	}
 
 
-	@Operation(summary = "Проверить ссылку смены пароля", description = "Действует ли ссылка из письма (не гасит её). Endpoint POST /api/v1/support/reset-password/verify.")
+	@Operation(summary = "Проверить ссылку смены пароля", description = "Действует ли ссылка из письма (не гасит её), и её назначение — приглашение или сброс пароля. Endpoint POST /api/v1/support/reset-password/verify.")
 	@PostMapping("/support/reset-password/verify")
 	public ResponseEntity<Object> verifyResetPasswordLink(@RequestBody PasswordResetConfirm confirm, HttpServletRequest request) {
 		if (!passwordResetRateLimiter.allow(request.getRemoteAddr(), "link-verify")) {
 			return tooManyPasswordResetRequests();
 		}
-		boolean valid = passwordResetService.verify(confirm == null ? null : confirm.getToken()) == PasswordResetService.LinkState.VALID;
-		return ResponseEntity.ok().body(Map.of("valid", valid));
+		PasswordResetService.LinkVerification verification = passwordResetService.verifyWithPurpose(confirm == null ? null : confirm.getToken());
+		boolean valid = verification.state() == PasswordResetService.LinkState.VALID;
+		return ResponseEntity.ok().body(Map.of(
+				"valid", valid,
+				"purpose", verification.isInvite() ? "INVITE" : "RESET_PASSWORD"
+		));
 	}
 
 
@@ -89,8 +93,8 @@ public class SupportController {
 			return tooManyPasswordResetRequests();
 		}
 		try {
-			passwordResetService.complete(confirm == null ? null : confirm.getToken(), confirm == null ? null : confirm.getPassword());
-			return ResponseEntity.ok().build();
+			String username = passwordResetService.complete(confirm == null ? null : confirm.getToken(), confirm == null ? null : confirm.getPassword());
+			return ResponseEntity.ok().body(Map.of("email", username));
 		} catch (IllegalArgumentException e) {
 			return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
 		} catch (IllegalStateException e) {

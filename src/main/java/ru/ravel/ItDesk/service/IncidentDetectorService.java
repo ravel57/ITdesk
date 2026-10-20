@@ -120,7 +120,7 @@ public class IncidentDetectorService {
 
 		Optional<JevService.OutageSignal> analyzed = jevService.analyzeOutage(context, text, organization, activeIncidents);
 		if (analyzed.isEmpty()) {
-			log.info("[{}] incident detector: no answer from Jev, message skipped", context);
+			log.debug("[{}] incident detector: no answer from Jev, message skipped", context);
 			return Optional.empty();
 		}
 		JevService.OutageSignal outage = analyzed.get();
@@ -281,7 +281,7 @@ public class IncidentDetectorService {
 		incidentService.addSystemNote(incident.getId(), "Ещё одно похожее обращение: клиент #%d, сообщение #%d%s".formatted(
 				signal.getClientId(), signal.getMessageId(),
 				linked.isEmpty() ? "" : ", заявка #" + linked.getFirst()));
-		log.info("[{}] incident detector: matches {} «{}» -> {}", context, incident.getIncidentNumber(),
+		log.debug("[{}] incident detector: matches {} «{}» -> {}", context, incident.getIncidentNumber(),
 				incident.getTitle(),
 				linked.isEmpty()
 						? task.map(t -> "task #" + t.getId() + " already linked to an incident").orElse("no task to link yet")
@@ -311,7 +311,7 @@ public class IncidentDetectorService {
 				signalRepository.save(previous);
 			}
 		}
-		log.warn("[{}] incident detector TRIGGERED: severity={}{}, cause={} -> created draft {} «{}», "
+		log.debug("[{}] incident detector TRIGGERED: severity={}{}, cause={} -> created draft {} «{}», "
 						+ "tasks linked: {}, leader={}, line={}, messages {}",
 				context, severity, severityNote(verdict.severity(), severity), verdict.probableCause(),
 				incident.getIncidentNumber(), incident.getTitle(), draft.draft().taskIds(), draft.leaderName(),
@@ -337,7 +337,7 @@ public class IncidentDetectorService {
 		List<Task> tasks = tasksOf(batch, windowStart);
 		List<Long> recipients = recipients(service, supportLine(service, tasks));
 		notifyRecipients(context, recipients, message);
-		log.warn("[{}] incident detector: notified {} user(s)", context, recipients.size());
+		log.debug("[{}] incident detector: notified {} user(s)", context, recipients.size());
 	}
 
 

@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 
 
 @Data
@@ -23,6 +25,10 @@ public class AutomationExpressionSuggestionRequest {
 
 	@Builder.Default
 	private List<String> variables = new ArrayList<>();
+
+	/** Inferred structural schemas; no Java class names are accepted from the client. */
+	@Builder.Default
+	private Map<String, Object> variableTypes = new LinkedHashMap<>();
 
 	@Builder.Default
 	private Integer limit = 50;

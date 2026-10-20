@@ -23,6 +23,8 @@ public class AutomationTriggerDto {
 	private String workflowDefinition;
 	private Integer workflowVersion;
 	private Integer orderNumber;
+	private Long folderId;
+	private Integer displayOrder;
 	private String automationRuleStatus;
 	private Boolean stopProcessing;
 	private Long matchCount;

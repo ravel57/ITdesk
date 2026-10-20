@@ -50,4 +50,27 @@ public interface AutomationTriggerRepository extends JpaRepository<AutomationTri
 			@Param("lastError") String lastError
 	);
 
+
+	@Query("select max(t.displayOrder) from AutomationTrigger t where t.folderId is null")
+	Integer maxRootDisplayOrder();
+
+
+	@Query("select min(t.displayOrder) from AutomationTrigger t where t.folderId is null")
+	Integer minRootDisplayOrder();
+
+
+	/** Точечное обновление, чтобы не перезаписать счётчики срабатываний устаревшими значениями. */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update AutomationTrigger t
+			set t.folderId = :folderId, t.displayOrder = :displayOrder, t.orderNumber = :orderNumber
+			where t.id = :id
+			""")
+	void updatePlacement(
+			@Param("id") Long id,
+			@Param("folderId") Long folderId,
+			@Param("displayOrder") Integer displayOrder,
+			@Param("orderNumber") Integer orderNumber
+	);
+
 }

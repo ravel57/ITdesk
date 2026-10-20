@@ -157,6 +157,21 @@ public class UserController {
 	}
 
 
+	@Operation(summary = "Повторно отправить приглашение", description = "Отправить новую ссылку-приглашение пользователю, который ещё не задал пароль. Endpoint POST /api/v1/user/{userId}/resend-invite.")
+	@PostMapping("/user/{userId}/resend-invite")
+	@PreAuthorize("@access.can('USER_MANAGE')")
+	public ResponseEntity<Object> resendInvite(@PathVariable Long userId) {
+		try {
+			userService.resendInvite(userId);
+			return ResponseEntity.noContent().build();
+		} catch (NoSuchElementException e) {
+			return ResponseEntity.notFound().build();
+		} catch (IllegalStateException e) {
+			return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+		}
+	}
+
+
 	@Operation(summary = "Сбросить 2FA пользователя", description = "Пользователь потерял телефон и коды восстановления: при следующем входе подключит приложение заново. Endpoint POST /api/v1/user/{userId}/mfa/reset.")
 	@PostMapping("/user/{userId}/mfa/reset")
 	@PreAuthorize("@access.can('USER_MANAGE')")
@@ -210,5 +225,34 @@ public class UserController {
 	@PreAuthorize("isAuthenticated()")
 	public ResponseEntity<Object> getCurrentUser() {
 		return ResponseEntity.ok(userService.getCurrentUser());
+	}
+
+
+	@Operation(summary = "Отметить приветственный экран пройденным", description = "Пользователь прошёл/закрыл мастер первого входа (/welcome) — больше не показывать. Endpoint POST /api/v1/user/welcome-seen.")
+	@PostMapping("/user/welcome-seen")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<Object> markWelcomeSeen() {
+		userService.markCurrentUserWelcomeSeen();
+		return ResponseEntity.noContent().build();
+	}
+
+
+	@Operation(summary = "Сохранить настройку полей карточки заявки", description = "Какие поля показывать в карточке заявки и в каком порядке — личная настройка пользователя. Endpoint PATCH /api/v1/user/task-card-config.")
+	@PatchMapping("/user/task-card-config")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<Object> updateTaskCardConfig(@RequestBody List<User.TaskCardFieldConfig> config) {
+		return ResponseEntity.ok(userService.updateCurrentUserTaskCardConfig(config));
+	}
+
+
+	@Operation(summary = "Отметить тур-подсказки пройденными/пропущенными", description = "Прогресс онбординг-туров на отдельных страницах — личная настройка пользователя; принимает одну или сразу несколько пар ключ тура → статус. Endpoint PATCH /api/v1/user/onboarding-progress.")
+	@PatchMapping("/user/onboarding-progress")
+	@PreAuthorize("isAuthenticated()")
+	public ResponseEntity<Object> updateOnboardingProgress(@RequestBody Map<String, String> updates) {
+		try {
+			return ResponseEntity.ok(userService.updateCurrentUserOnboardingProgress(updates));
+		} catch (IllegalArgumentException e) {
+			return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+		}
 	}
 }

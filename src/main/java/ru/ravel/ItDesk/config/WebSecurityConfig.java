@@ -15,7 +15,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.session.SessionRegistry;
-import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -47,6 +46,7 @@ class WebSecurityConfig {
 	private final SecurityAuditService securityAuditService;
 	private final MfaService mfaService;
 	private final ru.ravel.ItDesk.repository.UserRepository userRepository;
+	private final SessionRegistry sessionRegistry;
 
 	public WebSecurityConfig(
 			AuthService authService,
@@ -57,7 +57,8 @@ class WebSecurityConfig {
 			LoginRateLimitFilter loginRateLimitFilter,
 			SecurityAuditService securityAuditService,
 			MfaService mfaService,
-			ru.ravel.ItDesk.repository.UserRepository userRepository
+			ru.ravel.ItDesk.repository.UserRepository userRepository,
+			SessionRegistry sessionRegistry
 	) {
 		this.authService = authService;
 		this.userSessionService = userSessionService;
@@ -68,16 +69,12 @@ class WebSecurityConfig {
 		this.securityAuditService = securityAuditService;
 		this.mfaService = mfaService;
 		this.userRepository = userRepository;
+		this.sessionRegistry = sessionRegistry;
 	}
 
 	@Bean
 	UserDetailsService userDetailsService() {
 		return authService;
-	}
-
-	@Bean
-	public SessionRegistry sessionRegistry() {
-		return new SessionRegistryImpl();
 	}
 
 	@Bean
@@ -160,6 +157,7 @@ class WebSecurityConfig {
 								"/img/**",
 								"/statics/**",
 								"/reset-password",
+								"/welcome",
 								"/api/v1/support/reset-password",
 								"/api/v1/support/reset-password/verify",
 								"/api/v1/support/reset-password/confirm",
@@ -185,16 +183,21 @@ class WebSecurityConfig {
 				.sessionManagement(sessionManagement -> sessionManagement
 						.maximumSessions(1)
 						.maxSessionsPreventsLogin(false)
-						.sessionRegistry(sessionRegistry())
+						.sessionRegistry(sessionRegistry)
 						.expiredUrl("/login?expired"))
 				.exceptionHandling(exception -> exception
 						.defaultAuthenticationEntryPointFor(
-								new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+								new IdleTimeoutAuthenticationEntryPoint(),
 								PathPatternRequestMatcher.pathPattern("/api/**")
 						)
 						.defaultAuthenticationEntryPointFor(
 								new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
 								PathPatternRequestMatcher.pathPattern("/v3/api-docs/**")
+						)
+						.defaultAuthenticationEntryPointFor(
+								(request, response, authException) -> response.sendRedirect(LoginRedirects.withTarget(
+										request.getContextPath() + "/login", LoginRedirects.requestTarget(request))),
+								PathPatternRequestMatcher.pathPattern("/**")
 						)
 				)
 				.formLogin(formLogin -> formLogin
@@ -206,22 +209,25 @@ class WebSecurityConfig {
 									request.getSession()
 							);
 							securityAuditService.loginSucceeded(authentication.getName(), request);
+							String redirect = LoginRedirects.safeTarget(request.getParameter("redirect"));
 							// Второй фактор: до подтверждения кода MfaEnforcementFilter пускает только на /login/mfa
 							var mfaState = userRepository.findByUsername(authentication.getName())
 									.flatMap(mfaService::stateAfterPasswordLogin);
 							if (mfaState.isPresent()) {
 								request.getSession().setAttribute(MfaService.SESSION_STATE, mfaState.get());
-								response.sendRedirect(MfaEnforcementFilter.MFA_PAGE);
+								LoginRedirects.rememberForMfa(request.getSession(), redirect);
+								response.sendRedirect(LoginRedirects.withTarget(MfaEnforcementFilter.MFA_PAGE, redirect));
 								return;
 							}
 							boolean clientPortalUser = authentication.getAuthorities().stream()
 									.anyMatch(authority -> "ROLE_CLIENT".equals(authority.getAuthority()));
-							response.sendRedirect(clientPortalUser ? "/portal" : "/chats");
+							request.getSession().removeAttribute(LoginRedirects.SESSION_TARGET);
+							response.sendRedirect(redirect != null ? redirect : clientPortalUser ? "/portal" : "/chats");
 						})
 						.failureHandler((request, response, exception) -> {
 							String reason = exception.getClass().getSimpleName().replace("Exception", "");
 							securityAuditService.loginFailed(request.getParameter("username"), reason, request);
-							response.sendRedirect(request.getContextPath() + "/login-error");
+							response.sendRedirect(LoginRedirects.withTarget(request.getContextPath() + "/login-error", request.getParameter("redirect")));
 						})
 						.permitAll())
 				.logout(logout -> logout

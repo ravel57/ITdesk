@@ -1,0 +1,822 @@
+{
+  "version": 3,
+  "entryNodeId": "escalation-1",
+  "nodes": [
+    {
+      "id": "escalation-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "MESSAGE_INCOMING"
+      }
+    },
+    {
+      "id": "escalation-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "threshold",
+            "label": "Минимальная уверенность Jev",
+            "value": 0.6,
+            "help": "Ниже порога данные не меняются.",
+            "type": "number",
+            "migrationSetting": "escalateIfNeeded",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "minMinutes",
+            "label": "Минимум минут на текущей линии",
+            "value": 10,
+            "help": "Меняйте ожидание здесь.",
+            "type": "number",
+            "min": 0,
+            "max": 10080
+          },
+          {
+            "name": "messages",
+            "label": "Сообщений контекста",
+            "value": 8,
+            "help": "",
+            "type": "number",
+            "min": 1,
+            "max": 100
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "escalation-5",
+      "type": "OPERATION",
+      "label": "Заявки клиента",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "data.tasks",
+        "arguments": {
+          "clientId": "=client.id"
+        },
+        "resultVariable": "tasks"
+      }
+    },
+    {
+      "id": "escalation-6",
+      "type": "OPERATION",
+      "label": "Отобрать: openTasks",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.tasks",
+          "where": "!var.item.completed",
+          "sortBy": "createdAt",
+          "descending": true,
+          "limit": 1
+        },
+        "resultVariable": "openTasks"
+      }
+    },
+    {
+      "id": "escalation-7",
+      "type": "CONDITION",
+      "label": "Есть открытая заявка?",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "expression": "var.openTasks.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.openTasks.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "escalation-8",
+      "type": "OPERATION",
+      "label": "Последняя открытая заявка",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.openTasks.first()"
+        },
+        "resultVariable": "targetTask"
+      }
+    },
+    {
+      "id": "escalation-9",
+      "type": "CONDITION",
+      "label": "Текущая линия определена?",
+      "x": 1760,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "expression": "var.targetTask.lineId.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.targetTask.lineId",
+          "operator": "notNull"
+        }
+      }
+    },
+    {
+      "id": "escalation-10",
+      "type": "CONDITION",
+      "label": "Заявка достаточно долго на линии?",
+      "x": 2180,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "expression": "var.targetTask.enteredLineAt.isNull() || var.targetTask.enteredLineAt.minutesSince() >= var.settings.minMinutes",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "any": [
+            {
+              "left": "=var.targetTask.enteredLineAt",
+              "operator": "null"
+            },
+            {
+              "left": "=var.targetTask.enteredLineAt.minutesSince()",
+              "operator": ">=",
+              "right": "=var.settings.minMinutes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "escalation-11",
+      "type": "OPERATION",
+      "label": "Все линии поддержки",
+      "x": 2600,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "data.lines",
+        "arguments": {},
+        "resultVariable": "allLines"
+      }
+    },
+    {
+      "id": "escalation-12",
+      "type": "OPERATION",
+      "label": "Отобрать: currentLines",
+      "x": 3020,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLines",
+          "where": "var.item.id = var.targetTask.lineId",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 1
+        },
+        "resultVariable": "currentLines"
+      }
+    },
+    {
+      "id": "escalation-13",
+      "type": "OPERATION",
+      "label": "Отобрать: higherLines",
+      "x": 3440,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allLines",
+          "where": "var.item.active && var.item.level > var.targetTask.lineLevel",
+          "sortBy": "level",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "higherLines"
+      }
+    },
+    {
+      "id": "escalation-14",
+      "type": "CONDITION",
+      "label": "Есть следующая линия?",
+      "x": 3860,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "expression": "var.higherLines.size() > 0",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.higherLines.size()",
+          "operator": ">",
+          "right": 0
+        }
+      }
+    },
+    {
+      "id": "escalation-15",
+      "type": "OPERATION",
+      "label": "Отобрать: nextLines",
+      "x": 4280,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.higherLines",
+          "where": "var.item.level = var.higherLines.first().level",
+          "sortBy": "id",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "nextLines"
+      }
+    },
+    {
+      "id": "escalation-16",
+      "type": "OPERATION",
+      "label": "Контекст переписки",
+      "x": 4700,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "data.messages",
+        "arguments": {
+          "clientId": "=client.id"
+        },
+        "resultVariable": "messages"
+      }
+    },
+    {
+      "id": "escalation-17",
+      "type": "OPERATION",
+      "label": "Отобрать: conversation",
+      "x": 5120,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.messages",
+          "where": "!var.item.comment",
+          "sortBy": "date",
+          "descending": true,
+          "limit": "=var.settings.messages"
+        },
+        "resultVariable": "conversation"
+      }
+    },
+    {
+      "id": "escalation-18",
+      "type": "OPERATION",
+      "label": "Нужна ли более высокая линия?",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "task": "=var.targetTask",
+            "currentLine": "=var.currentLines.first()",
+            "conversation": "=var.conversation"
+          },
+          "question": "Нужно ли передать заявку на следующую линию? ДА: нужны более глубокая экспертиза, доступы, права; решения текущей линии не помогли. НЕТ: текущая линия может продолжать работу.",
+          "kind": "noul",
+          "options": {},
+          "yes": "Да",
+          "no": "Нет"
+        },
+        "resultVariable": "need"
+      }
+    },
+    {
+      "id": "escalation-19",
+      "type": "CONDITION",
+      "label": "Jev уверенно рекомендует перевод?",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "expression": "var.need.available && var.need.probability >= var.settings.threshold",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.need.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.need.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "escalation-20",
+      "type": "CONDITION",
+      "label": "На следующем уровне одна линия?",
+      "x": 920,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "expression": "var.nextLines.size() = 1",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.nextLines.size()",
+          "operator": "=",
+          "right": 1
+        }
+      }
+    },
+    {
+      "id": "escalation-21",
+      "type": "OPERATION",
+      "label": "Использовать единственную следующую линию",
+      "x": 1340,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.nextLines.first()"
+        },
+        "resultVariable": "targetLine"
+      }
+    },
+    {
+      "id": "escalation-22",
+      "type": "OPERATION",
+      "label": "Выбрать линию следующего уровня",
+      "x": 1340,
+      "y": 1540,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "task": "=var.targetTask",
+            "conversation": "=var.conversation"
+          },
+          "question": "Какой из предложенных линий передать заявку?",
+          "kind": "choice",
+          "options": {},
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.nextLines",
+          "labelExpression": "var.item.name + ': ' + var.item.description.truncate(500)"
+        },
+        "resultVariable": "decision"
+      }
+    },
+    {
+      "id": "escalation-23",
+      "type": "CONDITION",
+      "label": "Ответ получен и уверенности достаточно?",
+      "x": 1760,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "expression": "var.decision.available && var.decision.probability >= var.settings.threshold && var.decision.value.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.decision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.decision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.decision.value",
+              "operator": "notNull"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "escalation-24",
+      "type": "OPERATION",
+      "label": "Выбранная линия",
+      "x": 2180,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "operation": "value.set",
+        "arguments": {
+          "value": "=var.decision.value"
+        },
+        "resultVariable": "targetLine"
+      }
+    },
+    {
+      "id": "escalation-25",
+      "type": "OPERATION",
+      "label": "Перевести заявку на следующую линию",
+      "x": 80,
+      "y": 2010,
+      "config": {
+        "section": "4. Перевод и комментарий",
+        "operation": "task.update",
+        "arguments": {
+          "taskId": "=var.targetTask.id",
+          "fields": {
+            "lineId": "=var.targetLine.id"
+          }
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "escalation-26",
+      "type": "OPERATION",
+      "label": "Объяснить перевод оператору",
+      "x": 500,
+      "y": 2010,
+      "config": {
+        "section": "4. Перевод и комментарий",
+        "operation": "client.note",
+        "arguments": {
+          "clientId": "=client.id",
+          "text": "Jev: заявка #{{ var.targetTask.id }} переведена на линию «{{ var.targetLine.name }}»."
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "escalation-27",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 5540,
+      "y": 570,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "escalation-28",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 4280,
+      "y": 820,
+      "config": {
+        "section": "2. Заявка и возможные линии",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "escalation-29",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 2600,
+      "y": 1290,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "escalation-30",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 2180,
+      "y": 1540,
+      "config": {
+        "section": "3. Решение об эскалации",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "escalation-31",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 920,
+      "y": 2010,
+      "config": {
+        "section": "4. Перевод и комментарий",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "escalation-32",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 920,
+      "y": 2260,
+      "config": {
+        "section": "4. Перевод и комментарий",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "escalation-edge-escalation-1-next",
+      "source": "escalation-1",
+      "target": "escalation-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "escalation-edge-escalation-2-next",
+      "source": "escalation-2",
+      "target": "escalation-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "escalation-edge-escalation-5-success",
+      "source": "escalation-5",
+      "target": "escalation-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-6-success",
+      "source": "escalation-6",
+      "target": "escalation-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-7-true",
+      "source": "escalation-7",
+      "target": "escalation-8",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-8-success",
+      "source": "escalation-8",
+      "target": "escalation-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-9-true",
+      "source": "escalation-9",
+      "target": "escalation-10",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-10-true",
+      "source": "escalation-10",
+      "target": "escalation-11",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-11-success",
+      "source": "escalation-11",
+      "target": "escalation-12",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-12-success",
+      "source": "escalation-12",
+      "target": "escalation-13",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-13-success",
+      "source": "escalation-13",
+      "target": "escalation-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-14-true",
+      "source": "escalation-14",
+      "target": "escalation-15",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-15-success",
+      "source": "escalation-15",
+      "target": "escalation-16",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-16-success",
+      "source": "escalation-16",
+      "target": "escalation-17",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-17-success",
+      "source": "escalation-17",
+      "target": "escalation-18",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-18-success",
+      "source": "escalation-18",
+      "target": "escalation-19",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-19-true",
+      "source": "escalation-19",
+      "target": "escalation-20",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-20-true",
+      "source": "escalation-20",
+      "target": "escalation-21",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-20-false",
+      "source": "escalation-20",
+      "target": "escalation-22",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-22-success",
+      "source": "escalation-22",
+      "target": "escalation-23",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-23-true",
+      "source": "escalation-23",
+      "target": "escalation-24",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "escalation-edge-escalation-24-success",
+      "source": "escalation-24",
+      "target": "escalation-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-21-success",
+      "source": "escalation-21",
+      "target": "escalation-25",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-25-success",
+      "source": "escalation-25",
+      "target": "escalation-26",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-5-error",
+      "source": "escalation-5",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-6-error",
+      "source": "escalation-6",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-7-false",
+      "source": "escalation-7",
+      "target": "escalation-28",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-8-error",
+      "source": "escalation-8",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-9-false",
+      "source": "escalation-9",
+      "target": "escalation-28",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-10-false",
+      "source": "escalation-10",
+      "target": "escalation-28",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-11-error",
+      "source": "escalation-11",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-12-error",
+      "source": "escalation-12",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-13-error",
+      "source": "escalation-13",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-14-false",
+      "source": "escalation-14",
+      "target": "escalation-28",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-15-error",
+      "source": "escalation-15",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-16-error",
+      "source": "escalation-16",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-17-error",
+      "source": "escalation-17",
+      "target": "escalation-27",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-18-error",
+      "source": "escalation-18",
+      "target": "escalation-29",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-19-false",
+      "source": "escalation-19",
+      "target": "escalation-30",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-21-error",
+      "source": "escalation-21",
+      "target": "escalation-29",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-22-error",
+      "source": "escalation-22",
+      "target": "escalation-29",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-23-false",
+      "source": "escalation-23",
+      "target": "escalation-30",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "escalation-edge-escalation-24-error",
+      "source": "escalation-24",
+      "target": "escalation-29",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-25-error",
+      "source": "escalation-25",
+      "target": "escalation-31",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "escalation-edge-escalation-26-success",
+      "source": "escalation-26",
+      "target": "escalation-32",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "escalation-edge-escalation-26-error",
+      "source": "escalation-26",
+      "target": "escalation-31",
+      "sourceHandle": "error"
+    }
+  ]
+}

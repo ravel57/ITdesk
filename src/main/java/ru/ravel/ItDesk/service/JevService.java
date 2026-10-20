@@ -132,7 +132,7 @@ public class JevService {
 			return Optional.empty();
 		}
 		if (isBlank(text)) {
-			log.info("[{}] classify skipped: empty text", context);
+			log.debug("[{}] classify skipped: empty text", context);
 			return Optional.empty();
 		}
 		List<TaskType> types = taskTypeRepository.findAll().stream().sorted().toList();
@@ -176,7 +176,7 @@ public class JevService {
 			questions.put("support_line", choice("Какая линия поддержки должна обработать обращение?", lineCriteria));
 		}
 		if (questions.isEmpty()) {
-			log.info("[{}] classify skipped: nothing to choose from (types={}, services={}, lines={})",
+			log.debug("[{}] classify skipped: nothing to choose from (types={}, services={}, lines={})",
 					context, typeCriteria.size(), services.size(), lines.size());
 			return Optional.empty();
 		}
@@ -213,7 +213,7 @@ public class JevService {
 			return Optional.empty();
 		}
 		if (isBlank(text)) {
-			log.info("[{}] priority skipped: empty text", context);
+			log.debug("[{}] priority skipped: empty text", context);
 			return Optional.empty();
 		}
 		List<String> excludedPriorities = settingsService.effective().priorityExcluded();
@@ -223,7 +223,7 @@ public class JevService {
 				.sorted()
 				.toList();
 		if (priorities.size() < 2) {
-			log.info("[{}] priority skipped: less than 2 priorities available (excluded={})", context, excludedPriorities);
+			log.debug("[{}] priority skipped: less than 2 priorities available (excluded={})", context, excludedPriorities);
 			return Optional.empty();
 		}
 		Map<String, Priority> byKey = new LinkedHashMap<>();
@@ -255,7 +255,7 @@ public class JevService {
 			return ReplyDecision.UNDECIDED;
 		}
 		if (isBlank(text)) {
-			log.info("[{}] needs_reply skipped: empty text", context);
+			log.debug("[{}] needs_reply skipped: empty text", context);
 			return ReplyDecision.UNDECIDED;
 		}
 		Map<String, Object> criteria = new LinkedHashMap<>();
@@ -280,7 +280,7 @@ public class JevService {
 					} else {
 						decision = ReplyDecision.UNDECIDED;
 					}
-					log.info("[{}] needs_reply: p={} (required>={}, notRequired<={}) -> {}",
+					log.debug("[{}] needs_reply: p={} (required>={}, notRequired<={}) -> {}",
 							context, format(probability), format(config.replyRequiredThreshold()),
 							format(config.replyNotRequiredThreshold()), decision);
 					decisionRecorder.record(context, "needs_reply",
@@ -311,7 +311,7 @@ public class JevService {
 			return Optional.empty();
 		}
 		if (isBlank(text)) {
-			log.info("[{}] outage skipped: empty text", context);
+			log.debug("[{}] outage skipped: empty text", context);
 			return Optional.empty();
 		}
 		Map<String, Object> questions = new LinkedHashMap<>();
@@ -374,7 +374,7 @@ public class JevService {
 					pick(context, answers, "active_incident", incidentByKey, minConfidence),
 					impactScore
 			);
-			log.info("[{}] outage: p={}, impact={}", context, format(outageProbability),
+			log.debug("[{}] outage: p={}, impact={}", context, format(outageProbability),
 					impactScore == null ? "?" : format(impactScore));
 			return signal;
 		});
@@ -412,7 +412,7 @@ public class JevService {
 			int level = (int) Math.max(0, Math.min(SEVERITY_LEVELS.size() - 1, Math.floor(severityScore)));
 			IncidentSeverity incidentSeverity = IncidentSeverity.values()[IncidentSeverity.values().length - 1 - level];
 			String cause = pick(context, answers, "probable_cause", causeByKey, minConfidence);
-			log.info("[{}] batch of {}: same_problem p={}, severity score={} -> {}", context, texts.size(),
+			log.debug("[{}] batch of {}: same_problem p={}, severity score={} -> {}", context, texts.size(),
 					format(sameProbability), format(severityScore), incidentSeverity);
 			return new BatchVerdict(sameProbability, incidentSeverity, severityScore, cause == null ? "неизвестно" : cause);
 		});
@@ -456,7 +456,7 @@ public class JevService {
 			outcome = "accepted";
 			recorded = JevDecisionRecorder.Outcome.ACCEPTED;
 		}
-		log.info("[{}] {}: choice=«{}», confidence={} -> {}", context, key, choice, format(confidence), outcome);
+		log.debug("[{}] {}: choice=«{}», confidence={} -> {}", context, key, choice, format(confidence), outcome);
 		decisionRecorder.record(context, key, NONE.equals(choice) ? "ни один" : choice, confidence, minConfidence, recorded);
 		return result;
 	}

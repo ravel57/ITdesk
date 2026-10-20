@@ -22,6 +22,8 @@ public class UserDto {
 
 	private List<Long> availableOrganizationIds;
 
+	private Long supportLineId;
+
 	private Long clientId;
 
 	private Boolean createNewClientCard;

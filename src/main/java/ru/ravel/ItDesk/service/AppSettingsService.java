@@ -137,6 +137,10 @@ public class AppSettingsService {
 		settings.setFridayEnabled(Boolean.TRUE.equals(payload.getFridayEnabled()));
 		settings.setSaturdayEnabled(Boolean.TRUE.equals(payload.getSaturdayEnabled()));
 		settings.setSundayEnabled(Boolean.TRUE.equals(payload.getSundayEnabled()));
+		// Клиенты старой версии поле не присылают: тогда оставляем сохранённое значение
+		if (payload.getAnswerWaitingWorkingTimeEnabled() != null) {
+			settings.setAnswerWaitingWorkingTimeEnabled(payload.getAnswerWaitingWorkingTimeEnabled());
+		}
 		settings.setSupportLineAccessMode(
 			payload.getSupportLineAccessMode() == null
 					? ru.ravel.ItDesk.model.SupportLineAccessMode.HYBRID

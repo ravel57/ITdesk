@@ -37,6 +37,22 @@ public class TaskController {
 	private final TaskService taskService;
 	private final WebSocketService webSocketService;
 
+	@GetMapping("/tasks/unopened-assigned-count")
+	@PreAuthorize("@access.canAny('TASK_VIEW', 'TASK_EDIT')")
+	@Operation(summary = "Количество ещё не открытых активных заявок текущего исполнителя")
+	public Map<String, Long> getUnopenedAssignedCount() {
+		return Map.of("count", taskService.countUnopenedAssignedTasks());
+	}
+
+
+	@PostMapping("/task/{taskId}/opened")
+	@PreAuthorize("@access.canAny('TASK_VIEW', 'TASK_EDIT')")
+	@Operation(summary = "Отметить первое открытие карточки заявки текущим пользователем")
+	public ResponseEntity<Void> markTaskOpened(@PathVariable Long taskId) {
+		taskService.markTaskOpened(taskId);
+		return ResponseEntity.noContent().build();
+	}
+
 
 	@Operation(summary = "Создать заявку", description = "Создать заявку. Endpoint POST /api/v1/client/{clientId}/task; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/client/{clientId}/task")
@@ -68,7 +84,7 @@ public class TaskController {
 
 	@Operation(summary = "Получить страницу заявок", description = "Получить страницу заявок. Endpoint POST /api/v1/tasks-page; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@PostMapping("/tasks-page")
-	@PreAuthorize("@access.can('TASK_VIEW')")
+	@PreAuthorize("@access.canAny('TASK_VIEW', 'TASK_EDIT')")
 	public ResponseEntity<Object> getTasksPage(@RequestBody Map<String, Object> request) {
 		return ResponseEntity.ok().body(taskService.getTasksPage(request));
 	}
@@ -84,7 +100,7 @@ public class TaskController {
 
 	@Operation(summary = "Получить файлы заявки", description = "Получить файлы заявки. Endpoint GET /api/v1/client/{clientId}/task/{taskId}/files; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/client/{clientId}/task/{taskId}/files")
-	@PreAuthorize("@access.can('TASK_VIEW')")
+	@PreAuthorize("@access.canAny('TASK_VIEW', 'TASK_EDIT')")
 	public ResponseEntity<Object> getTaskFiles(
 			@PathVariable Long clientId,
 			@PathVariable Long taskId
@@ -95,7 +111,7 @@ public class TaskController {
 
 	@Operation(summary = "Получить историю заявки", description = "Получить историю заявки. Endpoint GET /api/v1/task/{taskId}/history; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/task/{taskId}/history")
-	@PreAuthorize("@access.can('TASK_VIEW')")
+	@PreAuthorize("@access.canAny('TASK_VIEW', 'TASK_EDIT')")
 	public ResponseEntity<Object> getTaskHistory(@PathVariable Long taskId) {
 		taskService.getTaskForCurrentUser(taskId);
 		return ResponseEntity.ok(taskHistoryService.getTaskHistory(taskId));

@@ -8,6 +8,7 @@ import ru.ravel.ItDesk.model.AutomationTrigger;
 import ru.ravel.ItDesk.model.automatosation.AutomationRuleStatus;
 import ru.ravel.ItDesk.model.automatosation.AutomationWorkflowRunStatus;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
+import ru.ravel.ItDesk.repository.AutomationFolderRepository;
 import ru.ravel.ItDesk.repository.AutomationTriggerRepository;
 import ru.ravel.ItDesk.repository.AutomationWorkflowRunRepository;
 
@@ -28,6 +29,7 @@ public class AutomationTriggerService {
 	);
 
 	private final AutomationTriggerRepository repository;
+	private final AutomationFolderRepository folderRepository;
 	private final AutomationWorkflowRunRepository workflowRunRepository;
 	private final AutomationWorkflowEngine workflowEngine;
 
@@ -56,6 +58,7 @@ public class AutomationTriggerService {
 				.automationRuleStatus(resolveStatus(dto.getAutomationRuleStatus(), AutomationRuleStatus.ENABLED))
 				.stopProcessing(Boolean.TRUE.equals(dto.getStopProcessing()))
 				.orderNumber(nextOrder)
+				.displayOrder(nextRootDisplayOrder())
 				.build();
 		return toDto(repository.save(entity));
 	}
@@ -131,6 +134,14 @@ public class AutomationTriggerService {
 			repository.save(entity);
 		}
 		return repository.findAll().stream().sorted().toList();
+	}
+
+
+	/** Новое правило встаёт в конец верхнего уровня — после последнего правила и папки. */
+	private int nextRootDisplayOrder() {
+		Integer triggers = repository.maxRootDisplayOrder();
+		Integer folders = folderRepository.maxDisplayOrder();
+		return Math.max(triggers == null ? -1 : triggers, folders == null ? -1 : folders) + 1;
 	}
 
 
@@ -240,6 +251,8 @@ public class AutomationTriggerService {
 				.workflowDefinition(entity.getWorkflowDefinition())
 				.workflowVersion(entity.getWorkflowVersion() == null ? 1 : entity.getWorkflowVersion())
 				.orderNumber(entity.getOrderNumber())
+				.folderId(entity.getFolderId())
+				.displayOrder(entity.getDisplayOrder() == null ? 0 : entity.getDisplayOrder())
 				.automationRuleStatus((entity.getAutomationRuleStatus() == null
 						? AutomationRuleStatus.ENABLED
 						: entity.getAutomationRuleStatus()).name())

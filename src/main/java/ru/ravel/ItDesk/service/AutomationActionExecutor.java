@@ -43,6 +43,9 @@ import java.util.*;
 public class AutomationActionExecutor {
 
 	private final ClientService clientService;
+	private final ServiceRepository serviceRepository;
+	private final ServiceCatalogService serviceCatalogService;
+	private final TaskTypeRepository taskTypeRepository;
 	private final PriorityRepository priorityRepository;
 	private final StatusRepository statusRepository;
 	private final TaskFilterService taskFilterService;
@@ -57,41 +60,43 @@ public class AutomationActionExecutor {
 	private final JevService jevService;
 	private final IncidentDetectorService incidentDetectorService;
 	private final JevAssistService jevAssistService;
+	private final IncidentService incidentService;
 	private final ru.ravel.ItDesk.component.AfterCommitExecutor afterCommitExecutor;
 	private final MessageRepository messageRepository;
 	private final ClientRepository clientRepository;
 	private final MonitoringIncidentService monitoringIncidentService;
-	private final AutomationWorkflowValueService workflowValueService;
 
 	/**
 	 * Приходит из AutomationScriptRuntime:
 	 * <p>
 	 * actionType = "client.sendMessage"
 	 * actionNode = { "args": ["Принято!"] }
+	 *
+	 * @return то, что вернул метод (результат шага: объект, число, null); скрипт правила кладёт его
+	 * в переменную записью {@code var.имя = target.method(...)}
 	 */
-	public void execute(String actionType, JsonNode actionNode, AutomationExecutionContext ctx) {
+	public Object execute(String actionType, JsonNode actionNode, AutomationExecutionContext ctx) {
 		if (actionType == null || actionType.isBlank() || ctx == null) {
-			return;
+			return null;
 		}
 		List<Object> args = parseArgs(actionNode);
 		ActionCall call = ActionCall.parse(actionType);
 		if (call == null) {
 			log.warn("Invalid actionType='{}'", actionType);
-			return;
+			return null;
 		}
 		AutomationApi api = new AutomationApi(ctx);
 		Object target = api.resolveTarget(call.target);
 		if (target == null) {
 			log.warn("Unknown target '{}', actionType='{}'", call.target, actionType);
-			return;
+			return null;
 		}
 		try {
 			if (target instanceof JevApi) {
 				// журнал решений Jev знает, какое правило и действие спросили Jev
-				invokeJevAction(target, call.method, args, ctx);
-			} else {
-				invoke(target, call.method, args);
+				return invokeJevAction(target, call.method, args, ctx);
 			}
+			return invoke(target, call.method, args);
 		} catch (Exception e) {
 			log.error("Action failed: {}({}) event={}",
 					actionType, args, safeEventInfo(ctx.getEvent()), e);
@@ -181,6 +186,13 @@ public class AutomationActionExecutor {
 					alreadyFlagged.map(id -> " skipped: message " + id + " in this chain is already flagged").orElse(""));
 		}
 
+		public void setAnswerRequired(Boolean required) {
+			Long clientId = resolveClientId(ctx), messageId = resolveMessageId(ctx);
+			if (clientId == null || messageId == null) throw new IllegalArgumentException("Нужны клиент и сообщение");
+			if (Boolean.TRUE.equals(required)) clientService.markAnswerRequiredForSystem(clientId, messageId);
+			else clientService.answerRequiredForSystem(clientId, messageId, AnswerRequired.ANSWER_NOT_REQUIRED);
+		}
+
 		public void sendMessage(String text) {
 			text = normalizeOutgoingMessageText(text);
 			Long clientId = resolveClientId(ctx);
@@ -201,6 +213,28 @@ public class AutomationActionExecutor {
 					.build();
 			clientService.sendMessageForSystem(clientId, message);
 			log.info("AUTO client.sendMessage(clientId={}, text={})", clientId, text);
+		}
+
+		/** Внутренний комментарий в чате клиента — виден только сотрудникам, клиент его не получает. */
+		public void addInternalNote(String text) {
+			Long clientId = resolveClientId(ctx);
+			if (clientId == null) {
+				log.warn("client.addInternalNote skipped: clientId is null, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			if (text == null || text.isBlank()) {
+				log.warn("client.addInternalNote skipped: text is blank, clientId={}", clientId);
+				return;
+			}
+			Message message = Message.builder()
+					.text(text)
+					.isSent(true)
+					.isComment(true)
+					.isRead(true)
+					.date(ZonedDateTime.now())
+					.build();
+			clientService.sendMessageForSystem(clientId, message);
+			log.info("AUTO client.addInternalNote(clientId={}, text={})", clientId, text);
 		}
 
 		public void setField(String field, Object value) {
@@ -242,6 +276,36 @@ public class AutomationActionExecutor {
 
 		public Long id() {
 			return resolveTaskId(ctx);
+		}
+
+		public void setService(Long serviceId) {
+			Task task = taskRepository.findById(resolveTaskId(ctx)).orElseThrow();
+			ru.ravel.ItDesk.model.Service previous = task.getService();
+			ru.ravel.ItDesk.model.Service service = serviceRepository.findById(serviceId).orElseThrow();
+			Organization organization = clientRepository.findByTaskId(task.getId()).map(Client::getOrganization).orElse(null);
+			// Availability and type compatibility are invariants, independent of graph policy.
+			if (serviceCatalogService.getAvailableServices(organization == null ? null : organization.getId()).stream()
+					.noneMatch(a -> Objects.equals(((Number) a.get("id")).longValue(), serviceId))) {
+				throw new IllegalArgumentException("Сервис недоступен организации клиента");
+			}
+			if (sameEntity(previous, service)) return;
+			task.setService(service); task.setLastActivity(ZonedDateTime.now()); taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_SERVICE_CHANGED, task, ctx, "oldService", previous, "newService", service);
+			notifyTaskUpdated(task.getId());
+		}
+
+		public void setType(Long typeId) {
+			Task task = taskRepository.findById(resolveTaskId(ctx)).orElseThrow();
+			TaskType previous = task.getType(), type = taskTypeRepository.findById(typeId).orElseThrow();
+			if (task.getService() != null && task.getService().getAllowedTaskTypes() != null
+					&& !task.getService().getAllowedTaskTypes().isEmpty()
+					&& task.getService().getAllowedTaskTypes().stream().noneMatch(t -> Objects.equals(t.getId(), typeId))) {
+				throw new IllegalArgumentException("Тип заявки не разрешён для сервиса");
+			}
+			if (sameEntity(previous, type)) return;
+			task.setType(type); task.setLastActivity(ZonedDateTime.now()); taskRepository.save(task);
+			publishTaskEvent(TriggerType.TASK_TYPE_CHANGED, task, ctx, "oldType", previous, "newType", type);
+			notifyTaskUpdated(task.getId());
 		}
 
 		public void setName(String name) {
@@ -582,7 +646,7 @@ public class AutomationActionExecutor {
 					.orElse(null);
 			Optional<JevService.Triage> result = jevService.classify(context, taskText(task), organization);
 			if (result.isEmpty()) {
-				jevLog.info("[{}] jev.classifyTask: no confident decision, task unchanged", context);
+				jevLog.debug("[{}] jev.classifyTask: no confident decision, task unchanged", context);
 				return;
 			}
 			JevService.Triage triage = result.get();
@@ -601,7 +665,7 @@ public class AutomationActionExecutor {
 					task.setType(newType);
 					changed = true;
 				} else {
-					jevLog.info("[{}] jev.classifyTask: type «{}» skipped, not allowed for service «{}»",
+					jevLog.debug("[{}] jev.classifyTask: type «{}» skipped, not allowed for service «{}»",
 							context, newType.getType(), task.getService().getName());
 				}
 			}
@@ -619,7 +683,7 @@ public class AutomationActionExecutor {
 							"newType", task.getType());
 				}
 				notifyTaskUpdated(taskId);
-				jevLog.info("[{}] jev.classifyTask: type «{}» -> «{}», service «{}» -> «{}» (rule: {})", context,
+				jevLog.debug("[{}] jev.classifyTask: type «{}» -> «{}», service «{}» -> «{}» (rule: {})", context,
 						oldType == null ? null : oldType.getType(),
 						task.getType() == null ? null : task.getType().getType(),
 						oldService == null ? null : oldService.getCode(),
@@ -631,10 +695,10 @@ public class AutomationActionExecutor {
 			if (newLine != null && !sameEntity(oldLine, newLine)) {
 				taskRoutingService.routeExistingTask(taskId, newLine.getId(), false, "Jev");
 				notifyTaskUpdated(taskId);
-				jevLog.info("[{}] jev.classifyTask: support line «{}» -> «{}» (rule: {})", context,
+				jevLog.debug("[{}] jev.classifyTask: support line «{}» -> «{}» (rule: {})", context,
 						oldLine == null ? null : oldLine.getName(), newLine.getName(), ruleName());
 			} else if (!changed) {
-				jevLog.info("[{}] jev.classifyTask: Jev agrees with current values, task unchanged", context);
+				jevLog.debug("[{}] jev.classifyTask: Jev agrees with current values, task unchanged", context);
 			}
 		}
 
@@ -651,16 +715,16 @@ public class AutomationActionExecutor {
 			Priority oldPriority = task.getPriority();
 			Optional<Priority> suggested = jevService.suggestPriority(context, taskText(task));
 			if (suggested.isEmpty()) {
-				jevLog.info("[{}] jev.setPriority: no confident decision, priority unchanged", context);
+				jevLog.debug("[{}] jev.setPriority: no confident decision, priority unchanged", context);
 				return;
 			}
 			Priority priority = suggested.get();
 			if (sameEntity(oldPriority, priority)) {
-				jevLog.info("[{}] jev.setPriority: Jev agrees with current priority «{}»", context, priority.getName());
+				jevLog.debug("[{}] jev.setPriority: Jev agrees with current priority «{}»", context, priority.getName());
 				return;
 			}
 			new TaskApi(ctx).setPriority(priority.getName());
-			jevLog.info("[{}] jev.setPriority: «{}» -> «{}» (rule: {})", context,
+			jevLog.debug("[{}] jev.setPriority: «{}» -> «{}» (rule: {})", context,
 					oldPriority == null ? null : oldPriority.getName(), priority.getName(), ruleName());
 		}
 
@@ -678,7 +742,7 @@ public class AutomationActionExecutor {
 			String context = "client=" + clientId + ", message=" + messageId;
 			JsonNode text = readByPath(ctx.getEvent().getPayload(), "message.text");
 			if (text == null || !text.isTextual()) {
-				jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: message has no text, skipped", context);
+				jevLog.debug("[{}] jev.setAnswerRequiredIfNeeded: message has no text, skipped", context);
 				return;
 			}
 			AnswerRequired answer = switch (jevService.needsReply(context, text.asText())) {
@@ -687,87 +751,86 @@ public class AutomationActionExecutor {
 				case UNDECIDED -> null;
 			};
 			if (answer == null) {
-				jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: undecided, flag unchanged", context);
+				jevLog.debug("[{}] jev.setAnswerRequiredIfNeeded: undecided, flag unchanged", context);
 				return;
 			}
 			if (answer == AnswerRequired.ANSWER_REQUIRED) {
 				// Метка остаётся на первом сообщении цепочки, чтобы не сбрасывать таймер ожидания ответа
 				Optional<Long> alreadyFlagged = clientService.markAnswerRequiredForSystem(clientId, messageId);
 				if (alreadyFlagged.isPresent()) {
-					jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: ANSWER_REQUIRED, but message {} in this chain "
+					jevLog.debug("[{}] jev.setAnswerRequiredIfNeeded: ANSWER_REQUIRED, but message {} in this chain "
 							+ "is already flagged — flag and timer kept (rule: {})", context, alreadyFlagged.get(), ruleName());
 					return;
 				}
 			} else {
 				clientService.answerRequiredForSystem(clientId, messageId, answer);
 			}
-			jevLog.info("[{}] jev.setAnswerRequiredIfNeeded: {} (rule: {})", context, answer, ruleName());
+			jevLog.debug("[{}] jev.setAnswerRequiredIfNeeded: {} (rule: {})", context, answer, ruleName());
 		}
 
 		/**
 		 * Шаг детектора массовых инцидентов: Jev размечает входящее сообщение (сбой ли это, какой сервис и симптом,
-		 * относится ли к открытому инциденту). Только разметка — что делать дальше (посчитать обращения, сравнить с
-		 * порогом, создать инцидент) решают следующие ноды правила. Пишет: {@code var.signalId},
-		 * {@code var.outageProbability}, {@code var.outageServiceId}, {@code var.outageServiceName},
-		 * {@code var.outageSymptom}, {@code var.organizationId}, {@code var.monitoringStatus},
-		 * {@code var.matchedIncidentId}, {@code var.matchedIncidentNumber}. Если Jev не ответил — ничего не пишет.
+		 * относится ли к открытому инциденту). Только разметка: результат правило кладёт в переменную сама,
+		 * {@code var.outage = jev.analyzeOutage()}, а что делать дальше (посчитать обращения, сравнить с порогом,
+		 * создать инцидент) решают следующие ноды. Результат: {@code signalId}, {@code probability},
+		 * {@code serviceId}, {@code serviceName}, {@code symptom}, {@code organizationId}, {@code monitoringStatus},
+		 * {@code matchedIncidentId}, {@code matchedIncidentNumber}; null — Jev не ответил.
 		 */
-		public void analyzeOutage() {
+		public Map<String, Object> analyzeOutage() {
 			Long clientId = resolveClientId(ctx);
 			Long messageId = resolveMessageId(ctx);
 			if (!ready("jev.analyzeOutage",
 					clientId == null || messageId == null ? "no client or message in event" : null)) {
-				return;
+				return null;
 			}
 			String context = "client=" + clientId + ", message=" + messageId;
 			String text = messageText();
 			if (text == null) {
-				jevLog.info("[{}] jev.analyzeOutage: message has no text, skipped", context);
-				return;
+				jevLog.debug("[{}] jev.analyzeOutage: message has no text, skipped", context);
+				return null;
 			}
-			Optional<IncidentDetectorService.Analysis> analysis = incidentDetectorService.analyze(context, clientId, messageId, text);
-			if (analysis.isEmpty()) {
-				return;
-			}
-			IncidentSignal signal = analysis.get().signal();
-			JevService.OutageSignal outage = analysis.get().outage();
-			ru.ravel.ItDesk.model.Service service = outage.service();
-			SupportIncident matched = outage.matchedIncident();
-			setVar(ctx, "signalId", signal.getId());
-			setVar(ctx, "outageProbability", outage.outageProbability());
-			setVar(ctx, "outageServiceId", service == null ? null : service.getId());
-			setVar(ctx, "outageServiceName", service == null ? null : service.getName());
-			setVar(ctx, "outageSymptom", outage.symptom());
-			setVar(ctx, "organizationId", signal.getOrganizationId());
-			setVar(ctx, "monitoringStatus", service == null || service.getMonitoringStatus() == null
-					? null : service.getMonitoringStatus().name());
-			setVar(ctx, "matchedIncidentId", matched == null ? null : matched.getId());
-			setVar(ctx, "matchedIncidentNumber", matched == null ? null : matched.getIncidentNumber());
+			return incidentDetectorService.analyze(context, clientId, messageId, text).map(analysis -> {
+				IncidentSignal signal = analysis.signal();
+				JevService.OutageSignal outage = analysis.outage();
+				ru.ravel.ItDesk.model.Service service = outage.service();
+				SupportIncident matched = outage.matchedIncident();
+				return resultOf(
+						"signalId", signal.getId(),
+						"probability", outage.outageProbability(),
+						"serviceId", service == null ? null : service.getId(),
+						"serviceName", service == null ? null : service.getName(),
+						"symptom", outage.symptom(),
+						"organizationId", signal.getOrganizationId(),
+						"monitoringStatus", service == null || service.getMonitoringStatus() == null
+								? null : service.getMonitoringStatus().name(),
+						"matchedIncidentId", matched == null ? null : matched.getId(),
+						"matchedIncidentNumber", matched == null ? null : matched.getIncidentNumber());
+			}).orElse(null);
 		}
 
 		/**
-		 * Шаг детектора: Jev проверяет, что сообщения окна ({@code var.signalIds} после {@code incident.countSignals})
-		 * и текущее описывают одну проблему. Пишет {@code var.batchSameProblem} (вероятность 0..1),
-		 * {@code var.batchSeverity} (P1..P4 по оценке Jev), {@code var.batchSeverityScore}, {@code var.batchCause};
-		 * если проверка недоступна (Jev не ответил, меньше двух сообщений) — ничего не пишет.
+		 * Шаг детектора: Jev проверяет, что сообщения окна ({@code window} — результат {@code incident.countSignals})
+		 * и текущее описывают одну проблему: {@code var.verdict = jev.verifyBatch(var.outage.signalId, var.window)}.
+		 * Результат: {@code sameProblem} (вероятность 0..1), {@code severity} (P1..P4 по оценке Jev),
+		 * {@code severityScore}, {@code cause}; null — проверка недоступна (Jev не ответил, меньше двух сообщений).
 		 */
-		public void verifyBatch() {
-			Long signalId = varLong(ctx, "signalId");
-			if (!ready("jev.verifyBatch", signalId == null ? "no signal: call jev.analyzeOutage() first" : null)) {
-				return;
+		public Map<String, Object> verifyBatch(Long signalId, JsonNode window) {
+			if (!ready("jev.verifyBatch", signalId == null || window == null ? "signalId and window are required" : null)) {
+				return null;
 			}
 			String context = "signal=" + signalId;
 			String text = messageText();
 			if (text == null) {
-				jevLog.info("[{}] jev.verifyBatch: message has no text, skipped", context);
-				return;
+				jevLog.debug("[{}] jev.verifyBatch: message has no text, skipped", context);
+				return null;
 			}
-			incidentDetectorService.verifyBatch(context, varLongs(ctx, "signalIds"), text).ifPresent(verdict -> {
-				setVar(ctx, "batchSameProblem", verdict.sameProblemProbability());
-				setVar(ctx, "batchSeverity", verdict.severity().name());
-				setVar(ctx, "batchSeverityScore", verdict.severityScore());
-				setVar(ctx, "batchCause", verdict.probableCause());
-			});
+			return incidentDetectorService.verifyBatch(context, longsOf(window.path("signalIds")), text)
+					.map(verdict -> resultOf(
+							"sameProblem", verdict.sameProblemProbability(),
+							"severity", verdict.severity().name(),
+							"severityScore", verdict.severityScore(),
+							"cause", verdict.probableCause()))
+					.orElse(null);
 		}
 
 		/**
@@ -784,7 +847,7 @@ public class AutomationActionExecutor {
 			String context = "client=" + clientId + ", message=" + messageId;
 			String text = messageText();
 			if (text == null) {
-				jevLog.info("[{}] jev.createTaskIfNeeded: message has no text, skipped", context);
+				jevLog.debug("[{}] jev.createTaskIfNeeded: message has no text, skipped", context);
 				return;
 			}
 			jevAssistService.createTaskIfNeeded(context, clientId, messageId, text);
@@ -805,7 +868,7 @@ public class AutomationActionExecutor {
 			}
 			String context = "client=" + clientId + (taskId == null ? "" : ", task=" + taskId);
 			if (text == null) {
-				jevLog.info("[{}] jev.suggestKnowledgeArticle: nothing to analyze", context);
+				jevLog.debug("[{}] jev.suggestKnowledgeArticle: nothing to analyze", context);
 				return;
 			}
 			jevAssistService.suggestKnowledgeArticle(context, clientId, text);
@@ -842,9 +905,9 @@ public class AutomationActionExecutor {
 			jevAssistService.selectSupportLine(context, task).ifPresentOrElse(line -> {
 				taskRoutingService.routeExistingTask(taskId, line.getId(), false, "Jev: выбор линии");
 				notifyTaskUpdated(taskId);
-				jevLog.info("[{}] jev.selectSupportLine: «{}» -> «{}» (rule: {})", context,
+				jevLog.debug("[{}] jev.selectSupportLine: «{}» -> «{}» (rule: {})", context,
 						task.getSupportLine() == null ? null : task.getSupportLine().getName(), line.getName(), ruleName());
-			}, () -> jevLog.info("[{}] jev.selectSupportLine: line unchanged", context));
+			}, () -> jevLog.debug("[{}] jev.selectSupportLine: line unchanged", context));
 		}
 
 		/**
@@ -874,20 +937,27 @@ public class AutomationActionExecutor {
 				jevAssistService.escalate(context, task, client == null ? null : client.getId(), line,
 						"Jev: эскалация (правило " + ruleName() + ")");
 				notifyTaskUpdated(resolvedTaskId);
-			}, () -> jevLog.info("[{}] jev.escalateIfNeeded: stays on current line", context));
+			}, () -> jevLog.debug("[{}] jev.escalateIfNeeded: stays on current line", context));
 		}
 
 		/**
-		 * Новая заявка — дубль открытой? Дубль заявки из активного инцидента привязывается к инциденту,
-		 * про прочие дубли оператор получает комментарий.
+		 * Новая заявка — дубль открытой? Только решение: {@code var.duplicate = jev.findDuplicate()}. Результат:
+		 * {@code taskId} дубля, {@code incidentId} и {@code incidentNumber} (если дубль в активном инциденте),
+		 * {@code sameClient}; null — дубля нет. Привязку к инциденту и комментарий оператору делает само правило
+		 * через condition/action-ноды ({@code incident.linkTask}, {@code incident.addNote}, {@code client.addInternalNote}).
 		 */
-		public void findDuplicate() {
+		public Map<String, Object> findDuplicate() {
 			Long taskId = resolveTaskId(ctx);
 			if (!ready("jev.findDuplicate", taskId == null ? "no task in event" : null)) {
-				return;
+				return null;
 			}
-			jevAssistService.findDuplicate("task=" + taskId, taskId)
-					.ifPresent(match -> notifyTaskUpdated(taskId));
+			return jevAssistService.findDuplicate("task=" + taskId, taskId)
+					.map(match -> resultOf(
+							"taskId", match.duplicateOfTaskId(),
+							"incidentId", match.incident() == null ? null : match.incident().getId(),
+							"incidentNumber", match.incident() == null ? null : match.incident().getIncidentNumber(),
+							"sameClient", match.sameClient()))
+					.orElse(null);
 		}
 
 		/*
@@ -920,15 +990,15 @@ public class AutomationActionExecutor {
 		}
 
 		/** Разметка сообщения детектором с порогом уверенности выбора (сервис, симптом, связь с открытым инцидентом). */
-		public void analyzeOutage(BigDecimal analysisThreshold) {
-			withThresholds("jev.analyzeOutage", JevThresholdOverride.of(JevThreshold.INCIDENT_ANALYSIS,
+		public Map<String, Object> analyzeOutage(BigDecimal analysisThreshold) {
+			return withThresholdsReturning("jev.analyzeOutage", JevThresholdOverride.of(JevThreshold.INCIDENT_ANALYSIS,
 					ratio("jev.analyzeOutage", "analysisThreshold", analysisThreshold)), this::analyzeOutage);
 		}
 
 		/** Проверка пачки с порогом уверенности выбора вероятной причины. */
-		public void verifyBatch(BigDecimal analysisThreshold) {
-			withThresholds("jev.verifyBatch", JevThresholdOverride.of(JevThreshold.INCIDENT_ANALYSIS,
-					ratio("jev.verifyBatch", "analysisThreshold", analysisThreshold)), this::verifyBatch);
+		public Map<String, Object> verifyBatch(Long signalId, JsonNode window, BigDecimal analysisThreshold) {
+			return withThresholdsReturning("jev.verifyBatch", JevThresholdOverride.of(JevThreshold.INCIDENT_ANALYSIS,
+					ratio("jev.verifyBatch", "analysisThreshold", analysisThreshold)), () -> verifyBatch(signalId, window));
 		}
 
 		/** Создание заявки с порогом threshold (тип сообщения, совпадение с открытой, повтор закрытой). */
@@ -972,8 +1042,8 @@ public class AutomationActionExecutor {
 		}
 
 		/** Поиск дублей с порогом threshold. */
-		public void findDuplicate(BigDecimal threshold) {
-			withThresholds("jev.findDuplicate", JevThresholdOverride.of(JevThreshold.DUPLICATE,
+		public Map<String, Object> findDuplicate(BigDecimal threshold) {
+			return withThresholdsReturning("jev.findDuplicate", JevThresholdOverride.of(JevThreshold.DUPLICATE,
 					ratio("jev.findDuplicate", "threshold", threshold)), this::findDuplicate);
 		}
 
@@ -990,10 +1060,17 @@ public class AutomationActionExecutor {
 		}
 
 		private void withThresholds(String action, JevThresholdOverride override, Runnable run) {
+			withThresholdsReturning(action, override, () -> {
+				run.run();
+				return null;
+			});
+		}
+
+		private <T> T withThresholdsReturning(String action, JevThresholdOverride override, java.util.function.Supplier<T> run) {
 			if (!override.isEmpty()) {
-				jevLog.info("{}: thresholds from rule «{}»: {}", action, ruleName(), override);
+				jevLog.debug("{}: thresholds from rule «{}»: {}", action, ruleName(), override);
 			}
-			override.apply(run);
+			return override.apply(run);
 		}
 
 		private String messageText() {
@@ -1046,6 +1123,7 @@ public class AutomationActionExecutor {
 	 * "incident.*" — инциденты по событиям автоматизаций.
 	 */
 	public final class IncidentApi {
+		private static final org.slf4j.Logger jevLog = org.slf4j.LoggerFactory.getLogger("JEV");
 		private static final com.fasterxml.jackson.databind.ObjectMapper PAYLOAD_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper()
 				.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -1078,29 +1156,31 @@ public class AutomationActionExecutor {
 			log.info("incident.fromMonitoring: {} {} — {} (rule: {})", trigger, result.outcome(), result.details(), ruleName());
 		}
 
-		// ---- Детектор массовых инцидентов: шаги над сигналом из jev.analyzeOutage() (var.signalId) ----
+		// ---- Детектор массовых инцидентов: шаги над сигналом из jev.analyzeOutage(). Шаги ничего не читают и не
+		// ---- пишут неявно: всё нужное приходит аргументами (var.* правила), результат правило кладёт в переменную.
 
-		/** {@code incident.countSignals(15)}: окно в минутах, считаются обращения клиентов всех организаций. */
-		public void countSignals(Integer windowMinutes) {
-			countSignals(windowMinutes, null);
+		/** {@code var.window = incident.countSignals(var.outage.signalId, 15)}: окно в минутах, клиенты всех организаций. */
+		public Map<String, Object> countSignals(Long signalId, Integer windowMinutes) {
+			return countSignals(signalId, windowMinutes, null);
 		}
 
 		/**
-		 * Сколько обращений и разных клиентов было о том же сервисе и симптоме за {@code windowMinutes} до текущего.
-		 * {@code scope}: {@code 'all'} (по умолчанию) — клиенты всех организаций, {@code 'organization'} — только
-		 * организации текущего клиента. Пишет {@code var.signalClients}, {@code var.signalMessages},
-		 * {@code var.signalOrganizations}, {@code var.signalIds}, {@code var.signalWindowMinutes}.
+		 * Сколько обращений и разных клиентов было о том же сервисе и симптоме за {@code windowMinutes} до обращения
+		 * {@code signalId}. {@code scope}: {@code 'all'} (по умолчанию) — клиенты всех организаций,
+		 * {@code 'organization'} — только организации текущего клиента. Сохранённое в старых графах
+		 * {@code 'GLOBAL'} принимается как синоним {@code 'all'}. Результат: {@code clients}, {@code messages},
+		 * {@code organizations}, {@code signalIds} (обращения окна), {@code windowMinutes}; null — сигнал не найден.
 		 */
-		public void countSignals(Integer windowMinutes, String scope) {
-			IncidentSignal signal = currentSignal("incident.countSignals");
+		public Map<String, Object> countSignals(Long signalId, Integer windowMinutes, String scope) {
+			IncidentSignal signal = signal("incident.countSignals", signalId);
 			if (signal == null) {
-				return;
+				return null;
 			}
 			if (windowMinutes == null || windowMinutes < 1) {
 				throw new IllegalArgumentException("incident.countSignals: окно должно быть не меньше 1 минуты");
 			}
 			boolean sameOrganizationOnly;
-			if (scope == null || "all".equalsIgnoreCase(scope.trim())) {
+			if (scope == null || "all".equalsIgnoreCase(scope.trim()) || "global".equalsIgnoreCase(scope.trim())) {
 				sameOrganizationOnly = false;
 			} else if ("organization".equalsIgnoreCase(scope.trim())) {
 				sameOrganizationOnly = true;
@@ -1108,40 +1188,40 @@ public class AutomationActionExecutor {
 				throw new IllegalArgumentException("incident.countSignals: область '" + scope + "' неизвестна (допустимы 'all', 'organization')");
 			}
 			IncidentDetectorService.WindowCount count = incidentDetectorService.count(signal, windowMinutes, sameOrganizationOnly);
-			setVar(ctx, "signalClients", count.clients().size());
-			setVar(ctx, "signalMessages", count.messages());
-			setVar(ctx, "signalOrganizations", count.organizations().size());
-			setVar(ctx, "signalIds", count.window().stream().map(IncidentSignal::getId).toList());
-			setVar(ctx, "signalWindowMinutes", windowMinutes);
-			log.info("AUTO incident.countSignals(window={} min, scope={}) -> {} client(s), {} message(s), {} organization(s) (rule: {})",
+			jevLog.debug("AUTO incident.countSignals(window={} min, scope={}) -> {} client(s), {} message(s), {} organization(s) (rule: {})",
 					windowMinutes, sameOrganizationOnly ? "organization" : "all", count.clients().size(), count.messages(),
 					count.organizations().size(), ruleName());
+			return resultOf(
+					"clients", count.clients().size(),
+					"messages", count.messages(),
+					"organizations", count.organizations().size(),
+					"signalIds", count.window().stream().map(IncidentSignal::getId).toList(),
+					"windowMinutes", windowMinutes);
 		}
 
 		/**
 		 * Было ли за последние {@code minutes} срабатывание по тому же сервису и симптому (0 — пауза выключена).
 		 * С {@code onlyWithIncident = true} считаются только срабатывания, по которым создан инцидент.
-		 * Пишет {@code var.cooldownActive} и {@code var.cooldownIncidentId} (активный инцидент того срабатывания).
+		 * Результат: {@code active} и {@code incidentId} (активный инцидент того срабатывания); null — сигнал не найден.
 		 */
-		public void checkCooldown(Integer minutes, Boolean onlyWithIncident) {
-			IncidentSignal signal = currentSignal("incident.checkCooldown");
+		public Map<String, Object> checkCooldown(Long signalId, Integer minutes, Boolean onlyWithIncident) {
+			IncidentSignal signal = signal("incident.checkCooldown", signalId);
 			if (signal == null) {
-				return;
+				return null;
 			}
 			IncidentDetectorService.Cooldown cooldown = incidentDetectorService.cooldown(
 					signal, minutes == null ? 0 : minutes, Boolean.TRUE.equals(onlyWithIncident));
-			setVar(ctx, "cooldownActive", cooldown.active());
-			setVar(ctx, "cooldownIncidentId", cooldown.incidentId());
+			return resultOf("active", cooldown.active(), "incidentId", cooldown.incidentId());
 		}
 
 		/** Записывает решение по сигналу: IGNORED, COUNTED, MATCHED_INCIDENT, TRIGGERED, BATCH_REJECTED, COOLDOWN. */
-		public void markSignal(String decision) {
-			markSignal(decision, null);
+		public void markSignal(Long signalId, String decision) {
+			markSignal(signalId, decision, null);
 		}
 
 		/** То же, плюс инцидент, к которому относится сигнал (без привязки заявки). */
-		public void markSignal(String decision, Long incidentId) {
-			IncidentSignal signal = currentSignal("incident.markSignal");
+		public void markSignal(Long signalId, String decision, Long incidentId) {
+			IncidentSignal signal = signal("incident.markSignal", signalId);
 			if (signal == null) {
 				return;
 			}
@@ -1153,15 +1233,15 @@ public class AutomationActionExecutor {
 						+ Arrays.toString(IncidentSignalDecision.values()) + ")");
 			}
 			incidentDetectorService.mark(signal, parsed, incidentId);
-			log.info("AUTO incident.markSignal({}, incidentId={}) (rule: {})", parsed, incidentId, ruleName());
+			jevLog.debug("AUTO incident.markSignal({}, incidentId={}) (rule: {})", parsed, incidentId, ruleName());
 		}
 
 		/**
 		 * Относит сообщение к открытому инциденту: привязывает заявку клиента и пишет запись в таймлайн.
 		 * Заявка ищется по сообщению, иначе — последняя открытая заявка клиента за {@code lookbackMinutes}.
 		 */
-		public void attachSignal(Long incidentId, Integer lookbackMinutes) {
-			IncidentSignal signal = currentSignal("incident.attachSignal");
+		public void attachSignal(Long signalId, Long incidentId, Integer lookbackMinutes) {
+			IncidentSignal signal = signal("incident.attachSignal", signalId);
 			if (signal == null) {
 				return;
 			}
@@ -1172,68 +1252,91 @@ public class AutomationActionExecutor {
 			incidentDetectorService.attach("signal=" + signal.getId(), signal, incidentId, lookbackMinutes == null ? 0 : lookbackMinutes);
 		}
 
-		/** {@code incident.createDraftFromSignals('P2')}: интервал обновлений инцидента — по умолчанию. */
-		public void createDraftFromSignals(String severity) {
-			createDraftFromSignals(severity, null, null, null, null);
+		/** Черновик с интервалом обновлений инцидента по умолчанию. */
+		public Map<String, Object> createDraftFromSignals(Long signalId, JsonNode window, JsonNode verdict, String severity) {
+			return createDraftFromSignals(signalId, window, verdict, severity, null, null, null, null);
 		}
 
 		/**
-		 * Создаёт черновик инцидента по пачке (текущий сигнал и {@code var.signalIds}) с заданной серьёзностью
-		 * ({@code 'P1'}…{@code 'P4'}), привязывает заявки и отмечает сигналы как TRIGGERED. Нужны результаты
-		 * {@code incident.countSignals} и {@code jev.verifyBatch}. {@code pNInterval} — интервал обновлений инцидента
-		 * в минутах для соответствующей серьёзности. Пишет {@code var.draftIncidentId}, {@code var.draftIncidentNumber}.
+		 * Создаёт черновик инцидента по пачке ({@code window} — результат {@code incident.countSignals}, {@code verdict} —
+		 * результат {@code jev.verifyBatch}) с серьёзностью {@code 'P1'}…{@code 'P4'}, привязывает заявки и отмечает
+		 * сигналы как TRIGGERED. {@code pNInterval} — интервал обновлений инцидента в минутах для серьёзности.
+		 * Результат: {@code id} и {@code number} созданного инцидента.
 		 */
-		public void createDraftFromSignals(String severity, Integer p1Interval, Integer p2Interval, Integer p3Interval, Integer p4Interval) {
-			IncidentSignal signal = currentSignal("incident.createDraftFromSignals");
+		public Map<String, Object> createDraftFromSignals(Long signalId, JsonNode window, JsonNode verdict, String severity,
+		                                                 Integer p1Interval, Integer p2Interval, Integer p3Interval, Integer p4Interval) {
+			IncidentSignal signal = signal("incident.createDraftFromSignals", signalId);
 			if (signal == null) {
-				return;
+				return null;
 			}
-			Long windowMinutes = varLong(ctx, "signalWindowMinutes");
-			Double sameProblem = varDouble(ctx, "batchSameProblem");
-			String jevSeverity = varString(ctx, "batchSeverity");
-			if (windowMinutes == null || sameProblem == null || jevSeverity == null) {
-				log.warn("incident.createDraftFromSignals skipped: call incident.countSignals() and jev.verifyBatch() first (rule: {})", ruleName());
-				return;
+			if (window == null || verdict == null || !window.hasNonNull("windowMinutes") || !verdict.hasNonNull("sameProblem")) {
+				log.warn("incident.createDraftFromSignals skipped: window (incident.countSignals) and verdict (jev.verifyBatch) are required (rule: {})", ruleName());
+				return null;
 			}
-			Double severityScore = varDouble(ctx, "batchSeverityScore");
-			JevService.BatchVerdict verdict = new JevService.BatchVerdict(sameProblem, IncidentDetectorService.severityOf(jevSeverity),
-					severityScore == null ? 0 : severityScore, Objects.toString(varString(ctx, "batchCause"), "неизвестно"));
+			JevService.BatchVerdict batchVerdict = new JevService.BatchVerdict(verdict.path("sameProblem").asDouble(),
+					IncidentDetectorService.severityOf(verdict.path("severity").asText()),
+					verdict.path("severityScore").asDouble(), verdict.path("cause").asText("неизвестно"));
 			Map<IncidentSeverity, Integer> intervals = new EnumMap<>(IncidentSeverity.class);
 			if (p1Interval != null) intervals.put(IncidentSeverity.P1, p1Interval);
 			if (p2Interval != null) intervals.put(IncidentSeverity.P2, p2Interval);
 			if (p3Interval != null) intervals.put(IncidentSeverity.P3, p3Interval);
 			if (p4Interval != null) intervals.put(IncidentSeverity.P4, p4Interval);
 			SupportIncident incident = incidentDetectorService.createDraft("signal=" + signal.getId(), signal,
-					incidentDetectorService.findSignals(varLongs(ctx, "signalIds")), verdict,
-					IncidentDetectorService.severityOf(Objects.toString(severity, "")), windowMinutes.intValue(), intervals);
-			setVar(ctx, "draftIncidentId", incident.getId());
-			setVar(ctx, "draftIncidentNumber", incident.getIncidentNumber());
-			log.info("AUTO incident.createDraftFromSignals({}) -> {} (rule: {})", severity, incident.getIncidentNumber(), ruleName());
+					incidentDetectorService.findSignals(longsOf(window.path("signalIds"))), batchVerdict,
+					IncidentDetectorService.severityOf(Objects.toString(severity, "")), window.path("windowMinutes").asInt(), intervals);
+			jevLog.debug("AUTO incident.createDraftFromSignals({}) -> {} (rule: {})", severity, incident.getIncidentNumber(), ruleName());
+			return resultOf("id", incident.getId(), "number", incident.getIncidentNumber());
 		}
 
 		/**
 		 * Уведомляет ответственных за сервис (владелец и исполнители сервиса, ответственный и участники линии;
-		 * если таких нет — администраторы) через стандартные уведомления.
+		 * если таких нет — администраторы) через стандартные уведомления; {@code window} — результат
+		 * {@code incident.countSignals}.
 		 */
-		public void notifyResponsible(String text) {
-			IncidentSignal signal = currentSignal("incident.notifyResponsible");
+		public void notifyResponsible(Long signalId, JsonNode window, String text) {
+			IncidentSignal signal = signal("incident.notifyResponsible", signalId);
 			if (signal == null) {
 				return;
 			}
-			if (text == null || text.isBlank()) {
-				log.warn("incident.notifyResponsible skipped: text is blank (rule: {})", ruleName());
+			if (window == null || text == null || text.isBlank()) {
+				log.warn("incident.notifyResponsible skipped: window or text is missing (rule: {})", ruleName());
 				return;
 			}
-			Long windowMinutes = varLong(ctx, "signalWindowMinutes");
 			incidentDetectorService.notifyResponsible("signal=" + signal.getId(), signal,
-					incidentDetectorService.findSignals(varLongs(ctx, "signalIds")),
-					windowMinutes == null ? 0 : windowMinutes.intValue(), text);
+					incidentDetectorService.findSignals(longsOf(window.path("signalIds"))),
+					window.path("windowMinutes").asInt(0), text);
 		}
 
-		private IncidentSignal currentSignal(String action) {
-			Optional<IncidentSignal> signal = incidentDetectorService.findSignal(varLong(ctx, "signalId"));
+		/** Привязывает заявку из события (например, {@code task.id} из TASK_CREATED) к инциденту. */
+		public void linkTask(Long incidentId) {
+			Long taskId = resolveTaskId(ctx);
+			if (incidentId == null || taskId == null) {
+				log.warn("incident.linkTask skipped: incidentId/taskId is null, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			List<Long> linked = incidentService.linkTasksForSystem(incidentId, List.of(taskId));
+			log.info("AUTO incident.linkTask(incidentId={}, taskId={}) -> {} (rule: {})", incidentId, taskId,
+					linked.isEmpty() ? "already linked or not found" : "linked", ruleName());
+			if (!linked.isEmpty()) {
+				notifyTaskUpdated(taskId);
+			}
+		}
+
+		/** Системная заметка в ленте инцидента (видна только сотрудникам, не клиенту). */
+		public void addNote(Long incidentId, String text) {
+			if (incidentId == null || text == null || text.isBlank()) {
+				log.warn("incident.addNote skipped: incidentId is null or text is blank, event={}", safeEventInfo(ctx.getEvent()));
+				return;
+			}
+			incidentService.addSystemNote(incidentId, text);
+			log.info("AUTO incident.addNote(incidentId={}, text={})", incidentId, text);
+		}
+
+		private IncidentSignal signal(String action, Long signalId) {
+			Optional<IncidentSignal> signal = incidentDetectorService.findSignal(signalId);
 			if (signal.isEmpty()) {
-				log.warn("{} skipped: no signal in the workflow, call jev.analyzeOutage() first (rule: {})", action, ruleName());
+				log.warn("{} skipped: signal {} not found, pass var.outage.signalId from jev.analyzeOutage() (rule: {})",
+						action, signalId, ruleName());
 			}
 			return signal.orElse(null);
 		}
@@ -1301,18 +1404,19 @@ public class AutomationActionExecutor {
 	// INVOKE (рефлексия) — чтобы actionType работал как вызов метода объекта
 	// ======================================================================
 
-	private void invokeJevAction(Object target, String methodName, List<Object> rawArgs, AutomationExecutionContext ctx)
+	private Object invokeJevAction(Object target, String methodName, List<Object> rawArgs, AutomationExecutionContext ctx)
 			throws Exception {
 		Exception[] failure = new Exception[1];
+		Object[] result = new Object[1];
 		AutomationTrigger trigger = ctx.getTrigger();
 		JevDecisionRecorder.inAction(
 				new JevDecisionRecorder.ActionContext(
 						trigger == null ? null : trigger.getId(),
 						trigger == null ? null : trigger.getName(),
-						methodName),
+						methodName, ctx.getEvent() == null ? null : ctx.getEvent().getId()),
 				() -> {
 					try {
-						invoke(target, methodName, rawArgs);
+						result[0] = invoke(target, methodName, rawArgs);
 					} catch (Exception e) {
 						failure[0] = e;
 					}
@@ -1320,14 +1424,15 @@ public class AutomationActionExecutor {
 		if (failure[0] != null) {
 			throw failure[0];
 		}
+		return result[0];
 	}
 
-	private void invoke(Object target, String methodName, List<Object> rawArgs) throws Exception {
+	private Object invoke(Object target, String methodName, List<Object> rawArgs) throws Exception {
 		// Критичные системные действия вызываем явно. Это исключает зависимость
 		// от порядка/видимости методов reflection и одинаково принимает числа,
 		// пришедшие от Jackson как Integer, Long, BigDecimal и другие Number.
 		if (invokeKnownAction(target, methodName, rawArgs)) {
-			return;
+			return null;
 		}
 
 		Method[] methods = target.getClass().getMethods();
@@ -1349,8 +1454,7 @@ public class AutomationActionExecutor {
 			if (!ok) {
 				continue;
 			}
-			m.invoke(target, converted);
-			return;
+			return m.invoke(target, converted);
 		}
 		throw new NoSuchMethodException("No method '%s' for %s args=%s".formatted(methodName, target.getClass().getSimpleName(), rawArgs));
 	}
@@ -1632,47 +1736,20 @@ public class AutomationActionExecutor {
 		return readLong(e.getPayload(), "message.id");
 	}
 
-	// ---- переменные автоматизации var.*: шаги пишут результат, следующие ноды читают его в условиях и скриптах ----
-
-	private void setVar(AutomationExecutionContext ctx, String name, Object value) {
-		workflowValueService.setVariable(ctx.getEvent().getPayload(), name, value);
-	}
-
-	private Object varValue(AutomationExecutionContext ctx, String name) {
-		return workflowValueService.getVariable(ctx.getEvent().getPayload(), name);
-	}
-
-	private Long varLong(AutomationExecutionContext ctx, String name) {
-		Object value = varValue(ctx, name);
-		if (value instanceof Number number) {
-			return number.longValue();
+	/** Результат шага для переменной правила: пары имя-значение (значения могут быть null). */
+	private static Map<String, Object> resultOf(Object... pairs) {
+		Map<String, Object> result = new LinkedHashMap<>();
+		for (int i = 0; i < pairs.length; i += 2) {
+			result.put((String) pairs[i], pairs[i + 1]);
 		}
-		if (value instanceof String text) {
-			try {
-				return Long.parseLong(text.trim());
-			} catch (NumberFormatException ignored) {
-				return null;
-			}
-		}
-		return null;
+		return result;
 	}
 
-	private Double varDouble(AutomationExecutionContext ctx, String name) {
-		Object value = varValue(ctx, name);
-		return value instanceof Number number ? number.doubleValue() : null;
-	}
-
-	private String varString(AutomationExecutionContext ctx, String name) {
-		Object value = varValue(ctx, name);
-		return value == null ? null : String.valueOf(value);
-	}
-
-	private List<Long> varLongs(AutomationExecutionContext ctx, String name) {
-		if (!(varValue(ctx, name) instanceof JsonNode node) || !node.isArray()) {
-			return List.of();
-		}
+	private static List<Long> longsOf(JsonNode array) {
 		List<Long> result = new ArrayList<>();
-		node.forEach(item -> result.add(item.asLong()));
+		if (array != null && array.isArray()) {
+			array.forEach(item -> result.add(item.asLong()));
+		}
 		return result;
 	}
 

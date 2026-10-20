@@ -1,0 +1,304 @@
+{
+  "version": 3,
+  "entryNodeId": "priority-1",
+  "nodes": [
+    {
+      "id": "priority-1",
+      "type": "EVENT",
+      "label": "Когда запускать",
+      "x": 80,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "triggerType": "TASK_CREATED"
+      }
+    },
+    {
+      "id": "priority-2",
+      "type": "PARAMETERS",
+      "label": "Настройки сценария",
+      "x": 500,
+      "y": 100,
+      "config": {
+        "section": "1. Настройки",
+        "resultVariable": "settings",
+        "parameters": [
+          {
+            "name": "threshold",
+            "label": "Минимальная уверенность Jev",
+            "value": 0.6,
+            "help": "Ниже порога данные не меняются.",
+            "type": "number",
+            "migrationSetting": "setPriority",
+            "min": 0,
+            "max": 1
+          },
+          {
+            "name": "excluded",
+            "label": "Не назначать автоматически",
+            "value": [
+              "Приостановленно"
+            ],
+            "help": "Названия приоритетов, которые Jev не должен выбирать.",
+            "type": "json",
+            "migrationSetting": "priorityExcluded"
+          }
+        ],
+        "description": "Начните с этого блока: здесь меняются пороги, интервалы и ограничения. Остальные шаги используют эти значения."
+      }
+    },
+    {
+      "id": "priority-5",
+      "type": "OPERATION",
+      "label": "Загрузить каталог приоритетов",
+      "x": 80,
+      "y": 570,
+      "config": {
+        "section": "2. Допустимые приоритеты",
+        "operation": "data.priorities",
+        "arguments": {},
+        "resultVariable": "allPriorities"
+      }
+    },
+    {
+      "id": "priority-6",
+      "type": "OPERATION",
+      "label": "Отобрать: priorities",
+      "x": 500,
+      "y": 570,
+      "config": {
+        "section": "2. Допустимые приоритеты",
+        "operation": "list.select",
+        "arguments": {
+          "items": "=var.allPriorities",
+          "where": "!(var.item.name in var.settings.excluded)",
+          "sortBy": "order",
+          "descending": false,
+          "limit": 100
+        },
+        "resultVariable": "priorities"
+      }
+    },
+    {
+      "id": "priority-7",
+      "type": "CONDITION",
+      "label": "Есть минимум два варианта?",
+      "x": 920,
+      "y": 570,
+      "config": {
+        "section": "2. Допустимые приоритеты",
+        "expression": "var.priorities.size() >= 2",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "left": "=var.priorities.size()",
+          "operator": ">=",
+          "right": 2
+        }
+      }
+    },
+    {
+      "id": "priority-8",
+      "type": "OPERATION",
+      "label": "Получить рекомендацию по приоритету",
+      "x": 80,
+      "y": 1290,
+      "config": {
+        "section": "3. Рекомендация и применение",
+        "operation": "ai.decide",
+        "arguments": {
+          "state": {
+            "title": "=task.name",
+            "description": "=task.description"
+          },
+          "question": "Какой приоритет нужен с учётом срочности и влияния? Меньший номер порядка означает большую срочность. Критичные приоритеты — для остановки работы или недоступности сервиса.",
+          "kind": "choice",
+          "options": {},
+          "yes": "Да",
+          "no": "Нет",
+          "candidates": "=var.priorities",
+          "labelExpression": "var.item.name + ': порядок ' + var.item.order + ', критичный: ' + var.item.critical"
+        },
+        "resultVariable": "decision"
+      }
+    },
+    {
+      "id": "priority-9",
+      "type": "CONDITION",
+      "label": "Ответ получен и уверенности достаточно?",
+      "x": 500,
+      "y": 1290,
+      "config": {
+        "section": "3. Рекомендация и применение",
+        "expression": "var.decision.available && var.decision.probability >= var.settings.threshold && var.decision.value.notNull()",
+        "manualExpression": true,
+        "groups": [],
+        "rule": {
+          "all": [
+            {
+              "left": "=var.decision.available",
+              "operator": "true"
+            },
+            {
+              "left": "=var.decision.probability",
+              "operator": ">=",
+              "right": "=var.settings.threshold"
+            },
+            {
+              "left": "=var.decision.value",
+              "operator": "notNull"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "priority-10",
+      "type": "OPERATION",
+      "label": "Применить выбранный приоритет",
+      "x": 920,
+      "y": 1290,
+      "config": {
+        "section": "3. Рекомендация и применение",
+        "operation": "task.update",
+        "arguments": {
+          "taskId": "=task.id",
+          "fields": {
+            "priorityId": "=var.decision.value.id"
+          }
+        },
+        "resultVariable": ""
+      }
+    },
+    {
+      "id": "priority-11",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 920,
+      "y": 820,
+      "config": {
+        "section": "2. Допустимые приоритеты",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "priority-12",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 1340,
+      "y": 570,
+      "config": {
+        "section": "2. Допустимые приоритеты",
+        "result": "Дополнительные действия не требуются"
+      }
+    },
+    {
+      "id": "priority-13",
+      "type": "END",
+      "label": "Ошибка — посмотреть журнал",
+      "x": 1340,
+      "y": 1290,
+      "config": {
+        "section": "3. Рекомендация и применение",
+        "result": "Шаг не выполнен. Причина указана в журнале."
+      }
+    },
+    {
+      "id": "priority-14",
+      "type": "END",
+      "label": "На этом закончить",
+      "x": 1340,
+      "y": 1540,
+      "config": {
+        "section": "3. Рекомендация и применение",
+        "result": "Дополнительные действия не требуются"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "priority-edge-priority-1-next",
+      "source": "priority-1",
+      "target": "priority-2",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "priority-edge-priority-2-next",
+      "source": "priority-2",
+      "target": "priority-5",
+      "sourceHandle": "next"
+    },
+    {
+      "id": "priority-edge-priority-5-success",
+      "source": "priority-5",
+      "target": "priority-6",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "priority-edge-priority-6-success",
+      "source": "priority-6",
+      "target": "priority-7",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "priority-edge-priority-7-true",
+      "source": "priority-7",
+      "target": "priority-8",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "priority-edge-priority-8-success",
+      "source": "priority-8",
+      "target": "priority-9",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "priority-edge-priority-9-true",
+      "source": "priority-9",
+      "target": "priority-10",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "priority-edge-priority-5-error",
+      "source": "priority-5",
+      "target": "priority-11",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "priority-edge-priority-6-error",
+      "source": "priority-6",
+      "target": "priority-11",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "priority-edge-priority-7-false",
+      "source": "priority-7",
+      "target": "priority-12",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "priority-edge-priority-8-error",
+      "source": "priority-8",
+      "target": "priority-13",
+      "sourceHandle": "error"
+    },
+    {
+      "id": "priority-edge-priority-9-false",
+      "source": "priority-9",
+      "target": "priority-14",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "priority-edge-priority-10-success",
+      "source": "priority-10",
+      "target": "priority-14",
+      "sourceHandle": "success"
+    },
+    {
+      "id": "priority-edge-priority-10-error",
+      "source": "priority-10",
+      "target": "priority-13",
+      "sourceHandle": "error"
+    }
+  ]
+}

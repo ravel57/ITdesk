@@ -35,11 +35,25 @@ import java.util.function.Supplier;
 public class AutomationController {
 
 	private final AutomationTriggerService automationTriggerService;
+	private final AutomationOperationService automationOperationService;
+	private final AutomationGraphHistoryService automationGraphHistoryService;
 	private final AutomationRoutingTestService automationRoutingTestService;
 	private final AutomationWorkflowEngine automationWorkflowEngine;
 	private final AutomationWorkflowRunService automationWorkflowRunService;
 	private final AutomationExpressionMetadataService automationExpressionMetadataService;
 
+
+	@GetMapping("/automation/operations")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
+	public Object operations() { return automationOperationService.catalog(); }
+
+    @GetMapping("/automation/backups")
+    @PreAuthorize("@access.can('AUTOMATION_MANAGE')")
+    public Object graphBackups(@RequestParam Long triggerId) { return automationGraphHistoryService.backups(triggerId); }
+
+	@GetMapping("/automation/history")
+	@PreAuthorize("@access.can('AUTOMATION_MANAGE')")
+	public Object history(@RequestParam Long triggerId) { return automationGraphHistoryService.recent(triggerId); }
 
 	@Operation(summary = "Получить триггеры автоматизации", description = "Получить триггеры автоматизации. Endpoint GET /api/v1/triggers; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("/triggers")

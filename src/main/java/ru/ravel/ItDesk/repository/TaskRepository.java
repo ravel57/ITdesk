@@ -2,6 +2,7 @@ package ru.ravel.ItDesk.repository;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,6 +13,7 @@ import ru.ravel.ItDesk.model.Task;
 import ru.ravel.ItDesk.model.User;
 
 import java.time.ZonedDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -20,6 +22,14 @@ import java.util.Set;
 @Repository
 public interface TaskRepository extends JpaRepository<Task, Long> {
 
+	@Modifying
+	@Query(value = """
+			insert into task_user_open(task_id, user_id, opened_at)
+			values (:taskId, :userId, now())
+			on conflict (task_id, user_id) do nothing
+			""", nativeQuery = true)
+	int markOpened(@Param("taskId") Long taskId, @Param("userId") Long userId);
+
 	@Query("""
 			select t from Task t
 			left join fetch t.sla s
@@ -27,6 +37,13 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 			where t.id = :id
 			""")
 	Optional<Task> findByIdWithSla(Long id);
+
+	@Query("""
+			select distinct t from Task t
+			left join fetch t.sla
+			where t.id in :ids
+			""")
+	List<Task> findAllByIdInWithSla(@Param("ids") Collection<Long> ids);
 
 
 	@Query("""

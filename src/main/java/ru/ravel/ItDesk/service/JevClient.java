@@ -43,11 +43,13 @@ public class JevClient {
 			.build();
 	private final JevSettingsService settingsService;
 	private final OutboundUrlGuard outboundUrlGuard;
+	private final JevDecisionRecorder decisionRecorder;
 
 
-	public JevClient(JevSettingsService settingsService, OutboundUrlGuard outboundUrlGuard) {
+	public JevClient(JevSettingsService settingsService, OutboundUrlGuard outboundUrlGuard, JevDecisionRecorder decisionRecorder) {
 		this.settingsService = settingsService;
 		this.outboundUrlGuard = outboundUrlGuard;
+		this.decisionRecorder = decisionRecorder;
 	}
 
 
@@ -66,12 +68,12 @@ public class JevClient {
 			JevConfig config = settingsService.effective();
 			boolean keySet = config.apiKey() != null && !config.apiKey().isBlank();
 			if (config.isUsable()) {
-				log.info("Jev is enabled: model={}, url={}, timeoutMs={}, thresholds={}, replyRequired>={}, "
+				log.debug("Jev is enabled: model={}, url={}, timeoutMs={}, thresholds={}, replyRequired>={}, "
 								+ "replyNotRequired<={}, priorityExcluded={}. Calls come from automation actions jev.*",
 						config.model(), config.url(), config.requestTimeoutMs(), config.thresholds(),
 						config.replyRequiredThreshold(), config.replyNotRequiredThreshold(), config.priorityExcluded());
 			} else {
-				log.info("Jev is disabled: JEV_ENABLED={}, JEV_API_KEY {}", config.enabled(), keySet ? "set" : "not set");
+				log.debug("Jev is disabled: JEV_ENABLED={}, JEV_API_KEY {}", config.enabled(), keySet ? "set" : "not set");
 			}
 		} catch (Exception e) {
 			log.warn("Unable to read Jev configuration: {}", e.getMessage());
@@ -86,33 +88,49 @@ public class JevClient {
 	 * @return узел {@code answers} из ответа Jev либо empty при ошибке/выключенной интеграции
 	 */
 	public Optional<JsonNode> evaluate(String context, Object state, Map<String, Object> questions) {
-		JevConfig config = settingsService.effective();
+		JevDecisionRecorder.Exchange exchange = decisionRecorder.begin(context, questions);
+		JevConfig config;
+		try { config = settingsService.effective(); } catch (RuntimeException error) {
+			decisionRecorder.unavailable(exchange, "ERROR", "Не удалось прочитать настройки Jev");
+			throw error;
+		}
 		if (!config.isUsable()) {
+			decisionRecorder.unavailable(exchange, "DISABLED", "Jev выключен или API-ключ не задан");
 			log.debug("[{}] skipped: Jev disabled or API key is not set", context);
 			return Optional.empty();
 		}
 		if (questions == null || questions.isEmpty()) {
+			decisionRecorder.unavailable(exchange, "NO_QUESTIONS", "В запросе нет вопросов");
 			log.debug("[{}] skipped: no questions", context);
 			return Optional.empty();
 		}
 		long startedAt = System.nanoTime();
 		try {
 			JsonNode answers = call(context, config, state, questions);
+			decisionRecorder.complete(exchange, answers);
 			if (log.isDebugEnabled()) {
 				log.debug("[{}] answers: {}", context, answers);
 			}
 			return Optional.of(answers);
 		} catch (InterruptedException e) {
+			decisionRecorder.unavailable(exchange, "ERROR", "Запрос Jev прерван");
 			Thread.currentThread().interrupt();
 			log.warn("[{}] request interrupted after {} ms", context, elapsedMs(startedAt));
 			return Optional.empty();
 		} catch (Exception e) {
+			decisionRecorder.unavailable(exchange, "ERROR", failureSummary(e));
 			log.warn("[{}] request failed after {} ms, questions={}: {}",
 					context, elapsedMs(startedAt), questions.keySet(), e.getMessage());
 			return Optional.empty();
 		}
 	}
 
+
+    private String failureSummary(Exception error) {
+        if (error instanceof java.net.http.HttpTimeoutException) return "Превышено время ожидания Jev";
+        var status = java.util.regex.Pattern.compile("HTTP \\d{3}").matcher(String.valueOf(error.getMessage()));
+        return status.find() ? "Jev вернул " + status.group() : "Ошибка запроса Jev: " + error.getClass().getSimpleName();
+    }
 
 	private JsonNode call(String context, JevConfig config, Object state, Map<String, Object> questions) throws Exception {
 		long startedAt = System.nanoTime();
@@ -140,7 +158,7 @@ public class JevClient {
 		if (answers == null || !answers.isObject()) {
 			throw new IllegalStateException("Jev вернул ответ без поля answers");
 		}
-		log.info("[{}] ok in {} ms: model={}, questions={}, stateChars={}{}, inputTokens={}, outputTokens={}",
+		log.debug("[{}] ok in {} ms: model={}, questions={}, stateChars={}{}, inputTokens={}, outputTokens={}",
 				context,
 				elapsedMs(startedAt),
 				root.path("model").asText(config.model()),

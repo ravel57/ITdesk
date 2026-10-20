@@ -148,6 +148,7 @@ public class WhatsappService {
 		whatsappAccountRepository.save(whatsappAccount);
 		updates.forEach(eventData -> {
 			Message message = Message.builder()
+					.fromSource("WHATSAPP")
 					.date(ZonedDateTime.ofInstant(Instant.ofEpochSecond(eventData.message.timestamp), ZoneId.systemDefault()))
 					.text(eventData.message.body)
 					.isSent(false)

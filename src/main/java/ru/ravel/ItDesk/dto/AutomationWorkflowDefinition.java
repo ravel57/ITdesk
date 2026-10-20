@@ -22,6 +22,10 @@ public class AutomationWorkflowDefinition {
 
 	private String entryNodeId;
 
+	/** Display order of stage navigation buttons; execution order is defined by edges. */
+	@Builder.Default
+	private List<String> sectionOrder = new ArrayList<>();
+
 	@Builder.Default
 	private List<Node> nodes = new ArrayList<>();
 

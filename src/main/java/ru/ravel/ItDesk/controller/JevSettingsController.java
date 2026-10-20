@@ -54,7 +54,7 @@ public class JevSettingsController {
 
 
 	/**
-	 * Журнал решений Jev за последние {@code days} дней (для настройки порогов уверенности).
+	 * Журнал запросов и ответов Jev за последние {@code days} дней.
 	 */
 	@GetMapping("/decisions")
 	public Map<String, Object> decisions(
@@ -63,10 +63,12 @@ public class JevSettingsController {
 			@RequestParam(defaultValue = "7") int days,
 			@RequestParam(required = false) String action,
 			@RequestParam(required = false) String question,
-			@RequestParam(required = false) String outcome
+			@RequestParam(required = false) String outcome,
+			@RequestParam(required = false) Long ruleId,
+			@RequestParam(required = false) String nodeId
 	) {
 		Page<JevDecision> result = jevDecisionRepository.search(
-				since(days), blankToNull(action), blankToNull(question), blankToNull(outcome),
+				since(days), blankToNull(action), blankToNull(question), blankToNull(outcome), ruleId, blankToNull(nodeId),
 				PageRequest.of(Math.max(0, page - 1), Math.min(200, Math.max(1, size))));
 		Map<String, Object> response = new LinkedHashMap<>();
 		response.put("decisions", result.getContent());
@@ -94,22 +96,15 @@ public class JevSettingsController {
 
 
 	/**
-	 * Сводка по каждому действию автоматизации и вопросу: число решений, средняя уверенность, доля принятых,
-	 * число решений рядом с порогом (±0.1) — главный ориентир для калибровки.
+	 * Сводка по сценарию, шагу и вопросу: ответы, ошибки, пропуски и ожидаемые запросы.
 	 */
 	@GetMapping("/decisions/stats")
 	public List<Map<String, Object>> decisionStats(@RequestParam(defaultValue = "7") int days) {
 		return jevDecisionRepository.stats(since(days)).stream().map(row -> {
 			Map<String, Object> item = new LinkedHashMap<>();
-			item.put("action", row[0]);
-			item.put("question", row[1]);
-			item.put("total", row[2]);
-			item.put("avgConfidence", row[3]);
-			item.put("accepted", row[4]);
-			item.put("rejected", row[5]);
-			item.put("none", row[6]);
-			item.put("nearThreshold", row[7]);
-			item.put("threshold", row[8]);
+            String[] keys = {"ruleId", "ruleName", "nodeId", "nodeLabel", "action", "question", "questionTitle", "answerType",
+                    "total", "avgConfidence", "answered", "failed", "skipped", "pending"};
+            for (int i = 0; i < keys.length; i++) item.put(keys[i], row[i]);
 			return item;
 		}).toList();
 	}

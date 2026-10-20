@@ -71,6 +71,14 @@ public class AppSettings {
 	@Builder.Default
 	private Boolean sundayEnabled = false;
 
+	/**
+	 * Считать время «Ожидает ответа» (клиент ждёт ответа оператора) только в рабочее время компании.
+	 * Выключено — календарное время. Зависит от {@link #workingTimeEnabled}: при выключенном рабочем времени ничего не меняет.
+	 */
+	@Column(name = "answer_waiting_working_time_enabled", nullable = false, columnDefinition = "boolean default false")
+	@Builder.Default
+	private Boolean answerWaitingWorkingTimeEnabled = false;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "support_line_access_mode", nullable = false, length = 32, columnDefinition = "varchar(32) default 'HYBRID'")
 	@Builder.Default

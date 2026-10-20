@@ -132,6 +132,7 @@ public class ClientService {
 					EmailAccount emailAccount = Objects.requireNonNullElse(client.getEmailAccountSender(), new EmailAccount());
 					client.setSourceChannel(emailAccount.getName());
 				}
+				case PORTAL -> client.setSourceChannel("Личный кабинет");
 			}
 		});
 		return clients;
@@ -412,6 +413,8 @@ public class ClientService {
 		Client client = checkCurrentUserAccess
 				? getClientForCurrentUser(clientId)
 				: clientsRepository.findById(clientId).orElseThrow();
+		message.setFromSource(Boolean.TRUE.equals(message.getIsComment()) ? "INTERNAL"
+				: client.getMessageFrom() == null ? null : client.getMessageFrom().name());
 		if (checkCurrentUserAccess && hasFileUuid(message)) {
 			pendingFileUploadRegistry.assertOwned(message.getFileUuid(), user.getUsername());
 		}
@@ -421,7 +424,8 @@ public class ClientService {
 		if (!Boolean.TRUE.equals(message.getIsComment()) && !isDemo) {
 			if (client.getMessageFrom() == null) {
 				logger.warn("message external delivery skipped: client messageFrom is null, clientId={}", client.getId());
-			} else {
+			} else if (client.getMessageFrom() != MessageFrom.PORTAL) {
+				// The portal reads the shared history and receives the socket update below.
 				eventPublisher.publish(TriggerType.COMMUNICATION_SEND_REQUESTED, Map.of(
 						"clientId", client.getId(),
 						"messageId", savedMessage.getId(),
@@ -662,7 +666,7 @@ public class ClientService {
 						return false;
 					}
 				}
-				case WHATSAPP, EMAIL -> {
+				case WHATSAPP, EMAIL, PORTAL -> {
 				}
 			}
 		}
@@ -709,7 +713,7 @@ public class ClientService {
 			try {
 				switch (client.getMessageFrom()) {
 					case TELEGRAM -> telegramService.editMessage(client, message);
-					case EMAIL, WHATSAPP -> {
+					case EMAIL, WHATSAPP, PORTAL -> {
 					}
 				}
 			} catch (TelegramException e) {

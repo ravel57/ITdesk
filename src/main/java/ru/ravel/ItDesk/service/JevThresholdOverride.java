@@ -50,10 +50,21 @@ public record JevThresholdOverride(
 	 * Выполняет действие с этими порогами; по завершении восстанавливает прежние.
 	 */
 	public void apply(Runnable action) {
+		apply(() -> {
+			action.run();
+			return null;
+		});
+	}
+
+
+	/**
+	 * То же для действия, которое возвращает результат шага.
+	 */
+	public <T> T apply(java.util.function.Supplier<T> action) {
 		JevThresholdOverride previous = CURRENT.get();
 		CURRENT.set(this);
 		try {
-			action.run();
+			return action.get();
 		} finally {
 			if (previous == null) {
 				CURRENT.remove();

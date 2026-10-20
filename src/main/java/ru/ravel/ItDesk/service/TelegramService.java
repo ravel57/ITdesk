@@ -217,6 +217,7 @@ public class TelegramService {
 								.orElse(null);
 						ZonedDateTime messageDatetime = ZonedDateTime.ofInstant(Instant.ofEpochSecond(update.message().date()), ZoneId.systemDefault());
 						Message message = Message.builder()
+								.fromSource("TELEGRAM")
 								.text(update.message().text())
 								.date(messageDatetime)
 								.isSent(false)

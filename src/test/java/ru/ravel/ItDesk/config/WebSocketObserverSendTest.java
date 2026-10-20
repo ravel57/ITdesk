@@ -48,7 +48,21 @@ class WebSocketObserverSendTest {
 
 
 	private boolean canSend(String authority, String destination) {
-		SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+		return canAccess(authority, destination, SimpMessageType.MESSAGE);
+	}
+
+	@Test
+	void taskOpeningEventsArePersonalAndStaffOnly() {
+		assertTrue(canAccess("ROLE_OPERATOR", "/user/topic/task-opened/", SimpMessageType.SUBSCRIBE));
+		assertTrue(canAccess("ROLE_OBSERVER", "/user/topic/task-opened/", SimpMessageType.SUBSCRIBE));
+		assertFalse(canAccess("ROLE_CLIENT", "/user/topic/task-opened/", SimpMessageType.SUBSCRIBE));
+		assertFalse(canAccess("ROLE_OPERATOR", "/topic/task-opened/", SimpMessageType.SUBSCRIBE));
+		assertFalse(canAccess("ROLE_OPERATOR", "/user/another-user/topic/task-opened/", SimpMessageType.SUBSCRIBE));
+	}
+
+
+	private boolean canAccess(String authority, String destination, SimpMessageType type) {
+		SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create(type);
 		headers.setDestination(destination);
 		Message<byte[]> message = MessageBuilder.createMessage(new byte[0], headers.getMessageHeaders());
 		var authentication = new UsernamePasswordAuthenticationToken(

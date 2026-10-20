@@ -26,6 +26,10 @@ public class Message implements Comparable<Message> {
 	@Column(length = 32768)
 	private String text;
 
+	/** Channel where this message originated; null for older messages with an unknown source. */
+	@Column(length = 32)
+	private String fromSource;
+
 	@Builder.Default
 	private ZonedDateTime date = ZonedDateTime.now();
 

@@ -307,15 +307,17 @@ class JevAssistServiceTest {
 		answers("{\"article\": {\"choice\": \"#3\", \"confidence\": 0.9}}");
 		assertTrue(service.suggestKnowledgeArticle("t", 1L, "Как подключить VPN?").isPresent());
 		ArgumentCaptor<Message> comment = ArgumentCaptor.forClass(Message.class);
-		verify(clientService).sendMessageForSystem(eq(1L), comment.capture());
-		assertTrue(comment.getValue().getIsComment());
-		assertTrue(comment.getValue().getText().contains("«Настройка VPN»"));
-		assertTrue(comment.getValue().getText().startsWith("Jev: может помочь статья базы знаний"), "LLM unavailable -> title only");
-		assertFalse(comment.getValue().getText().contains("knowledgeId"));
+		verify(clientService, times(2)).sendMessageForSystem(eq(1L), comment.capture());
+		List<Message> comments = comment.getAllValues();
+		assertTrue(comments.get(0).getIsComment());
+		assertTrue(comments.get(0).getText().contains("«Настройка VPN»"));
+		assertTrue(comments.get(0).getText().startsWith("Jev: нашлась статья базы знаний"), "first message announces the article");
+		assertFalse(comments.get(0).getText().contains("knowledgeId"));
+		assertTrue(comments.get(1).getText().startsWith("Jev: не получилось"), "LLM unavailable -> fallback as the second message");
 
-		client.getMessages().add(comment.getValue());
+		client.getMessages().add(comments.get(0));
 		service.suggestKnowledgeArticle("t", 1L, "Как подключить VPN?");
-		verify(clientService, times(1)).sendMessageForSystem(anyLong(), any());
+		verify(clientService, times(2)).sendMessageForSystem(anyLong(), any());
 	}
 
 	@Test
@@ -408,13 +410,15 @@ class JevAssistServiceTest {
 		when(linkRepository.findAllByIncidentIdAndActiveTrueOrderByLinkedAtAsc(5L))
 				.thenReturn(List.of(IncidentTaskLink.builder().incident(incident).task(inIncident).build()));
 		when(taskRepository.findOpenCreatedSince(any(), any())).thenReturn(List.of(fresh));
-		when(incidentService.linkTasksForSystem(eq(5L), any())).thenReturn(List.of(9L));
 		answers("{\"duplicate_of\": {\"choice\": \"#7\", \"confidence\": 0.9}}");
 
 		var match = service.findDuplicate("t", 9L).orElseThrow();
 		assertEquals(7L, match.duplicateOfTaskId());
-		verify(incidentService).linkTasksForSystem(5L, List.of(9L));
-		verify(incidentService).addSystemNote(eq(5L), contains("#9 — дубль заявки #7"));
+		// Только решение: привязку к инциденту и комментарии делает само правило (condition/action-ноды)
+		assertEquals(5L, match.incident().getId());
+		assertEquals("INC-000005", match.incident().getIncidentNumber());
+		verify(incidentService, never()).linkTasksForSystem(anyLong(), any());
+		verify(incidentService, never()).addSystemNote(anyLong(), anyString());
 	}
 
 	@Test
@@ -427,11 +431,12 @@ class JevAssistServiceTest {
 		when(taskRepository.findOpenCreatedSince(any(), any())).thenReturn(List.of(fresh, other));
 		answers("{\"duplicate_of\": {\"choice\": \"#7\", \"confidence\": 0.9}}");
 
-		assertNull(service.findDuplicate("t", 9L).orElseThrow().incident());
-		verify(incidentService, never()).linkTasksForSystem(anyLong(), any());
+		var match = service.findDuplicate("t", 9L).orElseThrow();
+		assertNull(match.incident());
+		assertEquals(7L, match.duplicateOfTaskId());
 		// обе заявки этого же клиента (clientRepository.findByTaskId -> client 1)
-		verify(clientService).sendMessageForSystem(eq(1L), argThat(message ->
-				message.getText().contains("#9 похожа на открытую заявку #7 этого же клиента")));
+		assertTrue(match.sameClient());
+		verify(clientService, never()).sendMessageForSystem(anyLong(), any());
 	}
 
 	@Test
@@ -445,9 +450,7 @@ class JevAssistServiceTest {
 		when(clientRepository.findByTaskId(7L)).thenReturn(Optional.of(Client.builder().id(2L).build()));
 		answers("{\"duplicate_of\": {\"choice\": \"#7\", \"confidence\": 0.9}}");
 
-		service.findDuplicate("t", 9L);
-		verify(clientService).sendMessageForSystem(eq(1L), argThat(message ->
-				message.getText().contains("#7 другого клиента") && message.getText().contains("инцидент")));
+		assertFalse(service.findDuplicate("t", 9L).orElseThrow().sameClient());
 	}
 
 	// ---------- helpers

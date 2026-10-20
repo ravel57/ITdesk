@@ -46,7 +46,13 @@ public class AutomationRoutingTestService {
 
 	@Transactional(readOnly = true)
 	public Map<String, Object> test(AutomationRoutingTestRequest request) {
-		if (request == null || request.getTaskId() == null) {
+		if (request != null && request.getEventPayload() != null && request.getWorkflowDefinition() != null) {
+            com.fasterxml.jackson.databind.node.ObjectNode supplied = objectMapper.valueToTree(request.getEventPayload());
+            if (request.getAnalysisResults() != null) supplied.with("_automation").set("testResults", objectMapper.valueToTree(request.getAnalysisResults()));
+            if (request.getParameters() != null) supplied.with("_automation").set("parameterOverrides", objectMapper.valueToTree(request.getParameters()));
+            return workflowEngine.test(request.getWorkflowDefinition(), supplied);
+        }
+        if (request == null || request.getTaskId() == null) {
 			throw new IllegalArgumentException("taskId is required");
 		}
 		Task task = taskRepository.findById(request.getTaskId()).orElseThrow();
@@ -59,6 +65,8 @@ public class AutomationRoutingTestService {
 		Event testEvent = Event.builder().payload(objectMapper.valueToTree(payload)).build();
 		payloadService.enrich(testEvent);
 		JsonNode payloadNode = testEvent.getPayload();
+        if (request.getAnalysisResults() != null) ((com.fasterxml.jackson.databind.node.ObjectNode) payloadNode).with("_automation").set("testResults", objectMapper.valueToTree(request.getAnalysisResults()));
+        if (request.getParameters() != null) ((com.fasterxml.jackson.databind.node.ObjectNode) payloadNode).with("_automation").set("parameterOverrides", objectMapper.valueToTree(request.getParameters()));
 
 		Map<String, Object> result = new LinkedHashMap<>();
 		result.put("taskId", task.getId());

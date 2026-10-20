@@ -7,8 +7,8 @@ import java.time.ZonedDateTime;
 
 
 /**
- * Одно решение Jev: ответ на один вопрос в рамках действия автоматизации.
- * Тексты обращений не сохраняются — только выбор, уверенность и итог.
+ * Один вопрос в запросе Jev: ответ, ошибка или пропуск; условия графа принимают решение отдельно.
+ * Сохраняются вопрос, выбранный вариант и метаданные; состояние запроса целиком не копируется.
  */
 @Entity
 @Table(name = "jev_decision")
@@ -48,12 +48,27 @@ public class JevDecision {
 	private String choice;
 
 	/** Уверенность (choice) или вероятность «да» (noul) */
-	@Column(nullable = false)
+	@Column
 	private Double confidence;
 
 	private Double threshold;
 
-	/** ACCEPTED, REJECTED (ниже порога), NONE («ни один вариант»), UNDECIDED (между порогами) */
+    /** Request correlation and graph location; optional for historical decisions. */
+    private String requestId;
+    private String source;
+    private String responseStatus;
+    private Long eventId;
+    private String executionId;
+    private String nodeId;
+    private String nodeLabel;
+    @Column(length = 1024)
+    private String questionTitle;
+    private String answerType;
+    @Column(length = 1000)
+    private String errorMessage;
+    private Long traceId;
+
+	/** ANSWERED/FAILED/SKIPPED/PENDING/INVALID; прежние методы также сохраняют свой итог проверки. */
 	@Column(nullable = false, length = 32)
 	private String outcome;
 }

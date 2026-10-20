@@ -11,4 +11,6 @@ import lombok.NoArgsConstructor;
 public class PasswordResetLinkRequest {
 	private String email;
 	private String baseUrl;
+	/** "INVITE" — приглашение новому пользователю; иначе (в т.ч. не указано) — обычный сброс пароля. */
+	private String purpose;
 }

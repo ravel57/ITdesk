@@ -81,6 +81,23 @@ class UserInvitationTest {
     }
 
     @Test
+    void editingPortalUserDoesNotResetNotificationPreference() {
+        User saved = User.builder().id(9L).username("portal@example.ru").authorities(List.of(Role.CLIENT))
+                .clientId(7L).notifyPortalMessages(true).build();
+        UserDto request = new UserDto();
+        request.setId(9L);
+        request.setAuthorities(Role.CLIENT.getName());
+        request.setClientId(7L);
+        request.setClientOrganizationId(5L);
+        when(userRepository.findById(9L)).thenReturn(Optional.of(saved));
+        when(userRepository.save(any())).thenAnswer(call -> call.getArgument(0));
+        when(organizationService.getOrganizations()).thenReturn(List.of(Organization.builder().id(5L).build()));
+        when(clientRepository.findById(7L)).thenReturn(Optional.of(Client.builder().id(7L)
+                .organization(Organization.builder().id(5L).build()).build()));
+        assertTrue(service.updateUser(request).getNotifyPortalMessages());
+    }
+
+    @Test
     void resendingInvitationDoesNotRequestPasswordReset() {
         when(userRepository.findById(7L)).thenReturn(Optional.of(User.builder().id(7L)
                 .username("new@example.ru").invitePending(true).build()));

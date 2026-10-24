@@ -304,6 +304,11 @@ public class GlobalSearchService {
 		if (knowledge == null || knowledge.getId() == null) {
 			return;
 		}
+		// Черновик не ищется, пока его не опубликуют
+		if (knowledge.isDraft()) {
+			deleteKnowledge(knowledge.getId());
+			return;
+		}
 		indexDocument(toKnowledgeDocument(knowledge));
 	}
 

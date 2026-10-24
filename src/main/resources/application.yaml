@@ -33,6 +33,8 @@ spring:
       flush-mode: on_save
       table-name: SPRING_SESSION
       initialize-schema: always
+      schema: classpath:db/session/schema-postgresql.sql
+      continue-on-error: false
   servlet:
     multipart:
       max-file-size: 64MB

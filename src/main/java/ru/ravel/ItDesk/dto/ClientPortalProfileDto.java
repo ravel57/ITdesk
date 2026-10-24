@@ -8,6 +8,7 @@ public record ClientPortalProfileDto(
 		Long clientId,
 		String clientName,
 		Long organizationId,
-		String organizationName
+		String organizationName,
+		boolean notificationsEnabled
 ) {
 }

@@ -6,11 +6,13 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.ravel.ItDesk.component.PendingFileUploadRegistry;
+import ru.ravel.ItDesk.component.AfterCommitExecutor;
 import ru.ravel.ItDesk.dto.ClientMessage;
 import ru.ravel.ItDesk.dto.ClientPortalMessageDto;
 import ru.ravel.ItDesk.dto.ClientPortalMessageRequest;
 import ru.ravel.ItDesk.dto.ClientPortalPage;
 import ru.ravel.ItDesk.dto.ClientPortalProfileDto;
+import ru.ravel.ItDesk.dto.ClientPortalNotificationSettingsDto;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.MessageFrom;
@@ -19,6 +21,7 @@ import ru.ravel.ItDesk.model.User;
 import ru.ravel.ItDesk.model.automatosation.TriggerType;
 import ru.ravel.ItDesk.repository.ClientRepository;
 import ru.ravel.ItDesk.repository.MessageRepository;
+import ru.ravel.ItDesk.repository.UserRepository;
 
 import java.time.ZonedDateTime;
 import java.util.Comparator;
@@ -39,6 +42,9 @@ public class ClientPortalService {
 	private final EventPublisher eventPublisher;
 	private final WebSocketService webSocketService;
 	private final PendingFileUploadRegistry pendingFileUploadRegistry;
+	private final UserRepository userRepository;
+	private final ClientPortalSocketService portalSocketService;
+	private final AfterCommitExecutor afterCommitExecutor;
 
 
 	@Transactional(readOnly = true)
@@ -54,8 +60,23 @@ public class ClientPortalService {
 				client.getId(),
 				getClientName(client),
 				organization == null ? null : organization.getId(),
-				organization == null ? null : organization.getName()
+				organization == null ? null : organization.getName(),
+				Boolean.TRUE.equals(user.getNotifyPortalMessages())
 		);
+	}
+
+	@Transactional
+	public ClientPortalNotificationSettingsDto updateNotifications(ClientPortalNotificationSettingsDto settings) {
+		User user = requirePortalUser();
+		if (settings == null || settings.notificationsEnabled() == null) {
+			throw new IllegalArgumentException("Укажите, включены ли уведомления");
+		}
+		boolean enabled = settings.notificationsEnabled();
+		user.setNotifyPortalMessages(enabled);
+		userRepository.save(user);
+		String username = user.getUsername();
+		afterCommitExecutor.run(() -> portalSocketService.sendNotificationSettings(username, enabled));
+		return new ClientPortalNotificationSettingsDto(enabled);
 	}
 
 

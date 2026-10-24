@@ -211,25 +211,37 @@ public class IncidentDetectorService {
 	 * Было ли за последние {@code minutes} срабатывание по сервису и симптому сигнала. С {@code onlyWithIncident}
 	 * считаются только срабатывания, по которым создан инцидент: срабатывания «только уведомить» не должны
 	 * блокировать создание после смены схемы правила.
+	 * <p>
+	 * Срабатывание, чей инцидент закрыт, паузу не держит: проблему решили, и повторные обращения — новый сбой.
+	 * Отменённый инцидент паузу держит: оператор счёл срабатывание ложным, и тот же сигнал не должен сразу создать его снова.
 	 */
 	public Cooldown cooldown(IncidentSignal signal, int minutes, boolean onlyWithIncident) {
 		if (minutes <= 0) {
 			return new Cooldown(null, false);
 		}
 		ZonedDateTime since = signal.getCreatedAt().minusMinutes(minutes);
-		Long incidentId = signalRepository
-				.findFirstByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
-						signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, since)
-				.flatMap(triggered -> incidentRepository.findById(triggered.getMatchedIncidentId()))
-				.filter(incident -> incident.getStatus().isActive())
-				.map(SupportIncident::getId)
-				.orElse(null);
-		boolean active = onlyWithIncident
-				? signalRepository.existsByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfter(
-				signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, since)
-				: signalRepository.existsByServiceIdAndSymptomAndDecisionAndCreatedAtAfter(
+		List<IncidentSignal> triggered = signalRepository.findAllByServiceIdAndSymptomAndDecisionAndCreatedAtAfterOrderByCreatedAtDesc(
 				signal.getServiceId(), signal.getSymptom(), IncidentSignalDecision.TRIGGERED, since);
-		return new Cooldown(incidentId, active);
+		Map<Long, Optional<SupportIncident>> incidents = new HashMap<>();
+		Long activeIncidentId = null;
+		boolean active = false;
+		for (IncidentSignal trigger : triggered) {
+			Long incidentId = trigger.getMatchedIncidentId();
+			if (incidentId == null) {
+				active |= !onlyWithIncident;
+				continue;
+			}
+			Optional<SupportIncident> incident = incidents.computeIfAbsent(incidentId, incidentRepository::findById);
+			IncidentStatus status = incident.map(SupportIncident::getStatus).orElse(IncidentStatus.CLOSED);
+			if (status == IncidentStatus.CLOSED) {
+				continue;
+			}
+			active = true;
+			if (activeIncidentId == null && status.isActive()) {
+				activeIncidentId = incidentId;
+			}
+		}
+		return new Cooldown(activeIncidentId, active);
 	}
 
 

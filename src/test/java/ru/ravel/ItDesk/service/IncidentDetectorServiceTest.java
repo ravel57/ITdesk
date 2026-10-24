@@ -147,16 +147,8 @@ class IncidentDetectorServiceTest {
 				.filter(s -> s.getSymptom().equals(inv.getArgument(1)))
 				.filter(s -> inv.<Collection<IncidentSignalDecision>>getArgument(3).contains(s.getDecision()))
 				.toList());
-		when(signalRepository.existsByServiceIdAndSymptomAndDecisionAndCreatedAtAfter(any(), any(), any(), any()))
-				.thenAnswer(inv -> stored.stream().anyMatch(s -> s.getDecision() == IncidentSignalDecision.TRIGGERED));
-		when(signalRepository.existsByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfter(any(), any(), any(), any()))
-				.thenAnswer(inv -> stored.stream().anyMatch(s -> s.getDecision() == IncidentSignalDecision.TRIGGERED
-						&& s.getMatchedIncidentId() != null));
-		when(signalRepository.findFirstByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
-				any(), any(), any(), any()))
-				.thenAnswer(inv -> stored.stream()
-						.filter(s -> s.getDecision() == IncidentSignalDecision.TRIGGERED && s.getMatchedIncidentId() != null)
-						.reduce((first, second) -> second));
+		when(signalRepository.findAllByServiceIdAndSymptomAndDecisionAndCreatedAtAfterOrderByCreatedAtDesc(any(), any(), any(), any()))
+				.thenAnswer(inv -> stored.reversed().stream().filter(s -> s.getDecision() == IncidentSignalDecision.TRIGGERED).toList());
 		verdict(0.9, IncidentSeverity.P2);
 	}
 
@@ -291,6 +283,35 @@ class IncidentDetectorServiceTest {
 		verify(incidentService).createDraftForSystem(captor.capture());
 		assertEquals(IncidentSeverity.P1, captor.getValue().severity());
 		assertEquals(15, captor.getValue().updateIntervalMinutes());
+	}
+
+	@Test
+	void closedIncidentDoesNotHoldPauseSoRecurringOutageCreatesNewDraft() throws Exception {
+		params = new Params(15, 3, 0.7, 60, true, 10, 0.6);
+		outage(0.9, vpn, null);
+		handle(1L, 10L);
+		handle(2L, 11L);
+		assertEquals(IncidentSignalDecision.TRIGGERED, handle(3L, 12L));
+		incidents.get(77L).setStatus(IncidentStatus.CLOSED);
+
+		handle(4L, 13L);
+		handle(5L, 14L);
+
+		verify(incidentService, times(2)).createDraftForSystem(any());
+		assertTrue(stored.stream().noneMatch(s -> s.getDecision() == IncidentSignalDecision.COOLDOWN));
+	}
+
+	@Test
+	void cancelledIncidentKeepsPause() throws Exception {
+		params = new Params(15, 3, 0.7, 60, true, 10, 0.6);
+		outage(0.9, vpn, null);
+		handle(1L, 10L);
+		handle(2L, 11L);
+		assertEquals(IncidentSignalDecision.TRIGGERED, handle(3L, 12L));
+		incidents.get(77L).setStatus(IncidentStatus.CANCELLED);
+
+		assertEquals(IncidentSignalDecision.COOLDOWN, handle(4L, 13L));
+		verify(incidentService, times(1)).createDraftForSystem(any());
 	}
 
 	@Test

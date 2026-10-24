@@ -1,7 +1,6 @@
 services:
   postgres:
-    image: postgres:14.1-alpine
-    restart: unless-stopped
+    image: postgres:18.3-alpine
     hostname: postgres
     environment:
       - POSTGRES_USER=postgres
@@ -11,7 +10,14 @@ services:
     ports:
       - '55432:5432'
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data
+      - ./postgres18-data:/var/lib/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-postgres}\" -d \"$${POSTGRES_DB:-postgres}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
     networks:
       - default
 
@@ -33,7 +39,7 @@ services:
   webapp:
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_started
       elasticsearch:
@@ -73,7 +79,7 @@ services:
       - MINIO_DEFAULT_BUCKET=main
       - INSTANCE_NAME=${INSTANCE_NAME}
       - LLM_URL=${LLM_URL}
-      - JEV_ENABLED=${JEV_ENABLED:true}
+      - JEV_ENABLED=${JEV_ENABLED:-true}
       - JEV_API_KEY=${JEV_API_KEY:-}
       - PLUGINS_DIR=/home/java/plugins
       - ULDESK_PLUGINS_RUNNER_SOCKET=/run/uldesk-ipc/plugin-runner.sock

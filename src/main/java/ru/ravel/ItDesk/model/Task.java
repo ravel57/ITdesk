@@ -106,6 +106,14 @@ public class Task {
 	@Builder.Default
 	private Boolean frozen = false;
 
+	/**
+	 * Заявка намеренно без сервиса (например, «Прочая проблема» умного создания): сервис организации по умолчанию
+	 * не подставляется ни при создании, ни при изменениях, пока сервис не выберут явно.
+	 */
+	@Builder.Default
+	@Column(columnDefinition = "boolean not null default false")
+	private Boolean noDefaultService = false;
+
 	private ZonedDateTime frozenUntil;
 
 	private ZonedDateTime frozenFrom;

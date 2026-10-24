@@ -26,7 +26,7 @@ class TransparentAutomationGraphTest {
     private final AutomationWorkflowEngine engine = new AutomationWorkflowEngine(mapper, expressions, mock(AutomationWorkflowRunRepository.class), mock(AutomationTriggerRepository.class), mock(AutomationPayloadService.class), values, mock(AutomationWorkflowNodeService.class), operations, mock(AutomationGraphHistoryService.class), mock(AfterCommitExecutor.class));
 
     @ParameterizedTest
-    @ValueSource(strings = {"reply","priority","classification","escalation","recovery","knowledge","smart-create","duplicates","monitoring-start","monitoring-resolve","monitoring-update","outage"})
+    @ValueSource(strings = {"reply","priority","classification","escalation","recovery","knowledge","smart-create","duplicates","monitoring-start","monitoring-resolve","monitoring-update","outage","knowledge-draft","similar-solutions","reply-history","operator-hints"})
     void generatedGraphsAreValidAndContainNoOpaquePolicyCalls(String name) throws Exception {
         String json = resource("automation/templates/" + name + ".json");
         assertThat(engine.validateAsMap(json)).containsEntry("valid", true);
@@ -48,6 +48,35 @@ class TransparentAutomationGraphTest {
         assertThat(engine.triggerType(normalized).name()).isEqualTo("TASK_CREATED");
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"4,0.80,false", "4,0.90,true", ",0.65,true", ",0.55,false"})
+    void problemOutsideOrganizationServicesHasItsOwnThreshold(String serviceId, double probability, boolean expected) throws Exception {
+        JsonNode graph = mapper.readTree(resource("automation/templates/smart-create.json"));
+        JsonNode condition = null;
+        for (JsonNode node : graph.path("nodes")) if ("smart-create-30".equals(node.path("id").asText())) condition = node.path("config").path("rule");
+        ObjectNode payload = mapper.createObjectNode();
+        values.setVariable(payload, "settings", Map.of("split", 0.85, "otherSplit", 0.6));
+        values.setVariable(payload, "serviceProblem", Map.of("available", true, "probability", probability));
+        Map<String, Object> candidate = new HashMap<>();
+        candidate.put("id", serviceId == null ? null : Long.valueOf(serviceId));
+        candidate.put("name", serviceId == null ? "Прочая проблема" : "1C");
+        values.setVariable(payload, "candidateService", candidate);
+        assertThat(operations.evaluateRule(mapper.convertValue(condition, Object.class), payload)).isEqualTo(expected);
+    }
+
+    @Test
+    void aiGenerationIsAlwaysSavedAsBackgroundStep() throws Exception {
+        ObjectNode graph = (ObjectNode) mapper.readTree(resource("automation/templates/knowledge-draft.json"));
+        for (JsonNode node : graph.path("nodes")) {
+            if ("ai.generate".equals(node.path("config").path("operation").asText())) ((ObjectNode) node.path("config")).put("background", false);
+        }
+        assertThat(engine.validateAsMap(graph.toString())).containsEntry("valid", true);
+        JsonNode saved = mapper.readTree(engine.normalize(graph.toString()));
+        for (JsonNode node : saved.path("nodes")) {
+            if ("ai.generate".equals(node.path("config").path("operation").asText())) assertThat(node.path("config").path("background").asBoolean()).isTrue();
+        }
+    }
+
     @Test
     void graphWithoutSectionOrderRemainsCompatible() throws Exception {
         String original = resource("automation/templates/reply.json");
@@ -57,7 +86,7 @@ class TransparentAutomationGraphTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"V64__transparent_automation_graphs.sql", "V67__knowledge_hints_latest_message.sql", "V68__current_automation_configuration.sql"})
+    @ValueSource(strings = {"V64__transparent_automation_graphs.sql", "V67__knowledge_hints_latest_message.sql", "V68__current_automation_configuration.sql", "V73__knowledge_drafts_from_tasks.sql", "V74__similar_solutions_from_closed_tasks.sql", "V75__reply_hints_from_chat_history.sql", "V76__operator_hint_pipeline.sql", "V77__operator_hint_sources_by_graph.sql", "V78__smart_create_ai_titles.sql", "V79__smart_create_other_problem_threshold.sql", "V80__smart_create_other_problem_without_service.sql"})
     void forwardMigrationParsesWithPlaceholderReplacementEnabled(String migration) throws Exception {
         var config = Flyway.configure();
         var parser = DatabaseTypeRegister.getDatabaseTypeForUrl("jdbc:postgresql://localhost/unused", config).createParser(config, null, new ParsingContext());
@@ -273,6 +302,8 @@ class TransparentAutomationGraphTest {
             if(op.equals("signal.analyze")) answer=Map.of("signalId",1,"probability",0.99,"serviceId",1,"serviceName","VPN","symptom","offline","monitoringStatus","WARNING");
             if(op.equals("signal.verify")) answer=Map.of("sameProblem",0.99,"severity","P1","severityScore",0.99,"cause","сеть");
             if(op.equals("ai.generate")) answer=Map.of("text","Перезапустите VPN");
+            // Названия заявок от ИИ: в тестовом прогоне созданная заявка получает id -1
+            if(op.equals("ai.generate") && variable.equals("titles")) answer=Map.of("text","**-1: «Не подключается VPN»**");
             if (simulationVariant.equals("lowConfidence")) { var low=mapper.valueToTree(answer); if(low instanceof ObjectNode object) object.put("probability",0.1);answer=low; }
             if (simulationVariant.equals("unavailable")) answer=Map.of("available",false);
             if (simulationVariant.equals("uncertain")) answer=Map.of("available",true,"probability",0.4);
@@ -300,6 +331,10 @@ class TransparentAutomationGraphTest {
             assertThat(creates).hasSize(2);
             assertThat(creates.get(0).input().path("messageId").asInt()).isEqualTo(200);
             assertThat(creates.get(1).input().path("messageId").isNull()).isTrue();
+            // «Прочая проблема» (без сервиса) — без сервиса организации по умолчанию; проблема по сервису — как обычно
+            assertThat(creates.stream().map(step -> step.input().path("noDefaultService").asBoolean()).toList()).containsExactly(false, true);
+            var renames=trace.stream().filter(step -> step.detail().equals("task.update")).map(step -> step.input().path("fields").path("name").asText()).toList();
+            assertThat(renames).as("название от ИИ, сервис в начале").contains("VPN: Не подключается VPN");
         }
         if(name.equals("monitoring-start")) assertThat(trace.stream().filter(step->step.detail().equals("incident.create")).findFirst().orElseThrow().input().path("severity").asText()).isEqualTo("P2");
         verifyNoInteractions(field(operations,JevClient.class));

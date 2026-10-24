@@ -55,7 +55,8 @@ class PortalMessageChannelTest {
             return message;
         });
         var portal = new ClientPortalService(users, clients, messages, mock(GlobalSearchService.class), events,
-                sockets, mock(PendingFileUploadRegistry.class));
+                sockets, mock(PendingFileUploadRegistry.class), mock(ru.ravel.ItDesk.repository.UserRepository.class),
+                mock(ClientPortalSocketService.class), mock(ru.ravel.ItDesk.component.AfterCommitExecutor.class));
         var request = new ClientPortalMessageRequest();
         request.setText("Сообщение из личного кабинета");
         portal.sendMessage(request);

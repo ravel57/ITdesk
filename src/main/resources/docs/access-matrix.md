@@ -153,6 +153,9 @@
 | GET | `/api/v1/llm/kb-count` | can('LLM_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/llm/query` | can('CHAT_REPLY') | ✅ | ✅ | ✅ | ✅ | — | — |
 | POST | `/api/v1/llm/retrain` | can('LLM_MANAGE') | ✅ | — | — | — | — | — |
+| GET | `/api/v1/operator-hints` | can('CHAT_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
+| GET | `/api/v1/operator-hints/stats` | can('AUTOMATION_MANAGE') | ✅ | ✅ | — | — | — | — |
+| POST | `/api/v1/operator-hints/{hintId}/feedback` | can('CHAT_REPLY') | ✅ | ✅ | ✅ | ✅ | — | — |
 | PATCH | `/api/v1/organization` | can('ORGANIZATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | POST | `/api/v1/organization` | can('ORGANIZATION_MANAGE') | ✅ | ✅ | — | — | — | — |
 | POST | `/api/v1/organization-service-assignment` | can('SERVICE_MANAGE') | ✅ | ✅ | — | — | — | — |
@@ -184,6 +187,7 @@
 | PUT | `/api/v1/plugins/{pluginKey}/secrets/{name}` | can('PLUGIN_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/portal/messages` | can('PORTAL') | — | — | — | — | — | ✅ |
 | POST | `/api/v1/portal/messages` | can('PORTAL') | — | — | — | — | — | ✅ |
+| PUT | `/api/v1/portal/notifications` | can('PORTAL') | — | — | — | — | — | ✅ |
 | GET | `/api/v1/portal/profile` | can('PORTAL') | — | — | — | — | — | ✅ |
 | GET | `/api/v1/priorities` | can('REFERENCE_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | PATCH | `/api/v1/priorities/resort` | can('REFERENCE_MANAGE') | ✅ | ✅ | — | — | — | — |
@@ -319,6 +323,7 @@
 | POST | `/api/v1knowledge-base` | can('KB_EDIT') | ✅ | ✅ | ✅ | — | — | — |
 | POST | `/api/v1knowledge-base/resort` | can('KB_EDIT') | ✅ | ✅ | ✅ | — | — | — |
 | DELETE | `/api/v1knowledge-base/{knowledgeId}` | can('KB_EDIT') | ✅ | ✅ | ✅ | — | — | — |
+| POST | `/api/v1knowledge-base/{knowledgeId}/publish` | can('KB_EDIT') | ✅ | ✅ | ✅ | — | — | — |
 | GET | `/csrf` | любой, CSRF-токен | · | · | · | · | · | · |
 | GET | `/files/audios/{uuid}` | can('FILE_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | GET | `/files/documents/{uuid}` | can('FILE_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |

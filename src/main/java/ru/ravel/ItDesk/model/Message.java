@@ -79,6 +79,9 @@ public class Message implements Comparable<Message> {
 	@Builder.Default
 	private AnswerRequired answerRequired = AnswerRequired.NOT_SET;
 
+	/** Комментарий — подсказка оператору (OperatorHint): по метке чат показывает кнопки оценки. */
+	private Long operatorHintId;
+
 	@Override
 	public int compareTo(@NotNull Message o) {
 		if (getDate() == null) return -1;

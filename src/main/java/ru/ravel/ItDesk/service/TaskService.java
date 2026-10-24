@@ -1453,6 +1453,10 @@ public class TaskService {
 		if (task.getService() == null) {
 			task.setService(olderTask.getService());
 		}
+		// Признак «без сервиса» живёт, пока сервис не выбран: форма заявки его не присылает
+		if (task.getService() == null && Boolean.TRUE.equals(olderTask.getNoDefaultService())) {
+			task.setNoDefaultService(true);
+		}
 		prepareTaskBeforeSave(task, client);
 		TaskRoutingService.RoutingResult routingResult = taskRoutingService.normalizeUpdateRequest(olderTask, task);
 		FrozenStatus frozenStatus = FrozenStatus.getInstance();
@@ -2249,7 +2253,12 @@ public class TaskService {
 			return;
 		}
 		Organization organization = client == null ? null : client.getOrganization();
-		task.setService(serviceCatalogService.resolveService(task.getService(), organization));
+		if (task.getService() != null) {
+			task.setNoDefaultService(false);
+		}
+		if (!(task.getService() == null && Boolean.TRUE.equals(task.getNoDefaultService()))) {
+			task.setService(serviceCatalogService.resolveService(task.getService(), organization));
+		}
 		if (task.getType() == null
 				&& task.getService() != null
 				&& task.getService().getAllowedTaskTypes() != null

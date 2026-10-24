@@ -30,22 +30,8 @@ public interface IncidentSignalRepository extends JpaRepository<IncidentSignal, 
 			@Param("decisions") Collection<IncidentSignalDecision> decisions
 	);
 
-	/** Последнее срабатывание по сервису и симптому, по которому создан инцидент. */
-	java.util.Optional<IncidentSignal> findFirstByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfterOrderByCreatedAtDesc(
-			Long serviceId,
-			String symptom,
-			IncidentSignalDecision decision,
-			ZonedDateTime since
-	);
-
-	boolean existsByServiceIdAndSymptomAndDecisionAndMatchedIncidentIdIsNotNullAndCreatedAtAfter(
-			Long serviceId,
-			String symptom,
-			IncidentSignalDecision decision,
-			ZonedDateTime since
-	);
-
-	boolean existsByServiceIdAndSymptomAndDecisionAndCreatedAtAfter(
+	/** Срабатывания по сервису и симптому после момента since, новые первыми. */
+	List<IncidentSignal> findAllByServiceIdAndSymptomAndDecisionAndCreatedAtAfterOrderByCreatedAtDesc(
 			Long serviceId,
 			String symptom,
 			IncidentSignalDecision decision,

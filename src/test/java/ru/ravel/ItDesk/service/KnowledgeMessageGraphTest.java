@@ -63,7 +63,7 @@ class KnowledgeMessageGraphTest {
         when(jdbc.update(startsWith("insert into automation_graph_memory"), anyString())).thenAnswer(c -> claims.add(c.getArgument(1)) ? 1 : 0);
         when(knowledge.getKnowledgeBase()).thenReturn(List.of(Knowledge.builder().id(9L).title("VPN").texts(List.of("Установите VPN-клиент")).build()));
         when(jev.evaluate(anyString(), any(), any())).thenReturn(Optional.of(mapper.readTree("{\"decision\":{\"choice\":\"9\",\"confidence\":0.99}}")));
-        when(llm.askLlm(anyString())).thenReturn("Установите VPN-клиент");
+        when(llm.generate(anyString())).thenReturn("Установите VPN-клиент");
         when(runs.save(any())).thenAnswer(c -> { queue.add(c.getArgument(0)); return c.getArgument(0); });
     }
 
@@ -91,7 +91,7 @@ class KnowledgeMessageGraphTest {
         assertThat(engine.resume(trigger, queue.get(0)).completed()).isTrue();
         verify(jev).evaluate(anyString(), eq(source.getText()), any());
         var prompt = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(llm).askLlm(prompt.capture());
+        verify(llm).generate(prompt.capture());
         assertThat(prompt.getValue()).contains(source.getText()).doesNotContain("принтер", "Изменённый текст", "Служебная заметка");
         var notes = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
         verify(actions, times(2)).execute(eq("client.addInternalNote"), notes.capture(), any());
@@ -120,10 +120,10 @@ class KnowledgeMessageGraphTest {
     @Test
     void newerMessageWhileGeneratingSuppressesTheObsoleteAnswerButCanUseTheSameArticle() throws Exception {
         assertThat(engine.execute(trigger, event(100L, source)).scheduled()).isTrue();
-        when(llm.askLlm(anyString())).thenAnswer(c -> { addNewIncoming(); return "Устаревшая подсказка"; });
+        when(llm.generate(anyString())).thenAnswer(c -> { addNewIncoming(); return "Устаревшая подсказка"; });
         assertThat(engine.resume(trigger, queue.get(0)).completed()).isTrue();
         verify(actions, times(1)).execute(eq("client.addInternalNote"), any(), any());
-        when(llm.askLlm(anyString())).thenReturn("Новая подсказка");
+        when(llm.generate(anyString())).thenReturn("Новая подсказка");
         Message latest = client.getMessages().get(client.getMessages().size()-1);
         assertThat(engine.execute(trigger, event(101L, latest)).scheduled()).isTrue();
         assertThat(engine.resume(trigger, queue.get(1)).completed()).isTrue();
@@ -135,7 +135,7 @@ class KnowledgeMessageGraphTest {
     @Test
     void staleGenerationFailureDoesNotPostAnErrorForAnOldQuestion() throws Exception {
         assertThat(engine.execute(trigger, event(100L, source)).scheduled()).isTrue();
-        when(llm.askLlm(anyString())).thenAnswer(c -> { addNewIncoming(); throw new IllegalStateException("LLM недоступен"); });
+        when(llm.generate(anyString())).thenAnswer(c -> { addNewIncoming(); throw new IllegalStateException("LLM недоступен"); });
         int i = 0;
         while (i < queue.size() && i < 4) engine.resume(trigger, queue.get(i++));
         assertThat(i).isEqualTo(3);
@@ -161,7 +161,7 @@ class KnowledgeMessageGraphTest {
         assertThat(engine.execute(trigger, event(100L, source)).scheduled()).isTrue();
         assertThat(engine.resume(trigger, queue.get(0)).completed()).isTrue();
         assertThat(engine.execute(trigger, event(101L, source)).completed()).isTrue();
-        verify(llm, times(1)).askLlm(anyString());
+        verify(llm, times(1)).generate(anyString());
         verify(actions, times(2)).execute(eq("client.addInternalNote"), any(), any());
     }
 

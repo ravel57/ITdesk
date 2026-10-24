@@ -237,6 +237,7 @@ public class UserService {
 				.availableOrganizations(resolveAvailableOrganizations(userDto))
 				.clientId(clientId)
 				.notifyChatPing(savedUser.getNotifyChatPing())
+				.notifyPortalMessages(savedUser.getNotifyPortalMessages())
 				.notifyTaskChatPing(savedUser.getNotifyTaskChatPing())
 				.notifyNewAssignedTask(savedUser.getNotifyNewAssignedTask())
 				.notifyTaskNewMessageAssigned(savedUser.getNotifyTaskNewMessageAssigned())

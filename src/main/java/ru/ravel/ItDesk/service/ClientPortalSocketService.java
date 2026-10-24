@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import ru.ravel.ItDesk.dto.ClientPortalMessageDto;
+import ru.ravel.ItDesk.dto.ClientPortalNotificationSettingsDto;
 import ru.ravel.ItDesk.model.Client;
 import ru.ravel.ItDesk.model.Message;
 import ru.ravel.ItDesk.model.Role;
@@ -22,6 +23,11 @@ public class ClientPortalSocketService {
 
 	private final SimpMessagingTemplate simpMessaging;
 	private final UserRepository userRepository;
+
+	public void sendNotificationSettings(String username, boolean enabled) {
+		if (username == null || username.isBlank()) return;
+		simpMessaging.convertAndSendToUser(username, "/queue/client-portal-settings", new ClientPortalNotificationSettingsDto(enabled));
+	}
 
 
 	public void sendMessage(Client client, Message message) {

@@ -106,6 +106,10 @@ public class User implements UserDetails, Comparable<User>, Serializable {
 	protected Boolean notifyChatPing = false;
 
 	@Builder.Default
+	@Column(name = "notify_portal_messages", nullable = false, columnDefinition = "boolean default false")
+	protected Boolean notifyPortalMessages = false;
+
+	@Builder.Default
 	@Column(name = "notify_task_chat_ping", nullable = false, columnDefinition = "boolean default false")
 	protected Boolean notifyTaskChatPing = false;
 

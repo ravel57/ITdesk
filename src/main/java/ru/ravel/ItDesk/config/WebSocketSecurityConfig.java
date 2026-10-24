@@ -95,7 +95,8 @@ public class WebSocketSecurityConfig implements WebSocketMessageBrokerConfigurer
 				).denyAll()
 				.simpSubscribeDestMatchers(
 						"/user/queue/client-portal-messages",
-						"/user/queue/client-portal-message-deleted"
+						"/user/queue/client-portal-message-deleted",
+						"/user/queue/client-portal-settings"
 				).hasRole("CLIENT")
 				.simpSubscribeDestMatchers("/user/**").denyAll()
 				.simpSubscribeDestMatchers("/queue/**").denyAll()

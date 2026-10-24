@@ -90,4 +90,11 @@ public class SupportLineController {
 	public ResponseEntity<Object> resortSupportLines(@RequestBody List<SupportLine> supportLines) {
 		return ResponseEntity.ok(supportLineService.resort(supportLines));
 	}
+
+
+	/** Ошибки проверки данных линии (роль участника, дубль названия и т.п.) — клиенту 400 с понятным текстом, а не 500. */
+	@ExceptionHandler(IllegalArgumentException.class)
+	public ResponseEntity<Map<String, String>> handleInvalidSupportLine(IllegalArgumentException exception) {
+		return ResponseEntity.badRequest().body(Map.of("message", Objects.toString(exception.getMessage(), "Некорректные данные линии")));
+	}
 }

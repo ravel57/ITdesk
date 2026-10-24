@@ -9,6 +9,8 @@ import ru.ravel.ItDesk.repository.TaskRepository;
 import ru.ravel.ItDesk.repository.UserRepository;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -134,13 +136,16 @@ public class SupportLineService {
     }
 
     private void apply(SupportLine line, SupportLine request) {
-        List<User> members = resolveTeamUsers(request.getMembers(), "Участник линии");
-        User responsible = resolveTeamUser(request.getResponsible(), "Ответственный за линию");
+        // Роль и активность проверяем только у тех, кого добавляют сейчас: если участника позже отключили
+        // или сменили ему роль, это не должно мешать сохранить остальные настройки линии.
+        Set<Long> alreadyAssigned = assignedUserIds(line);
+        List<User> members = resolveTeamUsers(request.getMembers(), "Участник линии", alreadyAssigned);
+        User responsible = resolveTeamUser(request.getResponsible(), "Ответственный за линию", alreadyAssigned);
         if (responsible != null && members.stream().noneMatch(user -> Objects.equals(user.getId(), responsible.getId()))) {
             members.add(responsible);
         }
         Set<Long> memberIds = members.stream().map(User::getId).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
-        LinkedHashSet<User> observers = new LinkedHashSet<>(resolveTeamUsers(request.getObservers(), "Наблюдатель линии"));
+        LinkedHashSet<User> observers = new LinkedHashSet<>(resolveTeamUsers(request.getObservers(), "Наблюдатель линии", alreadyAssigned));
         observers.removeIf(user -> user == null || memberIds.contains(user.getId()));
 
         line.setName(request.getName().trim());
@@ -194,24 +199,55 @@ public class SupportLineService {
                 && (userService.isAdmin(user) || userService.isManager(user) || userService.isOperator(user));
     }
 
-    private User resolveTeamUser(User requested, String fieldLabel) {
+    private Set<Long> assignedUserIds(SupportLine line) {
+        Set<Long> ids = new HashSet<>();
+        if (line == null) {
+            return ids;
+        }
+        if (line.getResponsible() != null) {
+            ids.add(line.getResponsible().getId());
+        }
+        if (line.getMembers() != null) {
+            line.getMembers().stream().filter(Objects::nonNull).map(User::getId).forEach(ids::add);
+        }
+        if (line.getObservers() != null) {
+            line.getObservers().stream().filter(Objects::nonNull).map(User::getId).forEach(ids::add);
+        }
+        ids.remove(null);
+        return ids;
+    }
+
+    private String teamUserError(User user, String fieldLabel) {
+        String name = Stream.of(user.getLastname(), user.getFirstname())
+                .filter(value -> value != null && !value.isBlank())
+                .collect(Collectors.joining(" "));
+        if (name.isBlank()) {
+            name = user.getUsername();
+        }
+        String reason = user.isEnabled()
+                ? "должен иметь роль администратора, менеджера поддержки или оператора поддержки"
+                : "отключён";
+        return fieldLabel + " «" + name + "» " + reason;
+    }
+
+    private User resolveTeamUser(User requested, String fieldLabel, Set<Long> alreadyAssigned) {
         User user = resolveUser(requested);
         if (user == null) {
             return null;
         }
-        if (!isTeamUser(user)) {
-            throw new IllegalArgumentException(fieldLabel + " должен иметь роль администратора, менеджера поддержки или оператора поддержки");
+        if (!alreadyAssigned.contains(user.getId()) && !isTeamUser(user)) {
+            throw new IllegalArgumentException(teamUserError(user, fieldLabel));
         }
         return user;
     }
 
-    private List<User> resolveTeamUsers(Collection<User> requestedUsers, String fieldLabel) {
+    private List<User> resolveTeamUsers(Collection<User> requestedUsers, String fieldLabel, Set<Long> alreadyAssigned) {
         List<User> users = resolveUsers(requestedUsers);
         users.stream()
-                .filter(user -> !isTeamUser(user))
+                .filter(user -> !alreadyAssigned.contains(user.getId()) && !isTeamUser(user))
                 .findFirst()
                 .ifPresent(user -> {
-                    throw new IllegalArgumentException(fieldLabel + " должен иметь роль администратора, менеджера поддержки или оператора поддержки");
+                    throw new IllegalArgumentException(teamUserError(user, fieldLabel));
                 });
         return users;
     }

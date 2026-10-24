@@ -499,6 +499,299 @@
     "defaultResultVariable": "articles"
   },
   {
+    "id": "data.taskConversation",
+    "label": "Получить переписку по заявке",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Переписка с клиентом за время жизни заявки и обсуждение в самой заявке, от старых к новым. Автоответы и комментарии Jev не входят. Длинная переписка сокращается: начало и конец.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум реплик",
+        "type": "number",
+        "defaultValue": 60,
+        "help": "Из длинной переписки берутся первые реплики (описание проблемы) и последние (решение).",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Объект: text — переписка построчно, messages — число реплик, operatorReplies — ответов и комментариев операторов, closeReason — причина закрытия, title — название заявки.",
+    "resultFields": [
+      "text",
+      "messages",
+      "operatorReplies",
+      "closeReason",
+      "title"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "text": {
+          "type": "STRING"
+        },
+        "messages": {
+          "type": "NUMBER"
+        },
+        "operatorReplies": {
+          "type": "NUMBER"
+        },
+        "closeReason": {
+          "type": "STRING"
+        },
+        "title": {
+          "type": "STRING"
+        }
+      }
+    },
+    "icon": "download",
+    "defaultResultVariable": "conversation"
+  },
+  {
+    "id": "data.similarTasks",
+    "label": "Найти похожие закрытые заявки",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Полнотекстовый поиск (русская морфология) по названию и описанию закрытых заявок. Выше в списке заявки, совпадающие по большему числу слов. Это кандидаты: какая из них действительно о той же проблеме, решает следующий шаг, например «Оценить через Jev».",
+    "fields": [
+      {
+        "key": "text",
+        "label": "Текст проблемы",
+        "type": "text",
+        "defaultValue": "{{ task.name }}. {{ task.description }}",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "excludeTaskId",
+        "label": "Не включать заявку",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "help": "Обычно текущая заявка.",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "days",
+        "label": "За сколько дней искать",
+        "type": "number",
+        "defaultValue": 365,
+        "help": "По дате закрытия заявки.",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "sameOrganizationOnly",
+        "label": "Только заявки той же организации",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "",
+        "required": false,
+        "valueType": "boolean"
+      },
+      {
+        "key": "organizationId",
+        "label": "Организация",
+        "type": "expression",
+        "defaultValue": "=client.organization.id",
+        "help": "Используется, если включено «Только заявки той же организации».",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум заявок",
+        "type": "number",
+        "defaultValue": 20,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список заявок от более похожих к менее похожим: id, name, description, problem — первое сообщение клиента, answer — последний ответ оператора, closeReason, closedAt, clientId, summary — краткое описание для выбора, rank.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "name",
+      "description",
+      "problem",
+      "answer",
+      "closeReason",
+      "closedAt",
+      "clientId",
+      "summary",
+      "rank"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "name": {
+            "type": "STRING"
+          },
+          "description": {
+            "type": "STRING"
+          },
+          "problem": {
+            "type": "STRING"
+          },
+          "answer": {
+            "type": "STRING"
+          },
+          "closeReason": {
+            "type": "STRING"
+          },
+          "closedAt": {
+            "type": "DATE_TIME"
+          },
+          "clientId": {
+            "type": "NUMBER"
+          },
+          "summary": {
+            "type": "STRING"
+          },
+          "rank": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "manage_search",
+    "defaultResultVariable": "similarTasks"
+  },
+  {
+    "id": "data.similarReplies",
+    "label": "Найти ответы на похожие вопросы",
+    "group": "Получить данные",
+    "effect": "READ",
+    "description": "Полнотекстовый поиск (русская морфология) по входящим сообщениям других клиентов и первый содержательный ответ оператора на каждое из них в течение суток. Автоответы, комментарии и короткие реплики не учитываются. Это кандидаты: подходит ли ответ к новому вопросу, решает следующий шаг, например «Оценить через Jev».",
+    "fields": [
+      {
+        "key": "text",
+        "label": "Текст вопроса",
+        "type": "expression",
+        "defaultValue": "=message.text",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "excludeClientId",
+        "label": "Не искать в чате клиента",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "Обычно текущий клиент: его собственная переписка не подсказка.",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "days",
+        "label": "За сколько дней искать",
+        "type": "number",
+        "defaultValue": 365,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "sameOrganizationOnly",
+        "label": "Только чаты той же организации",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "",
+        "required": false,
+        "valueType": "boolean"
+      },
+      {
+        "key": "organizationId",
+        "label": "Организация",
+        "type": "expression",
+        "defaultValue": "=client.organization.id",
+        "help": "Используется, если включено «Только чаты той же организации».",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "minAnswerLength",
+        "label": "Минимальная длина ответа оператора",
+        "type": "number",
+        "defaultValue": 40,
+        "help": "Короткие реплики («Пришлите скриншот») пропускаются, берётся следующий ответ.",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "limit",
+        "label": "Максимум пар «вопрос — ответ»",
+        "type": "number",
+        "defaultValue": 15,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      }
+    ],
+    "result": "Список пар от более похожих к менее похожим: id (ответа), questionId, clientId, question, answer, answeredAt, summary — краткое описание для выбора, rank.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "questionId",
+      "clientId",
+      "question",
+      "answer",
+      "answeredAt",
+      "summary",
+      "rank"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "NUMBER"
+          },
+          "questionId": {
+            "type": "NUMBER"
+          },
+          "clientId": {
+            "type": "NUMBER"
+          },
+          "question": {
+            "type": "STRING"
+          },
+          "answer": {
+            "type": "STRING"
+          },
+          "answeredAt": {
+            "type": "DATE_TIME"
+          },
+          "summary": {
+            "type": "STRING"
+          },
+          "rank": {
+            "type": "NUMBER"
+          }
+        }
+      }
+    },
+    "icon": "forum",
+    "defaultResultVariable": "replies"
+  },
+  {
     "id": "data.incidents",
     "label": "Получить инциденты",
     "group": "Получить данные",
@@ -1039,6 +1332,75 @@
     "defaultResultVariable": "combined"
   },
   {
+    "id": "list.candidates",
+    "label": "Подготовить варианты для выбора",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Приводит список к общему виду, чтобы варианты из разных источников сравнить в одном выборе Jev: id — «тип:id элемента», kind, refId, label — описание для Jev, item — исходный элемент.",
+    "fields": [
+      {
+        "key": "items",
+        "label": "Исходный список",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false
+      },
+      {
+        "key": "kind",
+        "label": "Тип вариантов",
+        "type": "text",
+        "defaultValue": "",
+        "help": "Латиницей, например article, task, reply. Становится префиксом id.",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "label",
+        "label": "Описание варианта для Jev",
+        "type": "script",
+        "defaultValue": "var.item.name",
+        "help": "Выражение для каждого элемента, например 'Статья: ' + var.item.name.",
+        "required": false,
+        "contextSource": "items"
+      }
+    ],
+    "result": "Список объектов: id, kind, refId, label, item.",
+    "resultFields": [],
+    "elementFields": [
+      "id",
+      "kind",
+      "refId",
+      "label",
+      "item"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "id": {
+            "type": "STRING"
+          },
+          "kind": {
+            "type": "STRING"
+          },
+          "refId": {
+            "type": "NUMBER"
+          },
+          "label": {
+            "type": "STRING"
+          },
+          "item": {
+            "type": "UNKNOWN"
+          }
+        }
+      }
+    },
+    "icon": "checklist",
+    "defaultResultVariable": "candidates"
+  },
+  {
     "id": "text.limit",
     "label": "Ограничить длину текста",
     "group": "Значения и списки",
@@ -1080,6 +1442,54 @@
     },
     "icon": "short_text",
     "defaultResultVariable": ""
+  },
+  {
+    "id": "text.lines",
+    "label": "Разбить текст на строки",
+    "group": "Значения и списки",
+    "effect": "PURE",
+    "description": "Непустые строки текста без маркеров списка. Строка вида «12: текст» (также «#12 —», «12.», «12)») даёт key=12 и value=текст — удобно разбирать ответ ИИ по заявкам или вариантам.",
+    "fields": [
+      {
+        "key": "text",
+        "label": "Текст",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Список объектов: index, key, value, text.",
+    "resultFields": [],
+    "elementFields": [
+      "index",
+      "key",
+      "value",
+      "text"
+    ],
+    "resultSchema": {
+      "type": "LIST",
+      "element": {
+        "type": "OBJECT",
+        "fields": {
+          "index": {
+            "type": "NUMBER"
+          },
+          "key": {
+            "type": "NUMBER"
+          },
+          "value": {
+            "type": "STRING"
+          },
+          "text": {
+            "type": "STRING"
+          }
+        }
+      }
+    },
+    "icon": "format_list_numbered",
+    "defaultResultVariable": "lines"
   },
   {
     "id": "ai.decide",
@@ -1328,6 +1738,15 @@
         "help": "",
         "required": false,
         "valueType": "number"
+      },
+      {
+        "key": "noDefaultService",
+        "label": "Без сервиса организации по умолчанию",
+        "type": "boolean",
+        "defaultValue": false,
+        "help": "Если сервис не указан, не подставлять сервис организации (единственный или основной). Например, для проблемы вне сервисов организации.",
+        "required": false,
+        "valueType": "boolean"
       }
     ],
     "result": "Объект: id, name, serviceId, typeId, lineId",
@@ -1512,6 +1931,115 @@
     },
     "icon": "add_comment",
     "defaultResultVariable": ""
+  },
+  {
+    "id": "hint.publish",
+    "label": "Опубликовать подсказку оператору",
+    "group": "Сообщения и уведомления",
+    "effect": "WRITE",
+    "description": "Добавляет внутренний комментарий с подсказкой и запоминает её источник и правило. Оператор отмечает, помогла ли подсказка; статистика по правилам и источникам — в настройках Jev и в журнале правила.",
+    "fields": [
+      {
+        "key": "clientId",
+        "label": "Клиент",
+        "type": "expression",
+        "defaultValue": "=client.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "messageId",
+        "label": "Сообщение клиента",
+        "type": "expression",
+        "defaultValue": "=message.id",
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "kind",
+        "label": "Источник (ключ)",
+        "type": "text",
+        "defaultValue": "",
+        "help": "Латиницей: article, task, reply или свой. По ключу подсказки группируются в статистике.",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "sourceLabel",
+        "label": "Название источника для статистики",
+        "type": "text",
+        "defaultValue": "",
+        "help": "Например «Статьи базы знаний». Если не задано — ключ источника.",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "refId",
+        "label": "ID статьи, заявки или ответа",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "title",
+        "label": "Название источника",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "probability",
+        "label": "Уверенность Jev",
+        "type": "expression",
+        "defaultValue": null,
+        "help": "",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "header",
+        "label": "Заголовок комментария",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      },
+      {
+        "key": "text",
+        "label": "Текст подсказки",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: hintId, noteMessageId.",
+    "resultFields": [
+      "hintId",
+      "noteMessageId"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "hintId": {
+          "type": "NUMBER"
+        },
+        "noteMessageId": {
+          "type": "NUMBER"
+        }
+      }
+    },
+    "icon": "tips_and_updates",
+    "defaultResultVariable": "hint"
   },
   {
     "id": "client.message",
@@ -2043,6 +2571,57 @@
     },
     "icon": "verified",
     "defaultResultVariable": ""
+  },
+  {
+    "id": "state.cooldown",
+    "label": "Не чаще раза в N минут",
+    "group": "Защита от повторов",
+    "effect": "WRITE",
+    "description": "acquired=true, если ключ не занимали последние N минут. С «Занять ключ» выключенным только проверяет — удобно до дорогих шагов; включённым — занимает ключ, и следующий раз будет через N минут. Например ключ «подсказка:клиент:ID».",
+    "fields": [
+      {
+        "key": "key",
+        "label": "Ключ",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "minutes",
+        "label": "Интервал, минут",
+        "type": "number",
+        "defaultValue": 5,
+        "help": "0 — без ограничения.",
+        "required": false,
+        "valueType": "number"
+      },
+      {
+        "key": "consume",
+        "label": "Занять ключ",
+        "type": "boolean",
+        "defaultValue": true,
+        "help": "",
+        "required": false,
+        "valueType": "boolean"
+      }
+    ],
+    "result": "Объект: acquired.",
+    "resultFields": [
+      "acquired"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "acquired": {
+          "type": "BOOLEAN"
+        }
+      }
+    },
+    "icon": "timer",
+    "defaultResultVariable": "cooldown"
   },
   {
     "id": "value.set",
@@ -3134,5 +3713,68 @@
     },
     "icon": "person_add",
     "defaultResultVariable": ""
+  },
+  {
+    "id": "knowledge.draft",
+    "label": "Создать черновик статьи",
+    "group": "База знаний",
+    "effect": "WRITE",
+    "description": "Разбирает ответ ИИ в формате «ЗАГОЛОВОК / ПРОБЛЕМА / РЕШЕНИЕ» и создаёт черновик статьи базы знаний. Черновик видят только редакторы базы знаний, пока его не опубликуют. Ответ «НЕТ» или слишком короткий текст черновик не создаёт; по одной заявке черновик создаётся один раз.",
+    "fields": [
+      {
+        "key": "taskId",
+        "label": "Заявка-источник",
+        "type": "expression",
+        "defaultValue": "=task.id",
+        "help": "",
+        "required": true,
+        "valueType": "number"
+      },
+      {
+        "key": "text",
+        "label": "Текст статьи от ИИ",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": true,
+        "valueType": "text"
+      },
+      {
+        "key": "fallbackTitle",
+        "label": "Заголовок, если ИИ его не указал",
+        "type": "text",
+        "defaultValue": "",
+        "help": "",
+        "required": false,
+        "valueType": "text"
+      }
+    ],
+    "result": "Объект: created, id, title, reason (почему черновик не создан).",
+    "resultFields": [
+      "created",
+      "id",
+      "title",
+      "reason"
+    ],
+    "elementFields": [],
+    "resultSchema": {
+      "type": "OBJECT",
+      "fields": {
+        "created": {
+          "type": "BOOLEAN"
+        },
+        "id": {
+          "type": "NUMBER"
+        },
+        "title": {
+          "type": "STRING"
+        },
+        "reason": {
+          "type": "STRING"
+        }
+      }
+    },
+    "icon": "post_add",
+    "defaultResultVariable": "draft"
   }
 ]

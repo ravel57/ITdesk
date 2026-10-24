@@ -1,8 +1,13 @@
 package ru.ravel.ItDesk.service;
 
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import ru.ravel.ItDesk.dto.LlmGenerateRequest;
+import ru.ravel.ItDesk.dto.LlmGenerateResponse;
 import ru.ravel.ItDesk.dto.LlmKbCountResponse;
 import ru.ravel.ItDesk.dto.LlmKnowledgeDocument;
 import ru.ravel.ItDesk.dto.LlmRequestBody;
@@ -14,17 +19,22 @@ import ru.ravel.ItDesk.model.Knowledge;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class LlmService {
 
+	private static final Logger log = LoggerFactory.getLogger(LlmService.class);
+
 	private final LlmFeignClient llmFeignClient;
 	private final KnowledgeService knowledgeService;
 
 	@Value("${app.instance-name}")
 	private String instanceName;
+
+	private final AtomicBoolean generateMissingLogged = new AtomicBoolean();
 
 
 	public String askLlm(String question) {
@@ -34,6 +44,24 @@ public class LlmService {
 				.build();
 		LlmResponse response = llmFeignClient.askQuery(body);
 		return response.getAnswer();
+	}
+
+
+	/**
+	 * Свободная генерация текста по заданию (названия заявок, подсказки, черновики статей) — без поиска по базе
+	 * знаний: POST /generate. /ask отвечает только по статьям и на такие задания возвращает «Код ошибки: 2».
+	 * Пока сервис LLM не обновлён и /generate нет, используется прежний /ask.
+	 */
+	public String generate(String prompt) {
+		try {
+			LlmGenerateResponse response = llmFeignClient.generate(new LlmGenerateRequest(prompt, instanceName));
+			return response == null ? null : response.text();
+		} catch (FeignException.NotFound | FeignException.MethodNotAllowed e) {
+			if (generateMissingLogged.compareAndSet(false, true)) {
+				log.warn("LLM service has no POST /generate yet, falling back to /ask (knowledge base answers only)");
+			}
+			return askLlm(prompt);
+		}
 	}
 
 

@@ -34,13 +34,35 @@ public class KnowledgeBaseController {
 
 	private final KnowledgeService knowledgeService;
 	private final GlobalSearchService globalSearchService;
+	private final AccessService access;
 
 
 	@Operation(summary = "Получить базу знаний", description = "Получить базу знаний. Endpoint GET /api/v1/knowledge-base; действующие проверки ролей, валидация и бизнес-логика сохранены.")
 	@GetMapping("knowledge-base")
 	@PreAuthorize("@access.can('KB_VIEW')")
 	public ResponseEntity<Object> getKnowledgeBase() {
-		return ResponseEntity.ok().body(knowledgeService.getKnowledgeBase());
+		return ResponseEntity.ok().body(access.can(Permission.KB_EDIT)
+				? knowledgeService.getKnowledgeBaseWithDrafts()
+				: knowledgeService.getKnowledgeBase());
+	}
+
+
+	@Operation(summary = "Опубликовать черновик статьи", description = "Опубликовать черновик статьи базы знаний. Endpoint POST /api/v1/knowledge-base/{knowledgeId}/publish; после публикации статью видят операторы, Jev и поиск.")
+	@PostMapping("knowledge-base/{knowledgeId}/publish")
+	@PreAuthorize("@access.can('KB_EDIT')")
+	public ResponseEntity<Object> publishKnowledge(@PathVariable Long knowledgeId) {
+		if (LicenseStarter.isLicenseActive) {
+			Knowledge savedKnowledge;
+			try {
+				savedKnowledge = knowledgeService.publish(knowledgeId);
+			} catch (NoSuchElementException e) {
+				return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+			}
+			globalSearchService.indexKnowledge(savedKnowledge);
+			return ResponseEntity.ok().body(savedKnowledge);
+		} else {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+		}
 	}
 
 

@@ -38,6 +38,7 @@ public class UserNotificationService {
 	private final SlaPauseRepository slaPauseRepository;
 	private final UserNotificationHistoryRepository notificationHistoryRepository;
 	private final AnswerWaitingTimeService answerWaitingTimeService;
+	private final AppSettingsService appSettingsService;
 
 	private final Set<String> sentNotificationKeys = ConcurrentHashMap.newKeySet();
 
@@ -282,7 +283,9 @@ public class UserNotificationService {
 		if (elapsed.isNegative()) {
 			return;
 		}
-		if (elapsed.compareTo(duration.dividedBy(2)) < 0) {
+		// Оранжевая зона начинается, когда остаётся orangeStartPercent% времени: прошло (100 - orangeStartPercent)%
+		int elapsedPercent = 100 - appSettingsService.getSlaZones().orangeStartPercent();
+		if (elapsed.toMillis() < Math.round(duration.toMillis() * elapsedPercent / 100.0)) {
 			return;
 		}
 		String key = "SLA_HALF_TIME_PASSED:%d:%d:%s:%d".formatted(
@@ -297,7 +300,7 @@ public class UserNotificationService {
 		notifyTaskResponsibleUsers(
 				task,
 				UserNotificationEvent.SLA_HALF_TIME_PASSED,
-				"SLA по заявке «%s» прошел больше чем на 50%%".formatted(task.getName())
+				"SLA по заявке «%s» прошел больше чем на %d%%".formatted(task.getName(), elapsedPercent)
 		);
 	}
 

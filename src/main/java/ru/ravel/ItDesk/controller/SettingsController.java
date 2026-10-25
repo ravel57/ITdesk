@@ -55,6 +55,14 @@ public class SettingsController {
 	}
 
 
+	@Operation(summary = "Границы зон SLA", description = "Начало оранжевой и красной зон SLA в процентах оставшегося времени: по ним раскрашиваются таймеры SLA. Endpoint GET /api/v1/settings/sla-zones.")
+	@GetMapping("/settings/sla-zones")
+	@PreAuthorize("@access.canAny('TASK_VIEW', 'CHAT_VIEW', 'SLA_VIEW', 'ORGANIZATION_STATS')")
+	public ResponseEntity<SlaZonesDto> getSlaZones() {
+		return ResponseEntity.ok(appSettingsService.getSlaZones());
+	}
+
+
 	@Operation(summary = "Разделы менеджера организации", description = "Какие разделы видит менеджер организации (OBSERVER). Endpoint GET /api/v1/settings/observer-access.")
 	@GetMapping("/settings/observer-access")
 	@PreAuthorize("@access.can('SETTINGS_VIEW')")

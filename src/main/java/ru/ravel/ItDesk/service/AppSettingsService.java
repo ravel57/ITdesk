@@ -3,6 +3,7 @@ package ru.ravel.ItDesk.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.ravel.ItDesk.dto.SlaZonesDto;
 import ru.ravel.ItDesk.model.AppSettings;
 import ru.ravel.ItDesk.model.ObserverFeature;
 import ru.ravel.ItDesk.repository.AppSettingsRepository;
@@ -109,6 +110,14 @@ public class AppSettingsService {
 	}
 
 
+	/** Границы оранжевой и красной зон SLA (общие для всех SLA). */
+	@Transactional(readOnly = true)
+	public SlaZonesDto getSlaZones() {
+		AppSettings settings = getOrCreate();
+		return SlaZonesDto.of(settings.getSlaOrangeStartPercent(), settings.getSlaRedStartPercent());
+	}
+
+
 	@Transactional
 	public AppSettings updateGeneralSettings(AppSettings payload) {
 		if (payload == null) {
@@ -140,6 +149,16 @@ public class AppSettingsService {
 		// Клиенты старой версии поле не присылают: тогда оставляем сохранённое значение
 		if (payload.getAnswerWaitingWorkingTimeEnabled() != null) {
 			settings.setAnswerWaitingWorkingTimeEnabled(payload.getAnswerWaitingWorkingTimeEnabled());
+		}
+		// Клиенты старой версии зоны SLA не присылают: тогда оставляем сохранённые
+		if (payload.getSlaOrangeStartPercent() != null || payload.getSlaRedStartPercent() != null) {
+			Integer orange = payload.getSlaOrangeStartPercent() != null ? payload.getSlaOrangeStartPercent() : settings.getSlaOrangeStartPercent();
+			Integer red = payload.getSlaRedStartPercent() != null ? payload.getSlaRedStartPercent() : settings.getSlaRedStartPercent();
+			if (!SlaZonesDto.isValid(orange, red)) {
+				throw new IllegalArgumentException("Зоны SLA: начало красной зоны должно быть меньше начала оранжевой (от 1% до 99%)");
+			}
+			settings.setSlaOrangeStartPercent(orange);
+			settings.setSlaRedStartPercent(red);
 		}
 		settings.setSupportLineAccessMode(
 			payload.getSupportLineAccessMode() == null

@@ -26,10 +26,13 @@ public class SlaEventWorker {
 	private final WorkingTimeService workingTimeService;
 	private final EventPublisher eventPublisher;
 	private final AutomationOutboxRepository outboxRepository;
+	private final AppSettingsService appSettingsService;
 
 	@Scheduled(fixedDelayString = "${app.sla.worker.delay-ms:60000}")
 	public void checkSla() {
 		WorkingTimeService.WorkingTimeState workingTimeState = workingTimeService.getCurrentState();
+		// Оранжевая зона (предупреждение) начинается по общей настройке, а не жёстко на половине срока
+		double warningFraction = appSettingsService.getSlaZones().orangeStartFraction();
 		List<Task> tasks = taskRepository.findAllActiveWithSla();
 		for (Task task : tasks) {
 			Sla sla = task.getSla();
@@ -50,14 +53,20 @@ public class SlaEventWorker {
 			Duration remaining = slaService.remaining(sla);
 			if (remaining.isNegative() || remaining.isZero()) {
 				publishOnce(task, sla, TriggerType.SLA_BREACHED, remaining);
-			} else if (remaining.compareTo(sla.getDuration().dividedBy(2)) <= 0) {
+			} else if (isInWarningZone(remaining, sla.getDuration(), warningFraction)) {
 				publishOnce(task, sla, TriggerType.SLA_WARNING, remaining);
 			}
 		}
-		checkFirstResponseSla();
+		checkFirstResponseSla(warningFraction);
 	}
 
-	private void checkFirstResponseSla() {
+
+	private static boolean isInWarningZone(Duration remaining, Duration total, double warningFraction) {
+		long warningMillis = Math.round(total.toMillis() * warningFraction);
+		return remaining.toMillis() <= warningMillis;
+	}
+
+	private void checkFirstResponseSla(double warningFraction) {
 		// The deadline is already calculated by the selected service calendar.
 		// Do not globally suppress checks outside the common work schedule: a
 		// service may use a 24/7 policy.
@@ -72,7 +81,7 @@ public class SlaEventWorker {
 			));
 			if (remaining.isNegative() || remaining.isZero()) {
 				publishFirstResponseOnce(task, TriggerType.FIRST_RESPONSE_SLA_BREACHED, remaining);
-			} else if (remaining.compareTo(Duration.ofSeconds(Math.max(1L, totalSeconds / 2L))) <= 0) {
+			} else if (isInWarningZone(remaining, Duration.ofSeconds(totalSeconds), warningFraction)) {
 				publishFirstResponseOnce(task, TriggerType.FIRST_RESPONSE_SLA_WARNING, remaining);
 			}
 		}

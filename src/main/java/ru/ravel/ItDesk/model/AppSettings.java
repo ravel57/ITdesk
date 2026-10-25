@@ -79,6 +79,19 @@ public class AppSettings {
 	@Builder.Default
 	private Boolean answerWaitingWorkingTimeEnabled = false;
 
+	/**
+	 * Начало оранжевой зоны SLA: доля времени SLA, которая остаётся до срока, в процентах (по умолчанию 50 — «прошла половина»).
+	 * Здесь срабатывает предупреждение SLA_WARNING и уведомление «SLA прошёл больше чем на …».
+	 */
+	@Column(name = "sla_orange_start_percent", nullable = false, columnDefinition = "int default 50")
+	@Builder.Default
+	private Integer slaOrangeStartPercent = 50;
+
+	/** Начало красной зоны SLA: оставшаяся доля времени SLA в процентах (по умолчанию 25). Всегда меньше начала оранжевой зоны. */
+	@Column(name = "sla_red_start_percent", nullable = false, columnDefinition = "int default 25")
+	@Builder.Default
+	private Integer slaRedStartPercent = 25;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "support_line_access_mode", nullable = false, length = 32, columnDefinition = "varchar(32) default 'HYBRID'")
 	@Builder.Default

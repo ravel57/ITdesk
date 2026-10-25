@@ -208,8 +208,10 @@ class AnswerWaitingTimeServiceTest {
 			when(clientRepository.findAll()).thenReturn(List.of(client));
 			UserNotificationHistoryRepository history = mock(UserNotificationHistoryRepository.class);
 			when(history.save(any())).thenAnswer(inv -> inv.getArgument(0));
+			AppSettingsService slaSettings = mock(AppSettingsService.class);
+			when(slaSettings.getSlaZones()).thenReturn(ru.ravel.ItDesk.dto.SlaZonesDto.defaults());
 			notificationService = new UserNotificationService(userRepository, clientRepository, webSocketService,
-					mock(TaskRepository.class), mock(SlaPauseRepository.class), history, service);
+					mock(TaskRepository.class), mock(SlaPauseRepository.class), history, service, slaSettings);
 		}
 
 		void check(ZonedDateTime now) {

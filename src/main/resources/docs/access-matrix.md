@@ -225,6 +225,7 @@
 | PATCH | `/api/v1/settings/observer-access` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
 | GET | `/api/v1/settings/security` | can('SETTINGS_VIEW') | ✅ | ✅ | — | — | — | — |
 | PATCH | `/api/v1/settings/security` | can('SETTINGS_MANAGE') | ✅ | — | — | — | — | — |
+| GET | `/api/v1/settings/sla-zones` | canAny('TASK_VIEW', 'CHAT_VIEW', 'SLA_VIEW', 'ORGANIZATION_STATS') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | GET | `/api/v1/sla` | can('SLA_VIEW') | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | POST | `/api/v1/sla` | can('SLA_MANAGE') | ✅ | ✅ | — | — | — | — |
 | PATCH | `/api/v1/status` | can('REFERENCE_MANAGE') | ✅ | ✅ | — | — | — | — |
